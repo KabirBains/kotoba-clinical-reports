@@ -99,11 +99,13 @@ export default function ClientEditor() {
     setNotes((prev) => ({ ...prev, [sectionId]: value }));
   };
 
-  const filledSections = Object.values(notes).filter((v) => v?.trim()).length;
-  const totalSections = TEMPLATE_SECTIONS.reduce(
-    (acc, s) => acc + (s.id === "functional-capacity" ? (s.subsections?.length ?? 0) : 1),
-    0
-  );
+  const filledSections = Object.entries(notes).filter(
+    ([key, v]) => v?.trim() && !key.endsWith("__rating")
+  ).length;
+  const totalNonSubSections = TEMPLATE_SECTIONS.filter(s => s.id !== "functional-capacity").length;
+  const totalSubFields = TEMPLATE_SECTIONS.find(s => s.id === "functional-capacity")
+    ?.subsections?.length ?? 0;
+  const totalSections = totalNonSubSections + totalSubFields;
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
