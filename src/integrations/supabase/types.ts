@@ -14,7 +14,119 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      clients: {
+        Row: {
+          client_name: string
+          created_at: string
+          id: string
+          ndis_number: string | null
+          primary_diagnosis: string | null
+          referral_reason: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          client_name: string
+          created_at?: string
+          id?: string
+          ndis_number?: string | null
+          primary_diagnosis?: string | null
+          referral_reason?: string | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          client_name?: string
+          created_at?: string
+          id?: string
+          ndis_number?: string | null
+          primary_diagnosis?: string | null
+          referral_reason?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          ahpra_number: string | null
+          clinician_name: string | null
+          created_at: string
+          id: string
+          practice_name: string | null
+          qualifications: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          ahpra_number?: string | null
+          clinician_name?: string | null
+          created_at?: string
+          id?: string
+          practice_name?: string | null
+          qualifications?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          ahpra_number?: string | null
+          clinician_name?: string | null
+          created_at?: string
+          id?: string
+          practice_name?: string | null
+          qualifications?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      reports: {
+        Row: {
+          client_id: string
+          created_at: string
+          id: string
+          is_current: boolean
+          notes: Json
+          report_content: Json | null
+          updated_at: string
+          user_id: string
+          version: number
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          id?: string
+          is_current?: boolean
+          notes?: Json
+          report_content?: Json | null
+          updated_at?: string
+          user_id: string
+          version?: number
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          id?: string
+          is_current?: boolean
+          notes?: Json
+          report_content?: Json | null
+          updated_at?: string
+          user_id?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reports_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
