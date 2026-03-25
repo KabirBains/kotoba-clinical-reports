@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { TEMPLATE_SECTIONS } from "@/lib/constants";
+import { type AssessmentInstance } from "@/lib/assessment-library";
 import { KotobaLogo } from "@/components/KotobaLogo";
 import { NotesMode } from "@/components/editor/NotesMode";
 import { ReportMode } from "@/components/editor/ReportMode";
@@ -20,6 +21,7 @@ export default function ClientEditor() {
   const queryClient = useQueryClient();
   const [mode, setMode] = useState<"notes" | "report">("notes");
   const [notes, setNotes] = useState<Record<string, string>>({});
+  const [assessments, setAssessments] = useState<AssessmentInstance[]>([]);
   const [reportContent, setReportContent] = useState<Record<string, string>>({});
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setInterval>>();
@@ -59,6 +61,9 @@ export default function ClientEditor() {
       if (savedNotes && typeof savedNotes === "object") setNotes(savedNotes);
       const savedReport = report.report_content as Record<string, string> | null;
       if (savedReport && typeof savedReport === "object") setReportContent(savedReport);
+      // Load assessments from notes JSON
+      const savedAssessments = (savedNotes as any)?.["__assessments__"];
+      if (Array.isArray(savedAssessments)) setAssessments(savedAssessments);
     }
   }, [report]);
 
@@ -74,15 +79,16 @@ export default function ClientEditor() {
 
   const saveToCloud = useCallback(async () => {
     if (!report?.id) return;
+    const notesWithAssessments = { ...notes, __assessments__: assessments as any };
     const { error } = await supabase
       .from("reports")
-      .update({ notes, report_content: reportContent || null })
+      .update({ notes: notesWithAssessments, report_content: reportContent || null })
       .eq("id", report.id);
     if (!error) {
       setLastSaved(new Date());
       if (clientId) localStorage.setItem(`kotoba-notes-${clientId}`, JSON.stringify(notes));
     }
-  }, [report?.id, notes, reportContent, clientId]);
+  }, [report?.id, notes, assessments, reportContent, clientId]);
 
   // Autosave every 30 seconds
   useEffect(() => {
@@ -102,9 +108,11 @@ export default function ClientEditor() {
   };
 
   const filledSections = Object.entries(notes).filter(
-    ([key, v]) => v?.trim() && !key.endsWith("__rating")
+    ([key, v]) => v?.trim() && !key.endsWith("__rating") && !key.startsWith("__")
   ).length;
-  const totalNonSubSections = TEMPLATE_SECTIONS.filter(s => s.id !== "functional-capacity").length;
+  const totalNonSubSections = TEMPLATE_SECTIONS.filter(
+    s => s.id !== "functional-capacity" && s.id !== "assessments"
+  ).length;
   const totalSubFields = TEMPLATE_SECTIONS.find(s => s.id === "functional-capacity")
     ?.subsections?.length ?? 0;
   const totalSections = totalNonSubSections + totalSubFields;
@@ -188,11 +196,16 @@ export default function ClientEditor() {
       {/* Editor with sidebar */}
       <div className="flex-1 flex overflow-hidden">
         {mode === "notes" && (
-          <EditorSidebar notes={notes} scrollContainerRef={mainRef} />
+          <EditorSidebar notes={notes} assessments={assessments} scrollContainerRef={mainRef} />
         )}
         <main ref={mainRef} className="flex-1 overflow-auto">
           {mode === "notes" ? (
-            <NotesMode notes={notes} onUpdateNote={updateNote} />
+            <NotesMode
+              notes={notes}
+              onUpdateNote={updateNote}
+              assessments={assessments}
+              onUpdateAssessments={setAssessments}
+            />
           ) : (
             <ReportMode reportContent={reportContent} />
           )}
