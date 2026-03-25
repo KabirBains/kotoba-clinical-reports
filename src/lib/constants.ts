@@ -28,10 +28,11 @@ export const TEMPLATE_SECTIONS = [
       { id: "sensory-profile", number: "14.9", title: "Sensory Profile" },
     ],
   },
-  { id: "limitations-barriers", number: "15", title: "Limitations & Barriers to Progress" },
-  { id: "functional-impact", number: "16", title: "Functional Impact Summary" },
-  { id: "recommendations", number: "17", title: "Recommendations" },
-  { id: "review-monitoring", number: "18", title: "Review & Monitoring Plan" },
+  { id: "assessments", number: "15", title: "Assessments" },
+  { id: "limitations-barriers", number: "16", title: "Limitations & Barriers to Progress" },
+  { id: "functional-impact", number: "17", title: "Functional Impact Summary" },
+  { id: "recommendations", number: "18", title: "Recommendations" },
+  { id: "review-monitoring", number: "19", title: "Review & Monitoring Plan" },
 ] as const;
 
 export type TemplateSection = (typeof TEMPLATE_SECTIONS)[number];

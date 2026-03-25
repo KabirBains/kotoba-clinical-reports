@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { TEMPLATE_SECTIONS } from "@/lib/constants";
 import { getSubsectionConfig, type SubsectionField } from "@/lib/subsection-fields";
+import { type AssessmentInstance } from "@/lib/assessment-library";
+import { AssessmentsSection } from "@/components/editor/AssessmentsSection";
 import { ChevronDown, ChevronRight, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -14,6 +16,8 @@ import {
 interface NotesModeProps {
   notes: Record<string, string>;
   onUpdateNote: (sectionId: string, value: string) => void;
+  assessments: AssessmentInstance[];
+  onUpdateAssessments: (assessments: AssessmentInstance[]) => void;
 }
 
 function StructuredField({
@@ -170,14 +174,22 @@ function SectionPanel({
   );
 }
 
-export function NotesMode({ notes, onUpdateNote }: NotesModeProps) {
+export function NotesMode({ notes, onUpdateNote, assessments, onUpdateAssessments }: NotesModeProps) {
   return (
     <div className="max-w-4xl mx-auto py-6 px-4">
       <div className="bg-card border border-border/50 rounded-lg shadow-sm overflow-hidden">
         {TEMPLATE_SECTIONS.map((section) => (
           <div key={section.id}>
-            {/* Top-level sections (not functional-capacity parent) get a plain textarea */}
-            {section.id !== "functional-capacity" && (
+            {/* Assessments section */}
+            {section.id === "assessments" && (
+              <AssessmentsSection
+                assessments={assessments}
+                onUpdateAssessments={onUpdateAssessments}
+              />
+            )}
+
+            {/* Top-level sections (not functional-capacity or assessments) get a plain textarea */}
+            {section.id !== "functional-capacity" && section.id !== "assessments" && (
               <SectionPanel
                 id={section.id}
                 number={section.number}
@@ -187,7 +199,7 @@ export function NotesMode({ notes, onUpdateNote }: NotesModeProps) {
               />
             )}
 
-            {/* Functional capacity parent header (no textarea, just header) */}
+            {/* Functional capacity parent header */}
             {section.id === "functional-capacity" && (
               <div className="border-b border-border/30">
                 <div className="w-full flex items-center gap-3 px-5 py-3 text-left">
