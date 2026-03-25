@@ -1,0 +1,203 @@
+import { useState, useEffect, useCallback } from "react";
+import { TEMPLATE_SECTIONS } from "@/lib/constants";
+import { CheckCircle2, ChevronDown, ChevronRight, Menu, X } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
+
+// Display names for sidebar (can differ from constants)
+const SIDEBAR_LABELS: Record<string, string> = {
+  "mobility": "Mobility & Upper Limb Function",
+  "personal-adls": "Personal ADLs — Self-Care",
+};
+
+interface EditorSidebarProps {
+  notes: Record<string, string>;
+  scrollContainerRef: React.RefObject<HTMLElement | null>;
+}
+
+function getSidebarTitle(id: string, title: string) {
+  return SIDEBAR_LABELS[id] ?? title;
+}
+
+function hasSectionContent(sectionId: string, notes: Record<string, string>): boolean {
+  // Check direct note
+  if (notes[sectionId]?.trim()) return true;
+  // Check structured fields (subsection__field__notes or subsection__field__rating)
+  return Object.keys(notes).some(
+    (k) => k.startsWith(`${sectionId}__`) && notes[k]?.trim()
+  );
+}
+
+export function EditorSidebar({ notes, scrollContainerRef }: EditorSidebarProps) {
+  const isMobile = useIsMobile();
+  const [open, setOpen] = useState(!isMobile);
+  const [activeSectionId, setActiveSectionId] = useState<string>("");
+  const [fcExpanded, setFcExpanded] = useState(true);
+
+  // Track which section is visible
+  const updateActiveSection = useCallback(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const allIds: string[] = [];
+    TEMPLATE_SECTIONS.forEach((s) => {
+      if (s.id !== "functional-capacity") allIds.push(s.id);
+      if ("subsections" in s && s.subsections) {
+        s.subsections.forEach((sub) => allIds.push(sub.id));
+      }
+    });
+
+    let closest = "";
+    let closestDist = Infinity;
+
+    for (const id of allIds) {
+      const el = container.querySelector(`[data-section-id="${id}"]`);
+      if (!el) continue;
+      const rect = (el as HTMLElement).getBoundingClientRect();
+      const containerRect = container.getBoundingClientRect();
+      const dist = Math.abs(rect.top - containerRect.top - 60);
+      if (rect.top <= containerRect.top + 120 && dist < closestDist) {
+        closestDist = dist;
+        closest = id;
+      }
+    }
+    if (closest && closest !== activeSectionId) {
+      setActiveSectionId(closest);
+    }
+  }, [scrollContainerRef, activeSectionId]);
+
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    const handler = () => updateActiveSection();
+    container.addEventListener("scroll", handler, { passive: true });
+    handler();
+    return () => container.removeEventListener("scroll", handler);
+  }, [scrollContainerRef, updateActiveSection]);
+
+  const scrollTo = (sectionId: string) => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    const el = container.querySelector(`[data-section-id="${sectionId}"]`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+    if (isMobile) setOpen(false);
+  };
+
+  // Check if a subsection is the active one (to auto-expand section 14)
+  const fcSection = TEMPLATE_SECTIONS.find((s) => s.id === "functional-capacity");
+  const fcSubIds = fcSection && "subsections" in fcSection ? fcSection.subsections?.map((s) => s.id) ?? [] : [];
+  const isFcSubActive = fcSubIds.includes(activeSectionId);
+
+  if (isMobile && !open) {
+    return (
+      <Button
+        variant="ghost"
+        size="icon"
+        className="fixed left-2 top-16 z-20 bg-card border border-border/50 shadow-sm"
+        onClick={() => setOpen(true)}
+      >
+        <Menu className="h-4 w-4" />
+      </Button>
+    );
+  }
+
+  return (
+    <aside
+      className={cn(
+        "bg-card border-r border-border/50 flex flex-col shrink-0",
+        isMobile
+          ? "fixed left-0 top-14 bottom-0 z-20 w-64 shadow-lg"
+          : "w-60 sticky top-14 h-[calc(100vh-3.5rem)]"
+      )}
+    >
+      {isMobile && (
+        <div className="flex justify-end p-2 border-b border-border/30">
+          <Button variant="ghost" size="icon" onClick={() => setOpen(false)}>
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
+      <ScrollArea className="flex-1">
+        <nav className="py-2 px-1">
+          {TEMPLATE_SECTIONS.map((section) => {
+            const isFc = section.id === "functional-capacity";
+            const isActive = activeSectionId === section.id;
+            const hasContent = isFc
+              ? fcSubIds.some((id) => hasSectionContent(id, notes))
+              : hasSectionContent(section.id, notes);
+
+            return (
+              <div key={section.id}>
+                <button
+                  onClick={() => {
+                    if (isFc) {
+                      setFcExpanded(!fcExpanded);
+                      // Scroll to first subsection
+                      if (!fcExpanded && fcSubIds[0]) scrollTo(fcSubIds[0]);
+                    } else {
+                      scrollTo(section.id);
+                    }
+                  }}
+                  className={cn(
+                    "w-full flex items-center gap-2 px-3 py-1.5 text-left text-xs rounded-md transition-colors group",
+                    isActive || (isFc && isFcSubActive)
+                      ? "bg-accent/10 text-accent border-l-2 border-accent"
+                      : "text-muted-foreground hover:bg-muted/50 border-l-2 border-transparent"
+                  )}
+                >
+                  <span className="font-mono w-5 shrink-0 text-[10px] opacity-60">
+                    {section.number}
+                  </span>
+                  <span className="flex-1 truncate leading-tight">
+                    {getSidebarTitle(section.id, section.title)}
+                  </span>
+                  {hasContent && !isFc && (
+                    <CheckCircle2 className="h-3 w-3 text-emerald-500 shrink-0" />
+                  )}
+                  {isFc && (
+                    fcExpanded
+                      ? <ChevronDown className="h-3 w-3 shrink-0 opacity-50" />
+                      : <ChevronRight className="h-3 w-3 shrink-0 opacity-50" />
+                  )}
+                </button>
+
+                {/* Subsections */}
+                {isFc && fcExpanded && "subsections" in section && section.subsections?.map((sub) => {
+                  const subActive = activeSectionId === sub.id;
+                  const subHasContent = hasSectionContent(sub.id, notes);
+
+                  return (
+                    <button
+                      key={sub.id}
+                      onClick={() => scrollTo(sub.id)}
+                      className={cn(
+                        "w-full flex items-center gap-2 pl-8 pr-3 py-1 text-left text-[11px] rounded-md transition-colors",
+                        subActive
+                          ? "bg-accent/10 text-accent border-l-2 border-accent"
+                          : "text-muted-foreground hover:bg-muted/50 border-l-2 border-transparent"
+                      )}
+                    >
+                      <span className="font-mono w-6 shrink-0 text-[10px] opacity-50">
+                        {sub.number}
+                      </span>
+                      <span className="flex-1 truncate leading-tight">
+                        {getSidebarTitle(sub.id, sub.title)}
+                      </span>
+                      {subHasContent && (
+                        <CheckCircle2 className="h-3 w-3 text-emerald-500 shrink-0" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </nav>
+      </ScrollArea>
+    </aside>
+  );
+}
