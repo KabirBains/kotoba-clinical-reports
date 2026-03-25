@@ -90,7 +90,7 @@ function StructuredSubsectionPanel({
     : (notes[id] ?? "").trim().length > 0;
 
   return (
-    <div className="ml-6 border-b border-border/30 last:border-b-0">
+    <div data-section-id={id} className="ml-6 border-b border-border/30 last:border-b-0">
       <button
         onClick={() => setOpen(!open)}
         className="w-full flex items-center gap-3 px-5 py-3 hover:bg-muted/50 transition-colors text-left"
@@ -140,7 +140,7 @@ function SectionPanel({
   const hasContent = value?.trim().length > 0;
 
   return (
-    <div className="border-b border-border/30 last:border-b-0">
+    <div data-section-id={id} className="border-b border-border/30 last:border-b-0">
       <button
         onClick={() => setOpen(!open)}
         className="w-full flex items-center gap-3 px-5 py-3 hover:bg-muted/50 transition-colors text-left"
