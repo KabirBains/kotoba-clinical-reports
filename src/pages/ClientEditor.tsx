@@ -7,6 +7,7 @@ import { TEMPLATE_SECTIONS } from "@/lib/constants";
 import { KotobaLogo } from "@/components/KotobaLogo";
 import { NotesMode } from "@/components/editor/NotesMode";
 import { ReportMode } from "@/components/editor/ReportMode";
+import { EditorSidebar } from "@/components/editor/EditorSidebar";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, FileText, PenLine, Clock } from "lucide-react";
 import { toast } from "sonner";
@@ -22,6 +23,7 @@ export default function ClientEditor() {
   const [reportContent, setReportContent] = useState<Record<string, string>>({});
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setInterval>>();
+  const mainRef = useRef<HTMLElement>(null);
 
   const { data: client } = useQuery({
     queryKey: ["client", clientId],
@@ -183,14 +185,19 @@ export default function ClientEditor() {
         </div>
       )}
 
-      {/* Editor */}
-      <main className="flex-1 overflow-auto">
-        {mode === "notes" ? (
-          <NotesMode notes={notes} onUpdateNote={updateNote} />
-        ) : (
-          <ReportMode reportContent={reportContent} />
+      {/* Editor with sidebar */}
+      <div className="flex-1 flex overflow-hidden">
+        {mode === "notes" && (
+          <EditorSidebar notes={notes} scrollContainerRef={mainRef} />
         )}
-      </main>
+        <main ref={mainRef} className="flex-1 overflow-auto">
+          {mode === "notes" ? (
+            <NotesMode notes={notes} onUpdateNote={updateNote} />
+          ) : (
+            <ReportMode reportContent={reportContent} />
+          )}
+        </main>
+      </div>
     </div>
   );
 }

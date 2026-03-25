@@ -89,7 +89,7 @@ export function EditorSidebar({ notes, scrollContainerRef }: EditorSidebarProps)
 
   // Check if a subsection is the active one (to auto-expand section 14)
   const fcSection = TEMPLATE_SECTIONS.find((s) => s.id === "functional-capacity");
-  const fcSubIds = fcSection && "subsections" in fcSection ? fcSection.subsections?.map((s) => s.id) ?? [] : [];
+  const fcSubIds: string[] = fcSection && "subsections" in fcSection ? (fcSection.subsections?.map((s) => s.id) ?? []) : [];
   const isFcSubActive = fcSubIds.includes(activeSectionId);
 
   if (isMobile && !open) {
@@ -156,7 +156,7 @@ export function EditorSidebar({ notes, scrollContainerRef }: EditorSidebarProps)
                     {getSidebarTitle(section.id, section.title)}
                   </span>
                   {hasContent && !isFc && (
-                    <CheckCircle2 className="h-3 w-3 text-emerald-500 shrink-0" />
+                    <CheckCircle2 className="h-3 w-3 text-success shrink-0" />
                   )}
                   {isFc && (
                     fcExpanded
@@ -188,7 +188,7 @@ export function EditorSidebar({ notes, scrollContainerRef }: EditorSidebarProps)
                         {getSidebarTitle(sub.id, sub.title)}
                       </span>
                       {subHasContent && (
-                        <CheckCircle2 className="h-3 w-3 text-emerald-500 shrink-0" />
+                        <CheckCircle2 className="h-3 w-3 text-success shrink-0" />
                       )}
                     </button>
                   );
