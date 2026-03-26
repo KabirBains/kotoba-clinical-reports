@@ -87,9 +87,11 @@ function StructuredSubsectionPanel({
 
   const hasContent = config
     ? config.fields.some(
-        (f) =>
-          notes[`${id}__${f.id}__notes`]?.trim() ||
-          notes[`${id}__${f.id}__rating`]?.trim()
+        (f) => {
+          const nv = notes[`${id}__${f.id}__notes`];
+          const rv = notes[`${id}__${f.id}__rating`];
+          return (typeof nv === 'string' && nv.trim()) || (typeof rv === 'string' && rv.trim());
+        }
       )
     : (typeof notes[id] === 'string' ? notes[id].trim() : '').length > 0;
 
