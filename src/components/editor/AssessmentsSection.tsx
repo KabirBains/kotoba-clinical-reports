@@ -114,7 +114,12 @@ function AssessmentCard({
           )}
 
           {/* Scoring interface */}
-          {definition && definition.subscales.map((subscale) => {
+          {definition && definition.id === "whodas-2.0" ? (
+            <WHODASScoring
+              scores={instance.scores}
+              onUpdateScores={(newScores) => onUpdate({ ...instance, scores: newScores })}
+            />
+          ) : definition && definition.subscales.map((subscale) => {
             const subscaleTotal = calculateSubscaleTotal(definition, subscale.id, instance.scores);
             return (
               <div key={subscale.id} className="space-y-2">
