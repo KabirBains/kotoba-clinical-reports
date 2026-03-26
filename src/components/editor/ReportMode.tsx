@@ -6,7 +6,7 @@ interface ReportModeProps {
 }
 
 export function ReportMode({ reportContent }: ReportModeProps) {
-  const hasContent = Object.values(reportContent).some((v) => v?.trim());
+  const hasContent = Object.values(reportContent).some((v) => typeof v === 'string' && v.trim());
 
   if (!hasContent) {
     return (

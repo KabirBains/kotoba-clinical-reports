@@ -23,9 +23,9 @@ function getSidebarTitle(id: string, title: string) {
 }
 
 function hasSectionContent(sectionId: string, notes: Record<string, string>): boolean {
-  if (notes[sectionId]?.trim()) return true;
+  if (typeof notes[sectionId] === 'string' && notes[sectionId].trim()) return true;
   return Object.keys(notes).some(
-    (k) => k.startsWith(`${sectionId}__`) && notes[k]?.trim()
+    (k) => k.startsWith(`${sectionId}__`) && typeof notes[k] === 'string' && notes[k].trim()
   );
 }
 

@@ -91,7 +91,7 @@ function StructuredSubsectionPanel({
           notes[`${id}__${f.id}__notes`]?.trim() ||
           notes[`${id}__${f.id}__rating`]?.trim()
       )
-    : (notes[id] ?? "").trim().length > 0;
+    : (typeof notes[id] === 'string' ? notes[id].trim() : '').length > 0;
 
   return (
     <div data-section-id={id} className="ml-6 border-b border-border/30 last:border-b-0">
@@ -141,7 +141,7 @@ function SectionPanel({
   onChange: (val: string) => void;
 }) {
   const [open, setOpen] = useState(true);
-  const hasContent = value?.trim().length > 0;
+  const hasContent = (typeof value === 'string' ? value.trim() : '').length > 0;
 
   return (
     <div data-section-id={id} className="border-b border-border/30 last:border-b-0">
