@@ -179,8 +179,8 @@ function AssessmentCard({
             </div>
           )}
 
-          {/* Results table */}
-          {definition && (
+          {/* Results table (non-WHODAS only — WHODAS has its own summary) */}
+          {definition && definition.id !== "whodas-2.0" && definition.subscales.length > 0 && (
             <div className="border border-border/40 rounded-md overflow-hidden">
               <table className="w-full text-xs">
                 <thead>
