@@ -41,54 +41,17 @@ const WHODAS_SCORE_MAP: Record<string, number> = {
 export const ASSESSMENT_LIBRARY: AssessmentDefinition[] = [
   {
     id: "whodas-2.0",
-    name: "WHODAS 2.0 (12-item)",
+    name: "WHODAS 2.0 (36-item)",
     shortName: "WHODAS 2.0",
-    synopsis: "The WHO Disability Assessment Schedule 2.0 is a standardised measure of health and disability across cultures. The 12-item version assesses six domains of functioning: cognition, mobility, self-care, getting along, life activities, and participation. It is widely used in NDIS functional capacity assessments to quantify the impact of disability on daily life.",
-    subscales: [
-      {
-        id: "cognition", label: "Cognition", items: [
-          { id: "d1-1", label: "Concentrating on doing something for ten minutes", options: WHODAS_OPTIONS },
-          { id: "d1-2", label: "Remembering to do important things", options: WHODAS_OPTIONS },
-        ],
-      },
-      {
-        id: "mobility", label: "Mobility", items: [
-          { id: "d2-1", label: "Standing for long periods such as 30 minutes", options: WHODAS_OPTIONS },
-          { id: "d2-2", label: "Walking a long distance such as a kilometre", options: WHODAS_OPTIONS },
-        ],
-      },
-      {
-        id: "self-care", label: "Self-Care", items: [
-          { id: "d3-1", label: "Washing your whole body", options: WHODAS_OPTIONS },
-          { id: "d3-2", label: "Getting dressed", options: WHODAS_OPTIONS },
-        ],
-      },
-      {
-        id: "getting-along", label: "Getting Along", items: [
-          { id: "d4-1", label: "Dealing with people you do not know", options: WHODAS_OPTIONS },
-          { id: "d4-2", label: "Maintaining a friendship", options: WHODAS_OPTIONS },
-        ],
-      },
-      {
-        id: "life-activities", label: "Life Activities", items: [
-          { id: "d5-1", label: "Taking care of household responsibilities", options: WHODAS_OPTIONS },
-          { id: "d5-2", label: "Day-to-day work / school", options: WHODAS_OPTIONS },
-        ],
-      },
-      {
-        id: "participation", label: "Participation", items: [
-          { id: "d6-1", label: "Joining in community activities", options: WHODAS_OPTIONS },
-          { id: "d6-2", label: "How much have you been emotionally affected by your health condition", options: WHODAS_OPTIONS },
-        ],
-      },
-    ],
+    synopsis: "The WHO Disability Assessment Schedule 2.0 is a standardised measure of health and disability across cultures. The 36-item version assesses seven domains of functioning: cognition, mobility, self-care, getting along, life activities (household and work/school), and participation. It uses a simple scoring method where each item is rated 0–4 (None to Extreme), producing raw scores, percentage disability, and disability level per domain and overall. It is widely used in NDIS functional capacity assessments to quantify the impact of disability on daily life.",
+    subscales: [],
     scoringMethod: "sum",
     classifications: [
       { min: 0, max: 4, label: "No disability" },
-      { min: 5, max: 12, label: "Mild disability" },
-      { min: 13, max: 24, label: "Moderate disability" },
-      { min: 25, max: 36, label: "Severe disability" },
-      { min: 37, max: 48, label: "Extreme disability" },
+      { min: 5, max: 24, label: "Mild disability" },
+      { min: 25, max: 49, label: "Moderate disability" },
+      { min: 50, max: 95, label: "Severe disability" },
+      { min: 96, max: 100, label: "Extreme disability" },
     ],
   },
   {
