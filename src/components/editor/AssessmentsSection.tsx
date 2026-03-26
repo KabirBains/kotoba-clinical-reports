@@ -7,6 +7,7 @@ import {
   calculateSubscaleTotal, 
   getClassification 
 } from "@/lib/assessment-library";
+import { WHODASScoring } from "./WHODASScoring";
 import { 
   ChevronDown, ChevronRight, Plus, Library, PenLine, 
   Trash2, GripVertical, Calendar, Sparkles, FileInput 
