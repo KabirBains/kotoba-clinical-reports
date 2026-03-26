@@ -108,7 +108,7 @@ export default function ClientEditor() {
   };
 
   const filledSections = Object.entries(notes).filter(
-    ([key, v]) => v?.trim() && !key.endsWith("__rating") && !key.startsWith("__")
+    ([key, v]) => (typeof v === 'string' && v.trim()) && !key.endsWith("__rating") && !key.startsWith("__")
   ).length;
   const totalNonSubSections = TEMPLATE_SECTIONS.filter(
     s => s.id !== "functional-capacity" && s.id !== "assessments"
