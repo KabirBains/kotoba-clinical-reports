@@ -7,6 +7,7 @@ import {
   calculateSubscaleTotal, 
   getClassification 
 } from "@/lib/assessment-library";
+import { WHODASScoring } from "./WHODASScoring";
 import { 
   ChevronDown, ChevronRight, Plus, Library, PenLine, 
   Trash2, GripVertical, Calendar, Sparkles, FileInput 
@@ -113,7 +114,12 @@ function AssessmentCard({
           )}
 
           {/* Scoring interface */}
-          {definition && definition.subscales.map((subscale) => {
+          {definition && definition.id === "whodas-2.0" ? (
+            <WHODASScoring
+              scores={instance.scores}
+              onUpdateScores={(newScores) => onUpdate({ ...instance, scores: newScores })}
+            />
+          ) : definition && definition.subscales.map((subscale) => {
             const subscaleTotal = calculateSubscaleTotal(definition, subscale.id, instance.scores);
             return (
               <div key={subscale.id} className="space-y-2">
@@ -173,8 +179,8 @@ function AssessmentCard({
             </div>
           )}
 
-          {/* Results table */}
-          {definition && (
+          {/* Results table (non-WHODAS only — WHODAS has its own summary) */}
+          {definition && definition.id !== "whodas-2.0" && definition.subscales.length > 0 && (
             <div className="border border-border/40 rounded-md overflow-hidden">
               <table className="w-full text-xs">
                 <thead>
