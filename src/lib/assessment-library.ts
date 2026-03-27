@@ -43,7 +43,7 @@ export const ASSESSMENT_LIBRARY: AssessmentDefinition[] = [
     id: "whodas-2.0",
     name: "WHODAS 2.0 (36-item)",
     shortName: "WHODAS 2.0",
-    synopsis: "The WHO Disability Assessment Schedule 2.0 is a standardised measure of health and disability across cultures. The 36-item version assesses seven domains of functioning: cognition, mobility, self-care, getting along, life activities (household and work/school), and participation. It uses a simple scoring method where each item is rated 0–4 (None to Extreme), producing raw scores, percentage disability, and disability level per domain and overall. It is widely used in NDIS functional capacity assessments to quantify the impact of disability on daily life.",
+    synopsis: "The WHO Disability Assessment Schedule 2.0 is a standardised measure of health and disability across cultures. The 36-item version assesses seven domains of functioning: cognition, mobility, self-care, getting along, life activities (household and work/school), and participation. It uses a simple scoring method where each item is rated 0–4 (None to Extreme), producing raw scores, percentage disability, and disability level per domain and overall.",
     subscales: [],
     scoringMethod: "sum",
     classifications: [
@@ -55,10 +55,85 @@ export const ASSESSMENT_LIBRARY: AssessmentDefinition[] = [
     ],
   },
   {
+    id: "frat",
+    name: "Falls Risk Assessment Tool (FRAT)",
+    shortName: "FRAT",
+    synopsis: "The FRAT (Peninsula Health, 1999) screens for falls risk across four domains: recent falls history, medications, psychological status, and cognitive status (with embedded AMTS). Part 1 produces a risk score /20 mapped to Low (5–11), Medium (12–15), or High (16–20). Part 2 is a risk factor checklist. Automatic high-risk triggers override the score.",
+    subscales: [],
+    scoringMethod: "sum",
+    classifications: [
+      { min: 5, max: 11, label: "Low risk" },
+      { min: 12, max: 15, label: "Medium risk" },
+      { min: 16, max: 20, label: "High risk" },
+    ],
+  },
+  {
+    id: "lawton-iadl",
+    name: "Lawton-Brody Instrumental ADL Scale",
+    shortName: "Lawton IADL",
+    synopsis: "The Lawton IADL Scale (Lawton & Brody, 1969) measures competence in 8 instrumental activities of daily living: telephone use, shopping, food preparation, housekeeping, laundry, transport, medication management, and finances. Each domain scores 0 (dependent) or 1 (independent). Total 0–8 for all domains or 0–5 excluding food prep, housekeeping, and laundry. Higher scores indicate greater independence.",
+    subscales: [],
+    scoringMethod: "sum",
+    classifications: [
+      { min: 8, max: 8, label: "High function — independent" },
+      { min: 5, max: 7, label: "Moderate function — some assistance needed" },
+      { min: 0, max: 4, label: "Low function — significant assistance needed" },
+    ],
+  },
+  {
+    id: "zarit",
+    name: "Zarit Burden Interview (22-item)",
+    shortName: "Zarit",
+    synopsis: "The Zarit Burden Interview (Zarit, Reever & Bach-Peterson, 1980) is a 22-item self-report measure of caregiver burden. Each item is rated 0 (Never) to 4 (Nearly Always), producing a total score /88. Used in NDIS reports to quantify the impact of caring responsibilities on family/informal carers and to justify respite and carer support recommendations.",
+    subscales: [],
+    scoringMethod: "sum",
+    classifications: [
+      { min: 0, max: 20, label: "No to Mild Burden" },
+      { min: 21, max: 40, label: "Mild to Moderate Burden" },
+      { min: 41, max: 60, label: "Moderate to Severe Burden" },
+      { min: 61, max: 88, label: "Severe Burden" },
+    ],
+  },
+  {
+    id: "cans",
+    name: "Care and Needs Scale (CANS)",
+    shortName: "CANS",
+    synopsis: "The CANS (Tate, 2003/2017) assesses 28 care needs across 4 groups (A–D) to determine a CANS Level (0–7) based on the highest group endorsed and how long the client can be left alone. It quantifies support intensity for people with acquired brain injury or complex disability, commonly used in NDIS reports to justify attendant care and support worker hours.",
+    subscales: [],
+    scoringMethod: "sum",
+    classifications: [
+      { min: 0, max: 0, label: "No support needed" },
+      { min: 1, max: 3, label: "Intermittent support" },
+      { min: 4, max: 7, label: "Daily support required" },
+    ],
+  },
+  {
+    id: "lsp-16",
+    name: "Life Skills Profile (LSP-16)",
+    shortName: "LSP-16",
+    synopsis: "The LSP-16 (Rosen et al.) measures functional disability in people with persistent mental illness across four subscales: Withdrawal (social engagement), Self-Care (personal maintenance), Compliance (medication and health cooperation), and Anti-Social behaviour. 16 items scored 0–3, total /48. Higher scores indicate greater disability. Used in NDIS psychosocial disability assessments.",
+    subscales: [],
+    scoringMethod: "sum",
+    classifications: [
+      { min: 0, max: 15, label: "Low disability" },
+      { min: 16, max: 31, label: "Moderate disability" },
+      { min: 32, max: 48, label: "High disability" },
+    ],
+  },
+  {
+    id: "sensory-profile",
+    name: "Adolescent/Adult Sensory Profile",
+    shortName: "Sensory Profile",
+    synopsis: "The Adolescent/Adult Sensory Profile (Brown & Dunn, 2002) is a 60-item self-questionnaire assessing sensory processing across 6 sections (Taste/Smell, Movement, Visual, Touch, Activity Level, Auditory). Items map to 4 quadrants: Low Registration, Sensation Seeking, Sensory Sensitivity, and Sensation Avoiding. Scores compared against age-normed cut-offs to classify sensory processing patterns.",
+    subscales: [],
+    scoringMethod: "sum",
+    classifications: [],
+  },
+  {
     id: "katz-adl",
     name: "Katz Index of Independence in ADLs",
     shortName: "Katz ADL",
-    synopsis: "The Katz Index assesses fundamental activities of daily living — bathing, dressing, toileting, transferring, continence, and feeding. Each item is scored as independent (1) or dependent (0). It provides a quick snapshot of a participant's functional independence in personal self-care, commonly used in NDIS reports to establish baseline ADL capacity.",
+    synopsis: "The Katz Index assesses fundamental activities of daily living — bathing, dressing, toileting, transferring, continence, and feeding. Each item is scored as independent (1) or dependent (0). It provides a quick snapshot of a participant's functional independence in personal self-care.",
     subscales: [{
       id: "adl", label: "Activities of Daily Living", items: [
         { id: "bathing", label: "Bathing", options: ["Independent", "Dependent"] },
@@ -75,96 +150,6 @@ export const ASSESSMENT_LIBRARY: AssessmentDefinition[] = [
       { min: 4, max: 5, label: "Moderate impairment" },
       { min: 2, max: 3, label: "Severe impairment" },
       { min: 0, max: 1, label: "Very severe impairment" },
-    ],
-  },
-  {
-    id: "lawton-iadl",
-    name: "Lawton Instrumental ADL Scale",
-    shortName: "Lawton IADL",
-    synopsis: "The Lawton IADL Scale measures competence in instrumental activities of daily living — higher-order tasks such as telephone use, shopping, food preparation, housekeeping, laundry, transport, medication management, and finances. It is used in NDIS assessments to evaluate a participant's capacity for independent community living and to identify specific areas of support need.",
-    subscales: [{
-      id: "iadl", label: "Instrumental ADLs", items: [
-        { id: "telephone", label: "Ability to use telephone", options: ["Independent", "Needs some help", "Unable"] },
-        { id: "shopping", label: "Shopping", options: ["Independent", "Needs some help", "Unable"] },
-        { id: "food-prep", label: "Food preparation", options: ["Independent", "Needs some help", "Unable"] },
-        { id: "housekeeping", label: "Housekeeping", options: ["Independent", "Needs some help", "Unable"] },
-        { id: "laundry", label: "Laundry", options: ["Independent", "Needs some help", "Unable"] },
-        { id: "transport", label: "Mode of transport", options: ["Independent", "Needs some help", "Unable"] },
-        { id: "medication", label: "Medication management", options: ["Independent", "Needs some help", "Unable"] },
-        { id: "finances", label: "Ability to handle finances", options: ["Independent", "Needs some help", "Unable"] },
-      ],
-    }],
-    scoringMethod: "sum",
-    classifications: [
-      { min: 8, max: 8, label: "High function — independent" },
-      { min: 5, max: 7, label: "Moderate function — some assistance needed" },
-      { min: 0, max: 4, label: "Low function — significant assistance needed" },
-    ],
-  },
-  {
-    id: "frat",
-    name: "Falls Risk Assessment Tool (FRAT)",
-    shortName: "FRAT",
-    synopsis: "The Falls Risk Assessment Tool screens for risk of falls across key domains: recent falls history, medications, psychological status, and cognitive status. It is commonly used in NDIS occupational therapy reports to document a participant's falls risk level and to justify recommendations for mobility aids, home modifications, or support worker assistance.",
-    subscales: [{
-      id: "risk", label: "Risk Factors", items: [
-        { id: "falls-history", label: "Recent falls (past 12 months)", options: ["None", "One fall", "Two or more falls"] },
-        { id: "medications", label: "Medications", options: ["Not taking any high-risk meds", "Taking one high-risk med", "Taking two or more high-risk meds"] },
-        { id: "psychological", label: "Psychological status", options: ["No concerns", "Mildly affected", "Significantly affected"] },
-        { id: "cognitive", label: "Cognitive status", options: ["Intact", "Mildly impaired", "Significantly impaired"] },
-      ],
-    }],
-    scoringMethod: "sum",
-    classifications: [
-      { min: 0, max: 2, label: "Low risk" },
-      { min: 3, max: 5, label: "Medium risk" },
-      { min: 6, max: 12, label: "High risk" },
-    ],
-  },
-  {
-    id: "lsp-16",
-    name: "Life Skills Profile (LSP-16)",
-    shortName: "LSP-16",
-    synopsis: "The Life Skills Profile 16-item version measures functional disability in people with persistent mental illness across four domains: withdrawal, self-care, compliance, and antisocial behaviour. It is used in NDIS functional capacity assessments for participants with psychosocial disability to quantify the impact of mental health conditions on everyday functioning and social participation.",
-    subscales: [
-      {
-        id: "withdrawal", label: "Withdrawal", items: [
-          { id: "w1", label: "Does this person generally withdraw from social contact?", options: ["Not at all", "Slightly", "Moderately", "Considerably"] },
-          { id: "w2", label: "Does this person participate in activities without being directed?", options: ["Not at all", "Slightly", "Moderately", "Considerably"] },
-          { id: "w3", label: "Does this person usually need to be encouraged to participate?", options: ["Not at all", "Slightly", "Moderately", "Considerably"] },
-          { id: "w4", label: "Is this person able to communicate adequately?", options: ["Not at all", "Slightly", "Moderately", "Considerably"] },
-        ],
-      },
-      {
-        id: "self-care", label: "Self-Care", items: [
-          { id: "sc1", label: "Does this person generally maintain adequate personal hygiene?", options: ["Not at all", "Slightly", "Moderately", "Considerably"] },
-          { id: "sc2", label: "Does this person generally look after and take their medication?", options: ["Not at all", "Slightly", "Moderately", "Considerably"] },
-          { id: "sc3", label: "Is this person generally well groomed?", options: ["Not at all", "Slightly", "Moderately", "Considerably"] },
-          { id: "sc4", label: "Does this person wear clean clothes or maintain them?", options: ["Not at all", "Slightly", "Moderately", "Considerably"] },
-        ],
-      },
-      {
-        id: "compliance", label: "Compliance", items: [
-          { id: "c1", label: "Does this person cooperate with health services?", options: ["Not at all", "Slightly", "Moderately", "Considerably"] },
-          { id: "c2", label: "Does this person generally manage their own affairs?", options: ["Not at all", "Slightly", "Moderately", "Considerably"] },
-          { id: "c3", label: "Does this person behave responsibly regarding alcohol and drugs?", options: ["Not at all", "Slightly", "Moderately", "Considerably"] },
-          { id: "c4", label: "Does this person behave reasonably toward others?", options: ["Not at all", "Slightly", "Moderately", "Considerably"] },
-        ],
-      },
-      {
-        id: "antisocial", label: "Antisocial Behaviour", items: [
-          { id: "a1", label: "Does this person behave offensively?", options: ["Not at all", "Slightly", "Moderately", "Considerably"] },
-          { id: "a2", label: "Does this person interfere with others functioning?", options: ["Not at all", "Slightly", "Moderately", "Considerably"] },
-          { id: "a3", label: "Does this person create problems by being violent?", options: ["Not at all", "Slightly", "Moderately", "Considerably"] },
-          { id: "a4", label: "Does this person have behaviour that is sexually inappropriate?", options: ["Not at all", "Slightly", "Moderately", "Considerably"] },
-        ],
-      },
-    ],
-    scoringMethod: "sum",
-    classifications: [
-      { min: 0, max: 15, label: "Low disability" },
-      { min: 16, max: 31, label: "Moderate disability" },
-      { min: 32, max: 48, label: "High disability" },
     ],
   },
 ];
