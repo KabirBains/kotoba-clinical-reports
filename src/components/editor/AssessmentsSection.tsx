@@ -125,47 +125,79 @@ function AssessmentCard({
               scores={instance.scores}
               onUpdateScores={(newScores) => onUpdate({ ...instance, scores: newScores })}
             />
-          ) : definition && definition.subscales.map((subscale) => {
-            const subscaleTotal = calculateSubscaleTotal(definition, subscale.id, instance.scores);
-            return (
-              <div key={subscale.id} className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-semibold text-foreground tracking-wide">
-                    {subscale.label}
-                  </h4>
-                  <span className="text-[10px] font-mono text-muted-foreground">
-                    Subtotal: {subscaleTotal}
-                  </span>
+          ) : definition && definition.id === "frat" ? (
+            <FRATScoring
+              scores={instance.scores}
+              onUpdateScores={(newScores) => onUpdate({ ...instance, scores: newScores })}
+            />
+          ) : definition && definition.id === "lawton-iadl" ? (
+            <LawtonIADLScoring
+              scores={instance.scores}
+              onUpdateScores={(newScores) => onUpdate({ ...instance, scores: newScores })}
+            />
+          ) : definition && definition.id === "zarit" ? (
+            <ZaritScoring
+              scores={instance.scores}
+              onUpdateScores={(newScores) => onUpdate({ ...instance, scores: newScores })}
+            />
+          ) : definition && definition.id === "cans" ? (
+            <CANSScoring
+              scores={instance.scores}
+              onUpdateScores={(newScores) => onUpdate({ ...instance, scores: newScores })}
+            />
+          ) : definition && definition.id === "lsp-16" ? (
+            <LSP16Scoring
+              scores={instance.scores}
+              onUpdateScores={(newScores) => onUpdate({ ...instance, scores: newScores })}
+            />
+          ) : definition && definition.id === "sensory-profile" ? (
+            <SensoryProfileScoring
+              scores={instance.scores}
+              onUpdateScores={(newScores) => onUpdate({ ...instance, scores: newScores })}
+            />
+          ) : definition && definition.subscales.length > 0 ? (
+            definition.subscales.map((subscale) => {
+              const subscaleTotal = calculateSubscaleTotal(definition, subscale.id, instance.scores);
+              return (
+                <div key={subscale.id} className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-semibold text-foreground tracking-wide">
+                      {subscale.label}
+                    </h4>
+                    <span className="text-[10px] font-mono text-muted-foreground">
+                      Subtotal: {subscaleTotal}
+                    </span>
+                  </div>
+                  <div className="space-y-1.5">
+                    {subscale.items.map((item) => (
+                      <div key={item.id} className="flex items-center gap-2">
+                        <span className="text-xs text-foreground/80 flex-1 min-w-0 truncate">
+                          {item.label}
+                        </span>
+                        {item.options && (
+                          <Select
+                            value={instance.scores[item.id] || ""}
+                            onValueChange={(val) => updateScore(item.id, val)}
+                          >
+                            <SelectTrigger className="h-8 text-xs w-48 bg-background border-border/60 shrink-0">
+                              <SelectValue placeholder="Select…" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {item.options.map((opt) => (
+                                <SelectItem key={opt} value={opt} className="text-xs">
+                                  {opt}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                <div className="space-y-1.5">
-                  {subscale.items.map((item) => (
-                    <div key={item.id} className="flex items-center gap-2">
-                      <span className="text-xs text-foreground/80 flex-1 min-w-0 truncate">
-                        {item.label}
-                      </span>
-                      {item.options && (
-                        <Select
-                          value={instance.scores[item.id] || ""}
-                          onValueChange={(val) => updateScore(item.id, val)}
-                        >
-                          <SelectTrigger className="h-8 text-xs w-48 bg-background border-border/60 shrink-0">
-                            <SelectValue placeholder="Select…" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {item.options.map((opt) => (
-                              <SelectItem key={opt} value={opt} className="text-xs">
-                                {opt}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
+              );
+            })
+          ) : null}
 
           {/* Custom assessment items */}
           {instance.isCustom && (
