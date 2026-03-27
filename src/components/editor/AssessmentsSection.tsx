@@ -81,7 +81,7 @@ function AssessmentCard({
           15.{index + 1}
         </span>
         <span className="text-sm font-medium text-foreground flex-1">{instance.name}</span>
-        {definition && (
+        {definition && definition.subscales.length > 0 && (
           <span className="text-xs px-2 py-0.5 rounded-full bg-accent/10 text-accent font-medium">
             {total} — {classification}
           </span>
