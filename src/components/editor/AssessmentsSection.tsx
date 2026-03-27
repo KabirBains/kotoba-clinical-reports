@@ -8,7 +8,25 @@ import {
   getClassification 
 } from "@/lib/assessment-library";
 import { WHODASScoring } from "./WHODASScoring";
+import { FRATScoring } from "./FRATScoring";
+import { LawtonIADLScoring } from "./LawtonIADLScoring";
+import { ZaritScoring } from "./ZaritScoring";
+import { CANSScoring } from "./CANSScoring";
+import { LSP16Scoring } from "./LSP16Scoring";
+import { SensoryProfileScoring } from "./SensoryProfileScoring";
 import { 
+  ChevronDown, ChevronRight, Plus, Library, PenLine, 
+  Trash2, GripVertical, Calendar, Sparkles, FileInput 
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription
+} from "@/components/ui/dialog";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue
+} from "@/components/ui/select";
+import { toast } from "sonner";
   ChevronDown, ChevronRight, Plus, Library, PenLine, 
   Trash2, GripVertical, Calendar, Sparkles, FileInput 
 } from "lucide-react";
