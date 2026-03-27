@@ -27,18 +27,6 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue
 } from "@/components/ui/select";
 import { toast } from "sonner";
-  ChevronDown, ChevronRight, Plus, Library, PenLine, 
-  Trash2, GripVertical, Calendar, Sparkles, FileInput 
-} from "lucide-react";
-import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription
-} from "@/components/ui/dialog";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue
-} from "@/components/ui/select";
-import { toast } from "sonner";
 
 interface AssessmentsSectionProps {
   assessments: AssessmentInstance[];
