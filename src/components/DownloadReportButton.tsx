@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import type { ReportData } from "@/ai/reportAssembler";
 import { Button } from "@/components/ui/button";
 import { Download, Loader2, CheckCircle, AlertCircle } from "lucide-react";
@@ -38,52 +37,63 @@ export default function DownloadReportButton({ reportData }: DownloadReportButto
     toast.info("Building report document...");
 
     try {
-      const { data, error } = await supabase.functions.invoke("assemble-report", {
-        body: {
-          participant: reportData.participant,
-          clinician: reportData.clinician,
-          presentAtAssessment: reportData.presentAtAssessment,
-          assessmentSetting: reportData.assessmentSetting,
-          sections: {
-            section1: reportData.section1 || "",
-            section2: reportData.section2 || "",
-            section3: reportData.section3 || "",
-            section4: reportData.section4 || "",
-            section5: reportData.section5 || "",
-            section6: reportData.section6 || "",
-            section7: reportData.section7 || "",
-            section8: reportData.section8 || "",
-            section9: reportData.section9 || "",
-            section10: reportData.section10 || "",
-            section11: reportData.section11 || "",
-            section12_1: reportData.section12_1 || "",
-            section12_2: reportData.section12_2 || "",
-            section12_3: reportData.section12_3 || "",
-            section12_4: reportData.section12_4 || "",
-            section12_5: reportData.section12_5 || "",
-            section12_6: reportData.section12_6 || "",
-            section12_7: reportData.section12_7 || "",
-            section12_8: reportData.section12_8 || "",
-            section12_9: reportData.section12_9 || "",
-            section13: reportData.section13 || "",
-            section14: reportData.section14 || "",
-            section15: reportData.section15 || "",
-            section16: reportData.section16 || "",
-            section17: reportData.section17 || "",
-            section18: reportData.section18 || "",
-            section19: reportData.section19 || "",
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+
+      const response = await fetch(
+        supabaseUrl + "/functions/v1/assemble-report",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + supabaseAnonKey,
           },
-          assessments: reportData.assessments || [],
-          recommendations: reportData.recommendations || [],
-        },
-      });
+          body: JSON.stringify({
+            participant: reportData.participant,
+            clinician: reportData.clinician,
+            presentAtAssessment: reportData.presentAtAssessment,
+            assessmentSetting: reportData.assessmentSetting,
+            sections: {
+              section1: reportData.section1 || "",
+              section2: reportData.section2 || "",
+              section3: reportData.section3 || "",
+              section4: reportData.section4 || "",
+              section5: reportData.section5 || "",
+              section6: reportData.section6 || "",
+              section7: reportData.section7 || "",
+              section8: reportData.section8 || "",
+              section9: reportData.section9 || "",
+              section10: reportData.section10 || "",
+              section11: reportData.section11 || "",
+              section12_1: reportData.section12_1 || "",
+              section12_2: reportData.section12_2 || "",
+              section12_3: reportData.section12_3 || "",
+              section12_4: reportData.section12_4 || "",
+              section12_5: reportData.section12_5 || "",
+              section12_6: reportData.section12_6 || "",
+              section12_7: reportData.section12_7 || "",
+              section12_8: reportData.section12_8 || "",
+              section12_9: reportData.section12_9 || "",
+              section13: reportData.section13 || "",
+              section14: reportData.section14 || "",
+              section15: reportData.section15 || "",
+              section16: reportData.section16 || "",
+              section17: reportData.section17 || "",
+              section18: reportData.section18 || "",
+              section19: reportData.section19 || "",
+            },
+            assessments: reportData.assessments || [],
+            recommendations: reportData.recommendations || [],
+          }),
+        }
+      );
 
-      if (error) throw error;
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error("Server error: " + errorText);
+      }
 
-      // The Edge Function returns the .docx file as binary data
-      const blob = new Blob([data], {
-        type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      });
+      const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -100,7 +110,7 @@ export default function DownloadReportButton({ reportData }: DownloadReportButto
       console.error("Download error:", err);
       setErrorMsg(err.message || "Failed to build the report document.");
       setStatus("error");
-      toast.error("Failed to build report: " + (err.message || "Unknown error"));
+      toast.error("Failed to download: " + (err.message || "Unknown error"));
     }
   };
 
