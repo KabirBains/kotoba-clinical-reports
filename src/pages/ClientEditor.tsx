@@ -236,7 +236,7 @@ export default function ClientEditor() {
               ndisNumber={client?.ndis_number || ""}
               assessments={assessments}
               recommendations={recommendations}
-              clinicianProfile={null}
+              clinicianProfile={profile || null}
             />
           )}
         </main>
