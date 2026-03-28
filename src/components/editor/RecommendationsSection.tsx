@@ -64,7 +64,6 @@ export function RecommendationsSection({
       isConsumable,
     };
     onUpdateRecommendations([...recommendations, instance]);
-    setLibraryOpen(false);
     toast.success(`${supportName} added`);
   };
 
