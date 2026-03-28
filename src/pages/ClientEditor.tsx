@@ -6,6 +6,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { TEMPLATE_SECTIONS } from "@/lib/constants";
 import { type AssessmentInstance } from "@/lib/assessment-library";
 import { type RecommendationInstance } from "@/lib/recommendations-library";
+import { assembleReport } from "@/ai/reportAssembler";
 import { KotobaLogo } from "@/components/KotobaLogo";
 import { NotesMode } from "@/components/editor/NotesMode";
 import { ReportMode } from "@/components/editor/ReportMode";

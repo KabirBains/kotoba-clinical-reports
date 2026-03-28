@@ -23,6 +23,9 @@ WRITING STANDARDS:
 - NDIS terminology: reasonable and necessary, functional capacity, support needs, participant, informal supports, capacity building.
 - Observation → functional impact → support need in every domain paragraph.
 - No bullet points in output — continuous prose paragraphs only.
+- Do NOT use markdown formatting in output. No ## headings, no ** bold **, no * italics *, no bullet point characters.
+- Use plain text only. Headings and formatting will be applied by the document template.
+- When you need to indicate a heading for a recommendation, just write it on its own line in plain text like: Personal Care Support (Core)
 - Clinical prognosis is acceptable when attributed: 'In the assessor's clinical opinion...'
 - Do NOT use unattributed speculation: 'it appears', 'may be due to', 'could suggest'.
 - Professional, measured, objective tone. No emotive language or value judgements.
