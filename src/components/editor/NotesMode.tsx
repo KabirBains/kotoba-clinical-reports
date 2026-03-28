@@ -2,7 +2,9 @@ import { useState } from "react";
 import { TEMPLATE_SECTIONS } from "@/lib/constants";
 import { getSubsectionConfig, type SubsectionField } from "@/lib/subsection-fields";
 import { type AssessmentInstance } from "@/lib/assessment-library";
+import { type RecommendationInstance } from "@/lib/recommendations-library";
 import { AssessmentsSection } from "@/components/editor/AssessmentsSection";
+import { RecommendationsSection } from "@/components/editor/RecommendationsSection";
 import { ChevronDown, ChevronRight, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -18,6 +20,8 @@ interface NotesModeProps {
   onUpdateNote: (sectionId: string, value: string) => void;
   assessments: AssessmentInstance[];
   onUpdateAssessments: (assessments: AssessmentInstance[]) => void;
+  recommendations: RecommendationInstance[];
+  onUpdateRecommendations: (recommendations: RecommendationInstance[]) => void;
 }
 
 function StructuredField({
@@ -176,7 +180,7 @@ function SectionPanel({
   );
 }
 
-export function NotesMode({ notes, onUpdateNote, assessments, onUpdateAssessments }: NotesModeProps) {
+export function NotesMode({ notes, onUpdateNote, assessments, onUpdateAssessments, recommendations, onUpdateRecommendations }: NotesModeProps) {
   return (
     <div className="max-w-4xl mx-auto py-6 px-4">
       <div className="bg-card border border-border/50 rounded-lg shadow-sm overflow-hidden">
@@ -190,8 +194,16 @@ export function NotesMode({ notes, onUpdateNote, assessments, onUpdateAssessment
               />
             )}
 
-            {/* Top-level sections (not functional-capacity or assessments) get a plain textarea */}
-            {section.id !== "functional-capacity" && section.id !== "assessments" && (
+            {/* Recommendations section */}
+            {section.id === "recommendations" && (
+              <RecommendationsSection
+                recommendations={recommendations}
+                onUpdateRecommendations={onUpdateRecommendations}
+              />
+            )}
+
+            {/* Top-level sections (not functional-capacity, assessments, or recommendations) get a plain textarea */}
+            {section.id !== "functional-capacity" && section.id !== "assessments" && section.id !== "recommendations" && (
               <SectionPanel
                 id={section.id}
                 number={section.number}

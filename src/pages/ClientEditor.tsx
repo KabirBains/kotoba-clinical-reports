@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { TEMPLATE_SECTIONS } from "@/lib/constants";
 import { type AssessmentInstance } from "@/lib/assessment-library";
+import { type RecommendationInstance } from "@/lib/recommendations-library";
 import { KotobaLogo } from "@/components/KotobaLogo";
 import { NotesMode } from "@/components/editor/NotesMode";
 import { ReportMode } from "@/components/editor/ReportMode";
@@ -22,6 +23,7 @@ export default function ClientEditor() {
   const [mode, setMode] = useState<"notes" | "report">("notes");
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [assessments, setAssessments] = useState<AssessmentInstance[]>([]);
+  const [recommendations, setRecommendations] = useState<RecommendationInstance[]>([]);
   const [reportContent, setReportContent] = useState<Record<string, string>>({});
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setInterval>>();
@@ -64,6 +66,9 @@ export default function ClientEditor() {
       // Load assessments from notes JSON
       const savedAssessments = (savedNotes as any)?.["__assessments__"];
       if (Array.isArray(savedAssessments)) setAssessments(savedAssessments);
+      // Load recommendations from notes JSON
+      const savedRecs = (savedNotes as any)?.["__recommendations__"];
+      if (Array.isArray(savedRecs)) setRecommendations(savedRecs);
     }
   }, [report]);
 
@@ -79,7 +84,7 @@ export default function ClientEditor() {
 
   const saveToCloud = useCallback(async () => {
     if (!report?.id) return;
-    const notesWithAssessments = { ...notes, __assessments__: assessments as any };
+    const notesWithAssessments = { ...notes, __assessments__: assessments as any, __recommendations__: recommendations as any };
     const { error } = await supabase
       .from("reports")
       .update({ notes: notesWithAssessments, report_content: reportContent || null })
@@ -88,7 +93,7 @@ export default function ClientEditor() {
       setLastSaved(new Date());
       if (clientId) localStorage.setItem(`kotoba-notes-${clientId}`, JSON.stringify(notes));
     }
-  }, [report?.id, notes, assessments, reportContent, clientId]);
+  }, [report?.id, notes, assessments, recommendations, reportContent, clientId]);
 
   // Autosave every 30 seconds
   useEffect(() => {
@@ -196,7 +201,7 @@ export default function ClientEditor() {
       {/* Editor with sidebar */}
       <div className="flex-1 flex overflow-hidden">
         {mode === "notes" && (
-          <EditorSidebar notes={notes} assessments={assessments} scrollContainerRef={mainRef} />
+          <EditorSidebar notes={notes} assessments={assessments} recommendations={recommendations} scrollContainerRef={mainRef} />
         )}
         <main ref={mainRef} className="flex-1 overflow-auto">
           {mode === "notes" ? (
@@ -205,6 +210,8 @@ export default function ClientEditor() {
               onUpdateNote={updateNote}
               assessments={assessments}
               onUpdateAssessments={setAssessments}
+              recommendations={recommendations}
+              onUpdateRecommendations={setRecommendations}
             />
           ) : (
             <ReportMode reportContent={reportContent} />
