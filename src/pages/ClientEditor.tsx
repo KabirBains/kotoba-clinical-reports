@@ -194,21 +194,62 @@ export default function ClientEditor() {
                 try {
                   const clientName = client?.client_name || "the participant";
                   const diagnosis = client?.primary_diagnosis || "";
-                  const sectionEntries = Object.entries(notes).filter(
+
+                  // Collect top-level section notes (exclude compound keys and special keys)
+                  const topLevelEntries = Object.entries(notes).filter(
                     ([key, val]) =>
                       typeof val === "string" &&
-                      (typeof val === "string" ? val.trim() : "") &&
+                      val.trim() &&
                       !key.startsWith("__") &&
-                      !key.endsWith("__rating")
+                      !key.endsWith("__rating") &&
+                      !key.endsWith("__notes") &&
+                      !key.includes("__")
                   );
+
+                  // Collect structured domain observations (Section 14)
+                  const DOMAIN_SUBSECTIONS = [
+                    { id: "mobility", name: "Mobility & Upper Limb Function", reportKey: "section12_1" },
+                    { id: "transfers", name: "Transfers", reportKey: "section12_2" },
+                    { id: "personal-adls", name: "Personal ADLs — Self-Care", reportKey: "section12_3" },
+                    { id: "domestic-iadls", name: "Domestic IADLs", reportKey: "section12_4" },
+                    { id: "executive-iadls", name: "Executive IADLs", reportKey: "section12_5" },
+                    { id: "cognition", name: "Cognition", reportKey: "section12_6" },
+                    { id: "communication", name: "Communication", reportKey: "section12_7" },
+                    { id: "social-functioning", name: "Social Functioning", reportKey: "section12_8" },
+                    { id: "sensory-profile", name: "Sensory Profile", reportKey: "section12_9" },
+                  ];
+
+                  // For each domain, collect all its structured field data
+                  const domainEntries: { id: string; name: string; reportKey: string; fields: string }[] = [];
+                  for (const domain of DOMAIN_SUBSECTIONS) {
+                    const fieldLines: string[] = [];
+                    for (const [key, val] of Object.entries(notes)) {
+                      if (key.startsWith(`${domain.id}__`) && key.endsWith("__notes")) {
+                        const fieldId = key.replace(`${domain.id}__`, "").replace("__notes", "");
+                        const ratingKey = `${domain.id}__${fieldId}__rating`;
+                        const rating = notes[ratingKey] || "";
+                        const observation = typeof val === "string" ? val : "";
+                        if (rating || observation.trim()) {
+                          const label = fieldId.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+                          fieldLines.push(`${label}: ${rating ? rating + " — " : ""}${observation}`);
+                        }
+                      }
+                    }
+                    if (fieldLines.length > 0) {
+                      domainEntries.push({
+                        ...domain,
+                        fields: fieldLines.join("\n"),
+                      });
+                    }
+                  }
 
                   const totalAssessments = assessments.filter(
                     a => a.scores && Object.keys(a.scores).length > 0
                   ).length;
                   const totalRecs = recommendations.length > 0 ? 1 : 0;
-                  const totalSteps = sectionEntries.length + totalAssessments + totalRecs;
+                  const totalSteps = topLevelEntries.length + domainEntries.length + totalAssessments + totalRecs;
 
-                  if (sectionEntries.length === 0 && totalAssessments === 0 && totalRecs === 0) {
+                  if (topLevelEntries.length === 0 && domainEntries.length === 0 && totalAssessments === 0 && totalRecs === 0) {
                     toast.warning("Add notes, assessments, or recommendations before generating.");
                     setGeneratingReport(false);
                     return;
@@ -221,16 +262,14 @@ export default function ClientEditor() {
                   // Track generated section summaries for cross-referencing
                   const generatedSections: { title: string; text: string }[] = [];
 
-                  // === STEP 1: Generate text sections from notes ===
-                  for (const [sectionId, observations] of sectionEntries) {
+                  // === STEP 1: Generate top-level text sections from notes ===
+                  for (const [sectionId, observations] of topLevelEntries) {
                     currentStep++;
                     toast.info(`Generating section ${currentStep} of ${totalSteps}...`);
 
-                    const rating = typeof notes[`${sectionId}__rating`] === "string" ? notes[`${sectionId}__rating`] : "";
                     const prompt = `Write a section of an NDIS Functional Capacity Assessment for ${clientName}.
 
 SECTION: ${sectionId}
-FUNCTIONAL RATING: ${rating || "[Not provided]"}
 
 CLINICIAN OBSERVATIONS (transform these into formal clinical prose):
 ${observations}
@@ -251,6 +290,37 @@ Write 2-3 paragraphs of formal NDIS report prose following the observation → i
                       successCount++;
                     } catch (sectionErr: any) {
                       console.error(`Failed to generate ${sectionId}:`, sectionErr);
+                    }
+                  }
+
+                  // === STEP 1B: Generate domain observation sections (Section 14) ===
+                  for (const domain of domainEntries) {
+                    currentStep++;
+                    toast.info(`Generating section ${currentStep} of ${totalSteps} — ${domain.name}...`);
+
+                    const domainPrompt = `Write the '${domain.name}' subsection of Section 12 (Functional Capacity) of an NDIS FCA for ${clientName}.
+
+DOMAIN: ${domain.name}
+
+CLINICIAN OBSERVATIONS:
+${domain.fields}
+
+DIAGNOSIS CONTEXT: ${diagnosis || "[Not specified]"}
+
+Write 2-3 paragraphs: (1) what was observed including strengths and limitations, (2) functional impact on daily life, (3) close with a clear support need statement. Use person-first language and third-person active voice. No bullet points.`;
+
+                    try {
+                      const { data, error } = await supabase.functions.invoke("generate-report", {
+                        body: { prompt: domainPrompt, max_tokens: 2000 },
+                      });
+                      if (error) throw error;
+                      if (!data?.success) throw new Error(data?.error || "Generation failed");
+
+                      newContent[domain.id] = data.text;
+                      generatedSections.push({ title: `Section 12 - ${domain.name}`, text: data.text });
+                      successCount++;
+                    } catch (sectionErr: any) {
+                      console.error(`Failed to generate domain ${domain.name}:`, sectionErr);
                     }
                   }
 

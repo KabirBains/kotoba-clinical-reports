@@ -61,12 +61,18 @@ function StructuredField({
             </SelectContent>
           </Select>
         )}
-        <input
-          type="text"
+        <textarea
+          rows={2}
           value={notes[noteKey] || ""}
           onChange={(e) => onUpdateNote(noteKey, e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.stopPropagation();
+            }
+          }}
           placeholder={field.placeholder}
-          className="flex-1 h-9 px-3 text-xs bg-muted/30 border border-border/50 rounded-md focus:outline-none focus:ring-1 focus:ring-accent/50 focus:border-accent/50 placeholder:text-muted-foreground/50"
+          style={{ resize: "vertical", minHeight: "60px" }}
+          className="flex-1 px-3 py-2 text-xs bg-muted/30 border border-border/50 rounded-md focus:outline-none focus:ring-1 focus:ring-accent/50 focus:border-accent/50 placeholder:text-muted-foreground/50"
         />
       </div>
     </div>
