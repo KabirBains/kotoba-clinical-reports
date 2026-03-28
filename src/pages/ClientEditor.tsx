@@ -11,10 +11,9 @@ import { NotesMode } from "@/components/editor/NotesMode";
 import { ReportMode } from "@/components/editor/ReportMode";
 import { EditorSidebar } from "@/components/editor/EditorSidebar";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, FileText, PenLine, Clock, Loader2 } from "lucide-react";
+import { ArrowLeft, FileText, PenLine, Clock } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
-import { generateSection } from "@/ai/reportEngine";
 
 export default function ClientEditor() {
   const { clientId } = useParams<{ clientId: string }>();
@@ -27,7 +26,6 @@ export default function ClientEditor() {
   const [recommendations, setRecommendations] = useState<RecommendationInstance[]>([]);
   const [reportContent, setReportContent] = useState<Record<string, string>>({});
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
-  const [isGenerating, setIsGenerating] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setInterval>>();
   const mainRef = useRef<HTMLElement>(null);
 
@@ -187,160 +185,11 @@ export default function ClientEditor() {
             <Button
               size="sm"
               className="bg-accent text-accent-foreground hover:bg-accent/90"
-              disabled={isGenerating}
-              onClick={async () => {
-                setIsGenerating(true);
-                toast.info("Generating report — this may take a minute...");
-                const clientName = client?.client_name || "Participant";
-                const sectionMap: Record<string, Record<string, any>> = {
-                  reason_for_referral: {
-                    referral_source: notes["reason-referral"] || "",
-                    purpose: notes["reason-referral"] || "",
-                    funding_context: "",
-                    current_supports: notes["intervention-team"] || "",
-                    supports_requested: "",
-                  },
-                  background: {
-                    participant_overview: notes["background"] || "",
-                    living_situation: notes["home-environment"] || "",
-                    education_work: notes["background"] || "",
-                    psychosocial_history: notes["background"] || "",
-                    medical_history: notes["background"] || "",
-                    treating_team: notes["intervention-team"] || "",
-                  },
-                  goals: {
-                    ndis_goals: notes["participant-goals"] || "",
-                    ot_goals: notes["participant-goals"] || "",
-                  },
-                  diagnoses: {
-                    primary_dx: client?.primary_diagnosis || "",
-                    secondary_dx: notes["diagnoses"] || "",
-                    comorbidities: "",
-                    dx_description: notes["diagnoses"] || "",
-                    functional_impact: "",
-                  },
-                  allied_health_history: {
-                    disciplines: notes["ot-case-history"] || "",
-                    discipline_details: notes["ot-case-history"] || "",
-                    assessment_type: "Initial",
-                  },
-                  methodology: {
-                    observation_details: notes["methodology"] || "",
-                    collateral_sources: notes["methodology"] || "",
-                    environment_assessment: notes["home-environment"] || "",
-                  },
-                  informal_supports: {
-                    carer_details: notes["informal-supports"] || "",
-                    support_provided: notes["informal-supports"] || "",
-                    carer_health: "",
-                    carer_burnout: "",
-                    sustainability_risks: "",
-                  },
-                  limitations: {
-                    limitations_list: notes["limitations-barriers"] || "",
-                  },
-                  impact_summary: {
-                    diagnoses: client?.primary_diagnosis || "",
-                    impairments_by_domain: notes["functional-impact"] || "",
-                    supports_requested: "",
-                    capacity_building_goal: "",
-                    assessment_summary: "",
-                  },
-                  risks: {
-                    risks_list: notes["risks-insufficient-funding"] || notes["review-monitoring"] || "",
-                  },
-                  section_34: {
-                    ndis_goals: notes["participant-goals"] || "",
-                    intended_outcomes: notes["functional-impact"] || "",
-                  },
-                };
-
-                // Map functional domains
-                const domainIds = ["mobility", "transfers", "personal-adls", "domestic-iadls", "executive-iadls", "cognition", "communication", "social-functioning", "sensory-profile"];
-                const domainNames = ["Mobility", "Transfers", "Personal ADLs", "Domestic IADLs", "Executive IADLs", "Cognition", "Communication", "Social Functioning", "Sensory Profile"];
-                domainIds.forEach((domId, i) => {
-                  // Gather structured field data for each domain
-                  const domainNotes = Object.entries(notes)
-                    .filter(([k]) => k.startsWith(`${domId}__`))
-                    .map(([k, v]) => `${k}: ${typeof v === "string" ? v : ""}`)
-                    .join("\n");
-                  const rawObs = notes[domId] || domainNotes || "";
-                  if (rawObs.trim()) {
-                    sectionMap[`functional_domain_${domId}`] = {
-                      domain_name: domainNames[i],
-                      functional_level: notes[`${domId}__rating`] || "",
-                      raw_observations: rawObs,
-                      support_need: "",
-                      diagnosis_context: client?.primary_diagnosis || "",
-                      assessment_scores: "",
-                    };
-                  }
-                });
-
-                const newReportContent: Record<string, string> = { ...reportContent };
-                const sectionIdToNoteKey: Record<string, string> = {
-                  reason_for_referral: "reason-referral",
-                  background: "background",
-                  goals: "participant-goals",
-                  diagnoses: "diagnoses",
-                  allied_health_history: "ot-case-history",
-                  methodology: "methodology",
-                  informal_supports: "informal-supports",
-                  limitations: "limitations-barriers",
-                  impact_summary: "functional-impact",
-                  risks: "review-monitoring",
-                  section_34: "section-34-statement",
-                };
-
-                let generated = 0;
-                let failed = 0;
-
-                for (const [sectionId, input] of Object.entries(sectionMap)) {
-                  // Skip sections with no meaningful input
-                  const hasInput = Object.values(input).some(
-                    (v) => typeof v === "string" && v.trim().length > 5
-                  );
-                  if (!hasInput) continue;
-
-                  try {
-                    const prose = await generateSection(sectionId, clientName, input);
-                    // Map back to note key for reportContent
-                    if (sectionId.startsWith("functional_domain_")) {
-                      const domId = sectionId.replace("functional_domain_", "");
-                      newReportContent[domId] = prose;
-                    } else {
-                      const noteKey = sectionIdToNoteKey[sectionId] || sectionId;
-                      newReportContent[noteKey] = prose;
-                    }
-                    generated++;
-                  } catch (err: any) {
-                    console.error(`Failed to generate ${sectionId}:`, err);
-                    failed++;
-                  }
-                }
-
-                setReportContent(newReportContent);
-                setMode("report");
-                setIsGenerating(false);
-
-                if (generated > 0) {
-                  toast.success(`Generated ${generated} sections.${failed > 0 ? ` ${failed} failed.` : ""}`);
-                } else {
-                  toast.error("No sections generated. Please add notes first.");
-                }
-
-                // Save to cloud
-                saveToCloud();
+              onClick={() => {
+                toast.info("AI generation will be available once the API is configured.");
               }}
             >
-              {isGenerating ? (
-                <>
-                  <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-                  Generating…
-                </>
-              ) : (
-                "Generate full report"
-              )}
+              Generate full report
             </Button>
           </div>
         </div>
