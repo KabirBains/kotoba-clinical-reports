@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, FileText, PenLine, Clock } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import ReportSectionGenerator from "@/components/ReportSectionGenerator";
 
 export default function ClientEditor() {
   const { clientId } = useParams<{ clientId: string }>();
