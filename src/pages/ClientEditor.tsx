@@ -189,7 +189,6 @@ export default function ClientEditor() {
               disabled={generatingReport}
               onClick={async () => {
                 setGeneratingReport(true);
-                toast.info("Generating report — this may take a minute...");
 
                 try {
                   const clientName = client?.client_name || "the participant";
@@ -197,22 +196,36 @@ export default function ClientEditor() {
                   const sectionEntries = Object.entries(notes).filter(
                     ([key, val]) =>
                       typeof val === "string" &&
-                      val.trim() &&
+                      (typeof val === "string" ? val.trim() : "") &&
                       !key.startsWith("__") &&
                       !key.endsWith("__rating")
                   );
 
-                  if (sectionEntries.length === 0) {
-                    toast.warning("Add notes to at least one section before generating.");
+                  const totalAssessments = assessments.filter(
+                    a => a.scores && Object.keys(a.scores).length > 0
+                  ).length;
+                  const totalRecs = recommendations.length > 0 ? 1 : 0;
+                  const totalSteps = sectionEntries.length + totalAssessments + totalRecs;
+
+                  if (sectionEntries.length === 0 && totalAssessments === 0 && totalRecs === 0) {
+                    toast.warning("Add notes, assessments, or recommendations before generating.");
                     setGeneratingReport(false);
                     return;
                   }
 
+                  let currentStep = 0;
                   const newContent: Record<string, string> = { ...reportContent };
                   let successCount = 0;
 
+                  // Track generated section summaries for cross-referencing
+                  const generatedSections: { title: string; text: string }[] = [];
+
+                  // === STEP 1: Generate text sections from notes ===
                   for (const [sectionId, observations] of sectionEntries) {
-                    const rating = notes[`${sectionId}__rating`] || "";
+                    currentStep++;
+                    toast.info(`Generating section ${currentStep} of ${totalSteps}...`);
+
+                    const rating = typeof notes[`${sectionId}__rating`] === "string" ? notes[`${sectionId}__rating`] : "";
                     const prompt = `Write a section of an NDIS Functional Capacity Assessment for ${clientName}.
 
 SECTION: ${sectionId}
@@ -229,20 +242,134 @@ Write 2-3 paragraphs of formal NDIS report prose following the observation → i
                       const { data, error } = await supabase.functions.invoke("generate-report", {
                         body: { prompt, max_tokens: 3000 },
                       });
-
                       if (error) throw error;
                       if (!data?.success) throw new Error(data?.error || "Generation failed");
 
                       newContent[sectionId] = data.text;
+                      generatedSections.push({ title: sectionId, text: data.text });
                       successCount++;
                     } catch (sectionErr: any) {
                       console.error(`Failed to generate ${sectionId}:`, sectionErr);
                     }
                   }
 
+                  // === STEP 2: Generate assessment interpretations ===
+                  const assessmentInterpretations: string[] = [];
+
+                  for (const assessment of assessments) {
+                    if (!assessment.scores || Object.keys(assessment.scores).length === 0) continue;
+                    currentStep++;
+                    toast.info(`Generating section ${currentStep} of ${totalSteps} — ${typeof assessment.name === "string" ? assessment.name : "Assessment"}...`);
+
+                    const contextSummary = generatedSections
+                      .map(s => `${s.title}: ${typeof s.text === "string" ? s.text.substring(0, 300) : ""}`)
+                      .join("\n\n");
+
+                    const assessmentPrompt = `Write the interpretation for ${typeof assessment.name === "string" ? assessment.name : "this assessment"} in Section 15 (Standardised Assessments) of an NDIS Functional Capacity Assessment for ${clientName}.
+
+ASSESSMENT TOOL: ${typeof assessment.name === "string" ? assessment.name : "Unknown"}
+DATE ADMINISTERED: ${typeof assessment.dateAdministered === "string" ? assessment.dateAdministered : "Not recorded"}
+
+SCORES:
+${JSON.stringify(assessment.scores, null, 2)}
+
+CLINICIAN INTERPRETATION NOTES:
+${typeof assessment.interpretation === "string" && assessment.interpretation ? assessment.interpretation : "No clinician notes provided"}
+
+PREVIOUSLY GENERATED REPORT SECTIONS FOR CONTEXT:
+${contextSummary}
+
+Write 2-3 paragraphs of formal NDIS clinical prose:
+Paragraph 1: State what this assessment tool measures and why it was selected for this participant.
+Paragraph 2: State the scores and classification. Identify the highest-scoring domains or subscales and describe their functional implications.
+Paragraph 3: Weave in the clinician's notes. Cross-reference findings from earlier sections of the report using the format: 'This finding is consistent with [observation] documented in Section [X] of this report.'`;
+
+                    try {
+                      const { data, error } = await supabase.functions.invoke("generate-report", {
+                        body: { prompt: assessmentPrompt, max_tokens: 2000 },
+                      });
+                      if (error) throw error;
+                      if (data?.success) {
+                        const heading = `**${typeof assessment.name === "string" ? assessment.name : "Assessment"}** (${typeof assessment.dateAdministered === "string" ? assessment.dateAdministered : "Date not recorded"})`;
+                        assessmentInterpretations.push(`${heading}\n\n${data.text}`);
+                        successCount++;
+                      }
+                    } catch (err: any) {
+                      console.error(`Failed to generate assessment ${assessment.name}:`, err);
+                    }
+                  }
+
+                  if (assessmentInterpretations.length > 0) {
+                    const combinedAssessments = assessmentInterpretations.join("\n\n---\n\n");
+                    newContent["assessments"] = combinedAssessments;
+                    generatedSections.push({ title: "Section 15 - Standardised Assessments", text: combinedAssessments });
+                  }
+
+                  // === STEP 3: Generate recommendation narratives ===
+                  if (recommendations.length > 0) {
+                    currentStep++;
+                    toast.info(`Generating section ${currentStep} of ${totalSteps} — Recommendations...`);
+
+                    const recsData = recommendations.map(r => ({
+                      support: typeof r.supportName === "string" ? r.supportName : "",
+                      category: typeof r.ndisCategory === "string" ? r.ndisCategory : "",
+                      currentHours: typeof r.currentHours === "string" && r.currentHours ? r.currentHours : "Nil",
+                      recommendedHours: typeof r.recommendedHours === "string" ? r.recommendedHours : "",
+                      ratio: typeof r.ratio === "string" ? r.ratio : "",
+                      tasks: Array.isArray(r.tasks) ? r.tasks : [],
+                      justification: typeof r.justification === "string" ? r.justification : "",
+                      outcomes: Array.isArray(r.outcomes) ? r.outcomes : [],
+                      consequence: typeof r.consequence === "string" ? r.consequence : "",
+                      linkedSections: Array.isArray(r.linkedSections) ? r.linkedSections : [],
+                      s34Justification: typeof r.s34Justification === "string" ? r.s34Justification : "",
+                      estimatedCost: typeof r.estimatedCost === "string" ? r.estimatedCost : "",
+                    }));
+
+                    const contextSummary = generatedSections
+                      .map(s => `${s.title}: ${typeof s.text === "string" ? s.text.substring(0, 300) : ""}`)
+                      .join("\n\n");
+
+                    const recsPrompt = `Write Section 18 (Recommendations) of an NDIS Functional Capacity Assessment for ${clientName}.
+
+RECOMMENDATIONS DATA:
+${JSON.stringify(recsData, null, 2)}
+
+PREVIOUSLY GENERATED REPORT SECTIONS FOR CONTEXT:
+${contextSummary}
+
+CRITICAL INSTRUCTIONS:
+For EACH recommendation, write a single cohesive clinical narrative paragraph (not a table, not bullet points) that includes ALL of:
+
+1. Bold heading with support name and NDIS category
+2. State current provision and recommended provision with hours, frequency, and ratio
+3. Name the specific diagnosis and explain how it causes the functional limitation that requires this support. Reference the linked report sections.
+4. List the specific tasks this support will cover
+5. Explain how this support will help therapeutically - capacity building, recovery, community integration
+6. State the consequence: 'Without this support, ${clientName} is at risk of [specific consequence]'
+7. Close with: 'This support is considered reasonable and necessary under Section 34 of the NDIS Act 2013. [S34 justification]'
+
+Use 'is expected to' not 'will'. Name diagnoses explicitly. No bullet points.
+
+After all individual recommendations, write a Total Support Summary paragraph listing the count of supports by NDIS category.`;
+
+                    try {
+                      const { data, error } = await supabase.functions.invoke("generate-report", {
+                        body: { prompt: recsPrompt, max_tokens: 4000 },
+                      });
+                      if (error) throw error;
+                      if (data?.success) {
+                        newContent["recommendations"] = data.text;
+                        generatedSections.push({ title: "Section 18 - Recommendations", text: data.text });
+                        successCount++;
+                      }
+                    } catch (err: any) {
+                      console.error("Failed to generate recommendations:", err);
+                    }
+                  }
+
                   setReportContent(newContent);
                   setMode("report");
-                  toast.success(`Generated ${successCount}/${sectionEntries.length} sections.`);
+                  toast.success(`Generated ${successCount}/${totalSteps} sections successfully.`);
                 } catch (err: any) {
                   console.error("Generation error:", err);
                   toast.error("Failed to generate: " + (err?.message || "Unknown error"));
