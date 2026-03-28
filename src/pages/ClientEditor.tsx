@@ -56,6 +56,20 @@ export default function ClientEditor() {
     },
   });
 
+  const { data: profile } = useQuery({
+    queryKey: ["profile", user?.id],
+    enabled: !!user?.id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("clinician_name, qualifications, ahpra_number, practice_name")
+        .eq("user_id", user!.id)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+  });
+
   // Load notes and report from DB
   useEffect(() => {
     if (report) {
