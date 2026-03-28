@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import type { ReportData } from "@/ai/reportAssembler";
 import { Button } from "@/components/ui/button";
 import { Download, Loader2, CheckCircle, AlertCircle } from "lucide-react";
