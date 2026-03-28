@@ -358,39 +358,18 @@ FLAG: suspected fabrication, missing hours, incorrect categories, missing conseq
 // ── 6. API CALLING FUNCTIONS ─────────────────────────────────
 
 async function callClaude(userMessage: string, maxTokens: number = 2000): Promise<string> {
-  const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-  const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+  const { supabase } = await import("@/integrations/supabase/client");
 
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-    throw new Error(
-      "Backend not configured. Please ensure the project is connected to Lovable Cloud."
-    );
-  }
-
-  const response = await fetch(`${SUPABASE_URL}/functions/v1/generate-report`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
-    },
-    body: JSON.stringify({
-      system_prompt: SYSTEM_PROMPT,
-      prompt: userMessage,
-      max_tokens: maxTokens,
-    }),
+  const { data, error } = await supabase.functions.invoke("generate-report", {
+    body: { prompt: userMessage, max_tokens: maxTokens },
   });
 
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({ error: response.statusText }));
-    throw new Error(
-      `Report generation failed (${response.status}): ${errorData.error || errorData.details || "Unknown error"}`
-    );
+  if (error) {
+    throw new Error(`Report generation failed: ${error.message || "Unknown error"}`);
   }
 
-  const data = await response.json();
-
-  if (!data.success) {
-    throw new Error(data.error || "Generation failed");
+  if (!data?.success) {
+    throw new Error(data?.error || "Generation failed");
   }
 
   return data.text;
