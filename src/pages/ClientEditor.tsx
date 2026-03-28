@@ -26,6 +26,7 @@ export default function ClientEditor() {
   const [recommendations, setRecommendations] = useState<RecommendationInstance[]>([]);
   const [reportContent, setReportContent] = useState<Record<string, string>>({});
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [generatingReport, setGeneratingReport] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setInterval>>();
   const mainRef = useRef<HTMLElement>(null);
 
@@ -185,11 +186,72 @@ export default function ClientEditor() {
             <Button
               size="sm"
               className="bg-accent text-accent-foreground hover:bg-accent/90"
-              onClick={() => {
-                toast.info("AI generation will be available once the API is configured.");
+              disabled={generatingReport}
+              onClick={async () => {
+                setGeneratingReport(true);
+                toast.info("Generating report — this may take a minute...");
+
+                try {
+                  const clientName = client?.client_name || "the participant";
+                  const diagnosis = client?.primary_diagnosis || "";
+                  const sectionEntries = Object.entries(notes).filter(
+                    ([key, val]) =>
+                      typeof val === "string" &&
+                      val.trim() &&
+                      !key.startsWith("__") &&
+                      !key.endsWith("__rating")
+                  );
+
+                  if (sectionEntries.length === 0) {
+                    toast.warning("Add notes to at least one section before generating.");
+                    setGeneratingReport(false);
+                    return;
+                  }
+
+                  const newContent: Record<string, string> = { ...reportContent };
+                  let successCount = 0;
+
+                  for (const [sectionId, observations] of sectionEntries) {
+                    const rating = notes[`${sectionId}__rating`] || "";
+                    const prompt = `Write a section of an NDIS Functional Capacity Assessment for ${clientName}.
+
+SECTION: ${sectionId}
+FUNCTIONAL RATING: ${rating || "[Not provided]"}
+
+CLINICIAN OBSERVATIONS (transform these into formal clinical prose):
+${observations}
+
+DIAGNOSIS CONTEXT: ${diagnosis || "[Not provided]"}
+
+Write 2-3 paragraphs of formal NDIS report prose following the observation → impact → support need structure. Use person-first language and third-person active voice.`;
+
+                    try {
+                      const { data, error } = await supabase.functions.invoke("generate-report", {
+                        body: { prompt, max_tokens: 3000 },
+                      });
+
+                      if (error) throw error;
+                      if (!data?.success) throw new Error(data?.error || "Generation failed");
+
+                      newContent[sectionId] = data.text;
+                      successCount++;
+                    } catch (sectionErr: any) {
+                      console.error(`Failed to generate ${sectionId}:`, sectionErr);
+                    }
+                  }
+
+                  setReportContent(newContent);
+                  setMode("report");
+                  toast.success(`Generated ${successCount}/${sectionEntries.length} sections.`);
+                } catch (err: any) {
+                  console.error("Generation error:", err);
+                  toast.error("Failed to generate: " + (err?.message || "Unknown error"));
+                } finally {
+                  setGeneratingReport(false);
+                }
               }}
             >
-              Generate full report
+              {generatingReport ? "Generating…" : "Generate full report"}
             </Button>
           </div>
         </div>
