@@ -6,7 +6,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { TEMPLATE_SECTIONS } from "@/lib/constants";
 import { type AssessmentInstance } from "@/lib/assessment-library";
 import { type RecommendationInstance } from "@/lib/recommendations-library";
-import { assembleReport } from "@/ai/reportAssembler";
+
 import { KotobaLogo } from "@/components/KotobaLogo";
 import { NotesMode } from "@/components/editor/NotesMode";
 import { ReportMode } from "@/components/editor/ReportMode";
@@ -370,85 +370,7 @@ After all individual recommendations, write a Total Support Summary paragraph li
 
                   setReportContent(newContent);
                   setMode("report");
-                  toast.success(`Generated ${successCount}/${totalSteps} sections successfully. Building .docx...`);
-
-                  // Build the .docx download using the assembler
-                  try {
-                    const today = new Date().toLocaleDateString("en-AU");
-                    const reportData = {
-                      participant: {
-                        fullName: client?.client_name || "Participant",
-                        dob: notes["participant-dob"] || "",
-                        age: notes["participant-age"] || "",
-                        ndisNumber: client?.ndis_number || "",
-                        address: notes["participant-address"] || "",
-                        primaryContact: notes["participant-contact"] || "",
-                        primaryDiagnosis: client?.primary_diagnosis || "",
-                        secondaryDiagnoses: notes["secondary-diagnoses"] || "",
-                      },
-                      clinician: {
-                        name: profile?.clinician_name || "",
-                        qualifications: profile?.qualifications || "",
-                        ahpra: profile?.ahpra_number || "",
-                        organisation: profile?.practice_name || "",
-                        phoneEmail: "",
-                        dateOfAssessment: notes["assessment-date"] || "",
-                        dateOfReport: today,
-                        otServicesCommenced: notes["ot-services-commenced"] || "",
-                      },
-                      presentAtAssessment: notes["present-at-assessment"] || "",
-                      assessmentSetting: notes["assessment-setting"] || "",
-                      section1: newContent["reason-referral"] || "",
-                      section2: newContent["background"] || "",
-                      section3: newContent["participant-goals"] || "",
-                      section4: newContent["diagnoses"] || "",
-                      section5: newContent["ot-case-history"] || "",
-                      section6: newContent["methodology"] || "",
-                      section7: newContent["informal-supports"] || "",
-                      section8: newContent["home-environment"] || "",
-                      section9: newContent["social-environment"] || "",
-                      section10: newContent["typical-week"] || "",
-                      section11: newContent["risk-safety"] || "",
-                      section12_1: newContent["mobility"] || "",
-                      section12_2: newContent["transfers"] || "",
-                      section12_3: newContent["personal-adls"] || "",
-                      section12_4: newContent["domestic-iadls"] || "",
-                      section12_5: newContent["executive-iadls"] || "",
-                      section12_6: newContent["cognition"] || "",
-                      section12_7: newContent["communication"] || "",
-                      section12_8: newContent["social-functioning"] || "",
-                      section12_9: newContent["sensory-profile"] || "",
-                      section13: newContent["assessments"] || "",
-                      section14: newContent["limitations-barriers"] || "",
-                      section15: newContent["functional-impact"] || "",
-                      section16: newContent["recommendations"] || "",
-                      section17: notes["risks-insufficient-funding"] || "",
-                      section18: newContent["review-monitoring"] || "",
-                      section19: notes["section-34-statement"] || "",
-                      assessments: assessments.map(a => ({
-                        tool: typeof a.name === "string" ? a.name : "",
-                        date: typeof a.dateAdministered === "string" ? a.dateAdministered : "",
-                        score: Object.entries(a.scores || {}).map(([k, v]) => `${k}: ${v}`).join(", "),
-                        classification: String(a.scores?.classification || a.scores?.level || ""),
-                        whySelected: typeof a.interpretation === "string" ? a.interpretation : "",
-                      })),
-                      recommendations: recommendations.map(r => ({
-                        support: typeof r.supportName === "string" ? r.supportName : "",
-                        category: typeof r.ndisCategory === "string" ? r.ndisCategory : "",
-                        currentHours: typeof r.currentHours === "string" && r.currentHours ? r.currentHours : "Nil",
-                        recommendedHours: typeof r.recommendedHours === "string" ? r.recommendedHours : "",
-                        ratio: typeof r.ratio === "string" ? r.ratio : "",
-                        tasks: Array.isArray(r.tasks) ? r.tasks.filter(Boolean).join(", ") : "",
-                        linkedSections: Array.isArray(r.linkedSections) ? r.linkedSections.map((s: any) => `S.${s}`).join(", ") : "",
-                      })),
-                    };
-
-                    await assembleReport(reportData);
-                    toast.success("Report downloaded as .docx!");
-                  } catch (docxErr: any) {
-                    console.error("DOCX assembly error:", docxErr);
-                    toast.error("Report generated but .docx download failed: " + (docxErr?.message || "Unknown error"));
-                  }
+                  toast.success(`Generated ${successCount}/${totalSteps} sections successfully. Use the Download button to build your .docx.`);
                 } catch (err: any) {
                   console.error("Generation error:", err);
                   toast.error("Failed to generate: " + (err?.message || "Unknown error"));
