@@ -62,18 +62,22 @@ async function loadDocs() {
   const result: Record<string, string> = {};
 
   for (const [key, fileName] of Object.entries(FILES)) {
+    console.log("Trying bucket:", BUCKET, "file:", fileName);
     const { data, error } = await sb.storage.from(BUCKET).download(fileName);
+    console.log("For file:", fileName, "error is:", error);
     if (error || !data) {
-      throw new Error("Failed to load " + fileName + ": " + (error?.message || "no data returned"));
+      throw new Error(
+        "Failed to load " + fileName + " from bucket " + BUCKET + ". Error: " + JSON.stringify(error)
+      );
     }
     result[key] = await extractTextFromDocx(data);
   }
 
-  cache = { 
-    template: result.template, 
-    prompts: result.prompts, 
-    rubric: result.rubric, 
-    at: Date.now() 
+  cache = {
+    template: result.template,
+    prompts: result.prompts,
+    rubric: result.rubric,
+    at: Date.now(),
   };
   return cache;
 }
