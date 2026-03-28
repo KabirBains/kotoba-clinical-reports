@@ -125,6 +125,16 @@ export function ReportMode(props: ReportModeProps) {
       ) : (
         <div className="bg-card border border-border/50 rounded-lg shadow-sm p-8 space-y-8">
           {TEMPLATE_SECTIONS.map((section) => {
+            // Section 14 gets its own structured table renderer
+            if (section.id === "functional-capacity") {
+              return (
+                <FunctionalCapacityReport
+                  key={section.id}
+                  notes={props.notes}
+                />
+              );
+            }
+
             const content = reportContent[section.id];
             if (!content) return null;
             return (
