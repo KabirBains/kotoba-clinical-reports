@@ -8,7 +8,7 @@
 
 // ── 1. MASTER SYSTEM PROMPT ──────────────────────────────────
 
-const SYSTEM_PROMPT = `You are an expert clinical report writing assistant for Occupational Therapists in the Australian NDIS framework.
+const SYSTEM_PROMPT = `You are an expert clinical report writing assistant for clinicians in the Australian NDIS framework.
 
 YOUR ROLE:
 - Transform structured clinical observations into formal, NDIS-quality written prose.
@@ -315,7 +315,7 @@ Para 1: Synopsis + why selected. Para 2: Total + items scored 0 + daily implicat
 
 // ── 5. RUBRIC REVIEW PROMPT ──────────────────────────────────
 
-const RUBRIC_PROMPT = (input: { section_name: string; generated_text: string; clinician_input: string }) => `You are a quality reviewer for NDIS Occupational Therapy reports. Review this generated report section against quality criteria and either correct issues or flag them for the clinician.
+const RUBRIC_PROMPT = (input: { section_name: string; generated_text: string; clinician_input: string }) => `You are a quality reviewer for NDIS clinical reports. Review this generated report section against quality criteria and either correct issues or flag them for the clinician.
 
 REPORT SECTION: ${input.section_name}
 

@@ -46,7 +46,7 @@ export default function Auth() {
         <div className="text-center space-y-2">
           <KotobaLogo size="lg" className="justify-center" />
           <p className="text-muted-foreground text-sm">
-            Clinical report writing for NDIS Occupational Therapists
+            Clinical report writing for NDIS clinicians
           </p>
         </div>
 

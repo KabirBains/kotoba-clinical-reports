@@ -252,7 +252,7 @@ export async function assembleReport(data: ReportData): Promise<void> {
       spacing: { after: 200 },
       children: [
         new TextRun({
-          text: "Occupational Therapy Report \u2014 National Disability Insurance Scheme",
+          text: "Clinical Report \u2014 National Disability Insurance Scheme",
           font: F,
           size: 24,
           color: GRAY,
@@ -316,7 +316,7 @@ export async function assembleReport(data: ReportData): Promise<void> {
   add(
     spacer(),
     noteBox(
-      "AI Disclosure: This report was prepared with the assistance of AI writing technology. All clinical observations, assessments, judgements, and recommendations are those of the assessing Occupational Therapist. The AI was used solely to structure and format clinical content. The report author has reviewed all content and confirms it meets NDIS reporting standards and the AHPRA Code of Conduct."
+      "AI Disclosure: This report was prepared with the assistance of AI writing technology. All clinical observations, assessments, judgements, and recommendations are those of the assessing clinician. The AI was used solely to structure and format clinical content. The report author has reviewed all content and confirms it meets NDIS reporting standards and the AHPRA Code of Conduct."
     )
   );
 
@@ -506,7 +506,7 @@ export async function assembleReport(data: ReportData): Promise<void> {
       spacing: { before: 120 },
       children: [
         new TextRun({
-          text: "This report has been prepared in accordance with the NDIS Practice Standards and the Occupational Therapy Australia Code of Ethics. This report was prepared with the assistance of AI writing technology. All clinical observations, assessments, judgements, and recommendations contained herein are those of the assessing Occupational Therapist. The report author has reviewed all content and confirms it reflects their professional clinical judgement and meets NDIS reporting standards.",
+          text: "This report has been prepared in accordance with the NDIS Practice Standards. This report was prepared with the assistance of AI writing technology. All clinical observations, assessments, judgements, and recommendations contained herein are those of the assessing clinician. The report author has reviewed all content and confirms it reflects their professional clinical judgement and meets NDIS reporting standards.",
           font: F,
           size: 16,
           italics: true,
@@ -614,7 +614,7 @@ export async function assembleReport(data: ReportData): Promise<void> {
                   }),
                   new TextRun({ text: "\t" }),
                   new TextRun({
-                    text: "NDIS Functional Capacity Assessment | Occupational Therapy",
+                    text: "NDIS Functional Capacity Assessment | Clinical Report",
                     font: F,
                     size: 14,
                     color: GRAY,
