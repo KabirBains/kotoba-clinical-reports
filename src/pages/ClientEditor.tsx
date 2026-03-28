@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, FileText, PenLine, Clock } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import ReportSectionGenerator from "@/components/ReportSectionGenerator";
 
 export default function ClientEditor() {
   const { clientId } = useParams<{ clientId: string }>();
@@ -216,6 +217,27 @@ export default function ClientEditor() {
           ) : (
             <ReportMode reportContent={reportContent} />
           )}
+
+          {/* TEST: AI Report Section Generator */}
+          <div className="max-w-4xl mx-auto px-4 py-6">
+            <h3 className="text-sm font-semibold text-muted-foreground mb-2">🧪 AI Generation Test</h3>
+            <ReportSectionGenerator
+              sectionId="functional_domain"
+              sectionName="Personal ADLs - Self-Care"
+              clientName="John Smith"
+              clinicianInput={{
+                domain_name: "Personal ADLs - Self-Care",
+                functional_level: "Assistance Required",
+                raw_observations: "Requires full physical assistance for showering due to poor standing balance and lower limb weakness. Unable to dress lower body independently - cannot bend to put on shoes or socks. Needs verbal prompting for grooming tasks including teeth brushing and hair combing. Continent but requires assistance to mobilise to toilet in time.",
+                support_need: "Daily 1:1 personal care support for all self-care tasks",
+                diagnosis_context: "Cerebral Palsy with spastic diplegia affecting bilateral lower limbs",
+              }}
+              onApprove={(text) => {
+                console.log("Approved text:", text);
+                toast.success("Text approved! Check console for output.");
+              }}
+            />
+          </div>
         </main>
       </div>
     </div>
