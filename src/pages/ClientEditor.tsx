@@ -214,7 +214,16 @@ export default function ClientEditor() {
               onUpdateRecommendations={setRecommendations}
             />
           ) : (
-            <ReportMode reportContent={reportContent} />
+            <ReportMode
+              reportContent={reportContent}
+              notes={notes}
+              clientName={client?.client_name || ""}
+              clientDiagnosis={client?.primary_diagnosis || ""}
+              ndisNumber={client?.ndis_number || ""}
+              assessments={assessments}
+              recommendations={recommendations}
+              clinicianProfile={null}
+            />
           )}
         </main>
       </div>

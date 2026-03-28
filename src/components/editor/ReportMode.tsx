@@ -93,13 +93,13 @@ function buildReportData(props: ReportModeProps): ReportData {
       whySelected: "",
     })),
     recommendations: recommendations.map((r) => ({
-      support: typeof r.name === "string" ? r.name : "",
-      category: typeof r.category === "string" ? r.category : "",
-      currentHours: typeof r.currentHours === "string" ? r.currentHours : "",
-      recommendedHours: typeof r.recommendedHours === "string" ? r.recommendedHours : "",
-      ratio: typeof r.ratio === "string" ? r.ratio : "",
+      support: r.supportName || "",
+      category: r.ndisCategory || "",
+      currentHours: r.currentHours || "",
+      recommendedHours: r.recommendedHours || "",
+      ratio: r.ratio || "",
       tasks: Array.isArray(r.tasks) ? r.tasks.filter(Boolean).join(", ") : "",
-      linkedSections: typeof r.linkedSections === "string" ? r.linkedSections : "",
+      linkedSections: Array.isArray(r.linkedSections) ? r.linkedSections.join(", ") : "",
     })),
   };
 }
