@@ -1,0 +1,642 @@
+// ============================================================
+// REPORT ASSEMBLER — src/ai/reportAssembler.ts
+// ============================================================
+// Takes approved clinical prose from each section and assembles
+// it into a formatted .docx file matching the FCA template.
+//
+// INSTALL: In Loveable, ask the AI to run: npm install docx file-saver
+// Or add "docx" and "file-saver" to your package.json dependencies.
+// ============================================================
+
+import {
+  Document,
+  Packer,
+  Paragraph,
+  TextRun,
+  Table,
+  TableRow,
+  TableCell,
+  Header,
+  Footer,
+  AlignmentType,
+  HeadingLevel,
+  BorderStyle,
+  WidthType,
+  ShadingType,
+  VerticalAlign,
+  PageNumber,
+  PageBreak,
+  LevelFormat,
+  TabStopType,
+} from "docx";
+import { saveAs } from "file-saver";
+
+// ── Layout constants ─────────────────────────────────────────
+const PAGE_W = 12240;
+const MARGIN = 1080;
+const CW = PAGE_W - MARGIN * 2;
+const F = "Arial";
+const BLUE = "1F4E79";
+const DARK = "1F2937";
+const GRAY = "6B7280";
+const WHITE = "FFFFFF";
+const LIGHT = "F0F4F8";
+
+const bdr = { style: BorderStyle.SINGLE, size: 1, color: "D1D5DB" };
+const bdrs = { top: bdr, bottom: bdr, left: bdr, right: bdr };
+const cm = { top: 60, bottom: 60, left: 100, right: 100 };
+
+// ── Helper functions ─────────────────────────────────────────
+
+function h1(text: string) {
+  return new Paragraph({
+    heading: HeadingLevel.HEADING_1,
+    spacing: { before: 360, after: 200 },
+    children: [new TextRun({ text, font: F, size: 28, bold: true, color: BLUE })],
+  });
+}
+
+function h2(text: string) {
+  return new Paragraph({
+    heading: HeadingLevel.HEADING_2,
+    spacing: { before: 280, after: 160 },
+    children: [new TextRun({ text, font: F, size: 24, bold: true, color: DARK })],
+  });
+}
+
+function prose(text: string) {
+  // Split by double newlines to create separate paragraphs
+  const paragraphs = text.split(/\n\n+/).filter((p) => p.trim());
+  return paragraphs.map(
+    (para) =>
+      new Paragraph({
+        spacing: { after: 160 },
+        children: [new TextRun({ text: para.trim(), font: F, size: 20, color: DARK })],
+      })
+  );
+}
+
+function spacer() {
+  return new Paragraph({ spacing: { after: 80 }, children: [] });
+}
+
+function pb() {
+  return new Paragraph({ children: [new PageBreak()] });
+}
+
+function kvTable(rows: [string, string][]) {
+  const a = 3200;
+  const b = CW - a;
+  return new Table({
+    width: { size: CW, type: WidthType.DXA },
+    columnWidths: [a, b],
+    rows: rows.map(
+      ([label, value]) =>
+        new TableRow({
+          children: [
+            new TableCell({
+              borders: bdrs,
+              width: { size: a, type: WidthType.DXA },
+              shading: { fill: LIGHT, type: ShadingType.CLEAR },
+              margins: cm,
+              verticalAlign: VerticalAlign.CENTER,
+              children: [
+                new Paragraph({
+                  children: [new TextRun({ text: label, font: F, size: 20, bold: true, color: DARK })],
+                }),
+              ],
+            }),
+            new TableCell({
+              borders: bdrs,
+              width: { size: b, type: WidthType.DXA },
+              margins: cm,
+              verticalAlign: VerticalAlign.CENTER,
+              children: [
+                new Paragraph({
+                  children: [new TextRun({ text: value || "", font: F, size: 20, color: DARK })],
+                }),
+              ],
+            }),
+          ],
+        })
+    ),
+  });
+}
+
+function noteBox(text: string) {
+  return new Table({
+    width: { size: CW, type: WidthType.DXA },
+    columnWidths: [CW],
+    rows: [
+      new TableRow({
+        children: [
+          new TableCell({
+            borders: bdrs,
+            width: { size: CW, type: WidthType.DXA },
+            shading: { fill: "EFF6FF", type: ShadingType.CLEAR },
+            margins: { top: 80, bottom: 80, left: 120, right: 120 },
+            children: [
+              new Paragraph({
+                children: [new TextRun({ text, font: F, size: 18, italics: true, color: BLUE })],
+              }),
+            ],
+          }),
+        ],
+      }),
+    ],
+  });
+}
+
+// ── Types ────────────────────────────────────────────────────
+
+export interface ReportData {
+  // Participant details
+  participant: {
+    fullName: string;
+    dob: string;
+    age: string;
+    ndisNumber: string;
+    address: string;
+    primaryContact: string;
+    primaryDiagnosis: string;
+    secondaryDiagnoses: string;
+  };
+  // Clinician details
+  clinician: {
+    name: string;
+    qualifications: string;
+    ahpra: string;
+    organisation: string;
+    phoneEmail: string;
+    dateOfAssessment: string;
+    dateOfReport: string;
+    otServicesCommenced: string;
+  };
+  // Assessment context
+  presentAtAssessment: string;
+  assessmentSetting: string;
+
+  // Approved prose for each section (generated by AI, approved by clinician)
+  section1?: string; // Reason for referral
+  section2?: string; // Background
+  section3?: string; // Goals
+  section4?: string; // Diagnoses
+  section5?: string; // Allied health case history
+  section6?: string; // Methodology
+  section7?: string; // Informal supports
+  section8?: string; // Home environment (may be prose or structured)
+  section9?: string; // Social environment
+  section10?: string; // Typical week
+  section11?: string; // Risk & safety
+  section12_1?: string; // Mobility
+  section12_2?: string; // Transfers
+  section12_3?: string; // Personal ADLs
+  section12_4?: string; // Domestic IADLs
+  section12_5?: string; // Executive IADLs
+  section12_6?: string; // Cognition
+  section12_7?: string; // Communication
+  section12_8?: string; // Social functioning
+  section12_9?: string; // Sensory profile
+  section13?: string; // Standardised assessments (interpretations)
+  section14?: string; // Limitations
+  section15?: string; // Impact summary
+  section16?: string; // Recommendations
+  section17?: string; // Risks of insufficient funding
+  section18?: string; // Review & monitoring
+  section19?: string; // Section 34 statement
+
+  // Assessment scores summary (optional, for the summary table)
+  assessments?: Array<{
+    tool: string;
+    date: string;
+    score: string;
+    classification: string;
+    whySelected: string;
+  }>;
+
+  // Recommendations summary (optional, for the summary table)
+  recommendations?: Array<{
+    support: string;
+    category: string;
+    currentHours: string;
+    recommendedHours: string;
+    ratio: string;
+    tasks: string;
+    linkedSections: string;
+  }>;
+}
+
+// ── Main assembler function ──────────────────────────────────
+
+export async function assembleReport(data: ReportData): Promise<void> {
+  const children: any[] = [];
+  const add = (...items: any[]) => children.push(...items);
+
+  // ═══ TITLE PAGE ═══
+  add(
+    new Paragraph({
+      spacing: { before: 2400 },
+      alignment: AlignmentType.CENTER,
+      children: [
+        new TextRun({
+          text: "FUNCTIONAL CAPACITY ASSESSMENT",
+          font: F,
+          size: 40,
+          bold: true,
+          color: BLUE,
+        }),
+      ],
+    }),
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 200 },
+      children: [
+        new TextRun({
+          text: "Occupational Therapy Report \u2014 National Disability Insurance Scheme",
+          font: F,
+          size: 24,
+          color: GRAY,
+        }),
+      ],
+    }),
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 600 },
+      children: [
+        new TextRun({
+          text: "CONFIDENTIAL & PRIVILEGED",
+          font: F,
+          size: 20,
+          bold: true,
+          color: "DC2626",
+        }),
+      ],
+    }),
+    spacer()
+  );
+
+  // ═══ PARTICIPANT DETAILS ═══
+  add(h1("Participant & Report Details"), h2("Participant Details"));
+  add(
+    kvTable([
+      ["Full Name", data.participant.fullName],
+      ["Date of Birth", data.participant.dob],
+      ["Age", data.participant.age],
+      ["NDIS Number", data.participant.ndisNumber],
+      ["Address", data.participant.address],
+      ["Primary Contact / Guardian", data.participant.primaryContact],
+      ["Primary Diagnosis", data.participant.primaryDiagnosis],
+      ["Secondary Diagnoses", data.participant.secondaryDiagnoses],
+    ])
+  );
+
+  add(spacer(), h2("Provider / Clinician Details"));
+  add(
+    kvTable([
+      ["Report Author", data.clinician.name],
+      ["Qualifications", data.clinician.qualifications],
+      ["AHPRA Registration No.", data.clinician.ahpra],
+      ["Organisation / Practice", data.clinician.organisation],
+      ["Phone / Email", data.clinician.phoneEmail],
+      ["Date of Assessment", data.clinician.dateOfAssessment],
+      ["Date of Report", data.clinician.dateOfReport],
+      ["Report Type", "Functional Capacity Assessment (FCA)"],
+      ["OT Services Commenced", data.clinician.otServicesCommenced],
+    ])
+  );
+
+  add(spacer(), h2("Persons Present at Assessment"));
+  add(
+    kvTable([
+      ["Present at assessment", data.presentAtAssessment],
+      ["Assessment setting", data.assessmentSetting],
+    ])
+  );
+
+  add(
+    spacer(),
+    noteBox(
+      "AI Disclosure: This report was prepared with the assistance of AI writing technology. All clinical observations, assessments, judgements, and recommendations are those of the assessing Occupational Therapist. The AI was used solely to structure and format clinical content. The report author has reviewed all content and confirms it meets NDIS reporting standards and the AHPRA Code of Conduct."
+    )
+  );
+
+  // ═══ SECTION BUILDER ═══
+  // Helper to add a section with its approved prose
+  function addSection(title: string, content: string | undefined, pageBreakBefore = false) {
+    if (pageBreakBefore) add(pb());
+    add(h1(title));
+    if (content && content.trim()) {
+      add(...prose(content));
+    } else {
+      add(
+        new Paragraph({
+          spacing: { after: 120 },
+          children: [
+            new TextRun({
+              text: "[Section not yet completed]",
+              font: F,
+              size: 20,
+              italics: true,
+              color: "9CA3AF",
+            }),
+          ],
+        })
+      );
+    }
+  }
+
+  function addSubsection(title: string, content: string | undefined) {
+    add(h2(title));
+    if (content && content.trim()) {
+      add(...prose(content));
+    } else {
+      add(
+        new Paragraph({
+          spacing: { after: 120 },
+          children: [
+            new TextRun({
+              text: "[Subsection not yet completed]",
+              font: F,
+              size: 20,
+              italics: true,
+              color: "9CA3AF",
+            }),
+          ],
+        })
+      );
+    }
+  }
+
+  // ═══ SECTIONS 1-11 ═══
+  addSection("1. Reason for Referral", data.section1, true);
+  addSection("2. Background Information", data.section2, true);
+  addSection("3. Participant Goals", data.section3, true);
+  addSection("4. Diagnoses", data.section4);
+  addSection("5. Allied Health Case History", data.section5, true);
+  addSection("6. Methodology", data.section6);
+  addSection("7. Informal Supports", data.section7, true);
+  addSection("8. Home Environment", data.section8);
+  addSection("9. Social Environment", data.section9, true);
+  addSection("10. Typical Week", data.section10);
+  addSection("11. Risk & Safety Profile", data.section11);
+
+  // ═══ SECTION 12 — FUNCTIONAL CAPACITY ═══
+  add(pb(), h1("12. Functional Capacity \u2014 Domain Observations"));
+  add(
+    new Paragraph({
+      spacing: { after: 160 },
+      children: [
+        new TextRun({
+          text: "Each domain below has been assessed from direct clinical observation. The functional rating scale used throughout is: Independent | Prompting Required | Assistance Required | Fully Dependent.",
+          font: F,
+          size: 20,
+          color: DARK,
+        }),
+      ],
+    })
+  );
+
+  addSubsection("12.1 Mobility & Upper Limb Function", data.section12_1);
+  addSubsection("12.2 Transfers", data.section12_2);
+  addSubsection("12.3 Personal ADLs \u2014 Self-Care", data.section12_3);
+  addSubsection("12.4 Domestic IADLs", data.section12_4);
+  addSubsection("12.5 Executive IADLs", data.section12_5);
+  addSubsection("12.6 Cognition", data.section12_6);
+  addSubsection("12.7 Communication", data.section12_7);
+  addSubsection("12.8 Social Functioning", data.section12_8);
+  addSubsection("12.9 Sensory Profile", data.section12_9);
+
+  // ═══ SECTION 13 — ASSESSMENTS ═══
+  add(pb(), h1("13. Standardised Assessments"));
+
+  // Assessment summary cards
+  if (data.assessments && data.assessments.length > 0) {
+    add(h2("13.1 Assessment Summary"));
+    for (const a of data.assessments) {
+      add(
+        kvTable([
+          ["Assessment Tool", a.tool],
+          ["Date Administered", a.date],
+          ["Score / Result", a.score],
+          ["Classification", a.classification],
+          ["Why Selected", a.whySelected],
+        ])
+      );
+      add(spacer());
+    }
+  }
+
+  // Assessment interpretations prose
+  if (data.section13) {
+    add(h2("13.2 Assessment Interpretations"));
+    add(...prose(data.section13));
+  }
+
+  // ═══ SECTIONS 14-19 ═══
+  addSection("14. Limitations & Barriers to Progress", data.section14, true);
+  addSection("15. Functional Impact Summary", data.section15);
+
+  // Section 16 — Recommendations
+  add(pb(), h1("16. Recommendations"));
+  add(
+    new Paragraph({
+      spacing: { after: 160 },
+      children: [
+        new TextRun({
+          text: "Each recommendation below is linked to functional needs identified in this assessment. All recommendations are considered reasonable and necessary under Section 34 of the National Disability Insurance Scheme Act 2013.",
+          font: F,
+          size: 20,
+          color: DARK,
+        }),
+      ],
+    })
+  );
+
+  // Recommendations summary cards
+  if (data.recommendations && data.recommendations.length > 0) {
+    add(h2("16.1 Recommendations Summary"));
+    for (const r of data.recommendations) {
+      add(
+        kvTable([
+          ["Support", r.support],
+          ["NDIS Category", r.category],
+          ["Current Provision", r.currentHours],
+          ["Recommended Provision", r.recommendedHours],
+          ["Support Ratio", r.ratio],
+          ["Tasks Covered", r.tasks],
+          ["Linked Report Sections", r.linkedSections],
+        ])
+      );
+      add(spacer());
+    }
+  }
+
+  // Recommendation narratives
+  if (data.section16) {
+    add(h2("16.2 Recommendation Narratives"));
+    add(...prose(data.section16));
+  }
+
+  addSection("17. Risks of Insufficient Funding", data.section17, true);
+  addSection("18. Review & Monitoring Plan", data.section18);
+
+  // Section 19 — Section 34
+  add(pb(), h1("19. Statement of Reasonable and Necessary Supports"));
+  if (data.section19) {
+    add(
+      noteBox(data.section19)
+    );
+  }
+
+  // ═══ SIGN-OFF ═══
+  add(spacer(), h1("Clinician Sign-Off"));
+  add(
+    kvTable([
+      ["Report Author", data.clinician.name],
+      ["Signature", ""],
+      ["Date", data.clinician.dateOfReport],
+      ["AHPRA Registration", data.clinician.ahpra],
+      ["Organisation", data.clinician.organisation],
+      ["Contact", data.clinician.phoneEmail],
+    ])
+  );
+  add(
+    spacer(),
+    new Paragraph({
+      spacing: { before: 120 },
+      children: [
+        new TextRun({
+          text: "This report has been prepared in accordance with the NDIS Practice Standards and the Occupational Therapy Australia Code of Ethics. This report was prepared with the assistance of AI writing technology. All clinical observations, assessments, judgements, and recommendations contained herein are those of the assessing Occupational Therapist. The report author has reviewed all content and confirms it reflects their professional clinical judgement and meets NDIS reporting standards.",
+          font: F,
+          size: 16,
+          italics: true,
+          color: GRAY,
+        }),
+      ],
+    })
+  );
+
+  // ═══ BUILD THE DOCUMENT ═══
+  const doc = new Document({
+    styles: {
+      default: { document: { run: { font: F, size: 20 } } },
+      paragraphStyles: [
+        {
+          id: "Heading1",
+          name: "Heading 1",
+          basedOn: "Normal",
+          next: "Normal",
+          quickFormat: true,
+          run: { size: 28, bold: true, font: F, color: BLUE },
+          paragraph: { spacing: { before: 360, after: 200 }, outlineLevel: 0 },
+        },
+        {
+          id: "Heading2",
+          name: "Heading 2",
+          basedOn: "Normal",
+          next: "Normal",
+          quickFormat: true,
+          run: { size: 24, bold: true, font: F, color: DARK },
+          paragraph: { spacing: { before: 280, after: 160 }, outlineLevel: 1 },
+        },
+      ],
+    },
+    numbering: {
+      config: [
+        {
+          reference: "bullets",
+          levels: [
+            {
+              level: 0,
+              format: LevelFormat.BULLET,
+              text: "\u2022",
+              alignment: AlignmentType.LEFT,
+              style: { paragraph: { indent: { left: 720, hanging: 360 } } },
+            },
+          ],
+        },
+      ],
+    },
+    sections: [
+      {
+        properties: {
+          page: {
+            size: { width: PAGE_W, height: 15840 },
+            margin: { top: MARGIN, right: MARGIN, bottom: MARGIN, left: MARGIN },
+          },
+        },
+        headers: {
+          default: new Header({
+            children: [
+              new Paragraph({
+                border: {
+                  bottom: { style: BorderStyle.SINGLE, size: 6, color: BLUE, space: 1 },
+                },
+                spacing: { after: 0 },
+                tabStops: [{ type: TabStopType.RIGHT, position: CW }],
+                children: [
+                  new TextRun({
+                    text: "FUNCTIONAL CAPACITY ASSESSMENT",
+                    font: F,
+                    size: 16,
+                    bold: true,
+                    color: BLUE,
+                  }),
+                  new TextRun({ text: "\t" }),
+                  new TextRun({
+                    text: "CONFIDENTIAL & PRIVILEGED",
+                    font: F,
+                    size: 14,
+                    color: "DC2626",
+                    bold: true,
+                  }),
+                ],
+              }),
+            ],
+          }),
+        },
+        footers: {
+          default: new Footer({
+            children: [
+              new Paragraph({
+                border: {
+                  top: { style: BorderStyle.SINGLE, size: 4, color: "D1D5DB", space: 1 },
+                },
+                spacing: { before: 0 },
+                tabStops: [{ type: TabStopType.RIGHT, position: CW }],
+                children: [
+                  new TextRun({ text: "Page ", font: F, size: 14, color: GRAY }),
+                  new TextRun({
+                    children: [PageNumber.CURRENT],
+                    font: F,
+                    size: 14,
+                    color: GRAY,
+                  }),
+                  new TextRun({ text: "\t" }),
+                  new TextRun({
+                    text: "NDIS Functional Capacity Assessment | Occupational Therapy",
+                    font: F,
+                    size: 14,
+                    color: GRAY,
+                  }),
+                ],
+              }),
+            ],
+          }),
+        },
+        children,
+      },
+    ],
+  });
+
+  // Generate the .docx file and trigger download
+  const blob = await Packer.toBlob(doc);
+  const fileName =
+    "FCA_" +
+    data.participant.fullName.replace(/\s+/g, "_") +
+    "_" +
+    (data.clinician.dateOfReport || new Date().toISOString().slice(0, 10)) +
+    ".docx";
+
+  saveAs(blob, fileName);
+}
