@@ -316,7 +316,7 @@ Write 2-3 paragraphs: (1) what was observed including strengths and limitations,
                       if (error) throw error;
                       if (!data?.success) throw new Error(data?.error || "Generation failed");
 
-                      newContent[domain.id] = data.text;
+                      newContent[domain.reportKey] = data.text;
                       generatedSections.push({ title: `Section 12 - ${domain.name}`, text: data.text });
                       successCount++;
                     } catch (sectionErr: any) {
