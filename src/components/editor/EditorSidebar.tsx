@@ -132,11 +132,14 @@ export function EditorSidebar({ notes, assessments, recommendations, scrollConta
           {TEMPLATE_SECTIONS.map((section) => {
             const isFc = section.id === "functional-capacity";
             const isAssessments = section.id === "assessments";
+            const isRecs = section.id === "recommendations";
             const isActive = activeSectionId === section.id;
             const hasContent = isFc
               ? fcSubIds.some((id) => hasSectionContent(id, notes))
               : isAssessments
               ? assessments.length > 0
+              : isRecs
+              ? recommendations.length > 0
               : hasSectionContent(section.id, notes);
 
             return (
@@ -151,13 +154,18 @@ export function EditorSidebar({ notes, assessments, recommendations, scrollConta
                         setAssessmentsExpanded(!assessmentsExpanded);
                       }
                       scrollTo(section.id);
+                    } else if (isRecs) {
+                      if (recommendations.length > 0) {
+                        setRecsExpanded(!recsExpanded);
+                      }
+                      scrollTo(section.id);
                     } else {
                       scrollTo(section.id);
                     }
                   }}
                   className={cn(
                     "w-full flex items-center gap-2 px-3 py-1.5 text-left text-xs rounded-md transition-colors group",
-                    isActive || (isFc && isFcSubActive) || (isAssessments && isAssessmentSubActive)
+                    isActive || (isFc && isFcSubActive) || (isAssessments && isAssessmentSubActive) || (isRecs && isRecommendationSubActive)
                       ? "bg-accent/10 text-accent border-l-2 border-accent"
                       : "text-muted-foreground hover:bg-muted/50 border-l-2 border-transparent"
                   )}
@@ -168,7 +176,7 @@ export function EditorSidebar({ notes, assessments, recommendations, scrollConta
                   <span className="flex-1 truncate leading-tight">
                     {getSidebarTitle(section.id, section.title)}
                   </span>
-                  {hasContent && !isFc && !isAssessments && (
+                  {hasContent && !isFc && !isAssessments && !isRecs && (
                     <CheckCircle2 className="h-3 w-3 text-success shrink-0" />
                   )}
                   {isAssessments && assessments.length > 0 && (
@@ -176,8 +184,13 @@ export function EditorSidebar({ notes, assessments, recommendations, scrollConta
                       {assessments.length}
                     </span>
                   )}
-                  {(isFc || (isAssessments && assessments.length > 0)) && (
-                    (isFc ? fcExpanded : assessmentsExpanded)
+                  {isRecs && recommendations.length > 0 && (
+                    <span className="text-[10px] font-mono text-muted-foreground shrink-0">
+                      {recommendations.length}
+                    </span>
+                  )}
+                  {(isFc || (isAssessments && assessments.length > 0) || (isRecs && recommendations.length > 0)) && (
+                    (isFc ? fcExpanded : isAssessments ? assessmentsExpanded : recsExpanded)
                       ? <ChevronDown className="h-3 w-3 shrink-0 opacity-50" />
                       : <ChevronRight className="h-3 w-3 shrink-0 opacity-50" />
                   )}
@@ -230,6 +243,30 @@ export function EditorSidebar({ notes, assessments, recommendations, scrollConta
                       </span>
                       <span className="flex-1 truncate leading-tight">
                         {a.name}
+                      </span>
+                    </button>
+                  );
+                })}
+
+                {/* Recommendation subsections (dynamic) */}
+                {isRecs && recsExpanded && recommendations.map((r, i) => {
+                  const subActive = activeSectionId === `recommendation-${r.id}`;
+                  return (
+                    <button
+                      key={r.id}
+                      onClick={() => scrollTo(`recommendation-${r.id}`)}
+                      className={cn(
+                        "w-full flex items-center gap-2 pl-8 pr-3 py-1 text-left text-[11px] rounded-md transition-colors",
+                        subActive
+                          ? "bg-accent/10 text-accent border-l-2 border-accent"
+                          : "text-muted-foreground hover:bg-muted/50 border-l-2 border-transparent"
+                      )}
+                    >
+                      <span className="font-mono w-6 shrink-0 text-[10px] opacity-50">
+                        18.{i + 1}
+                      </span>
+                      <span className="flex-1 truncate leading-tight">
+                        {r.supportName}
                       </span>
                     </button>
                   );
