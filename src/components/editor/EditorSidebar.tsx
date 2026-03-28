@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { TEMPLATE_SECTIONS } from "@/lib/constants";
 import { type AssessmentInstance } from "@/lib/assessment-library";
+import { type RecommendationInstance } from "@/lib/recommendations-library";
 import { CheckCircle2, ChevronDown, ChevronRight, Menu, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -15,6 +16,7 @@ const SIDEBAR_LABELS: Record<string, string> = {
 interface EditorSidebarProps {
   notes: Record<string, string>;
   assessments: AssessmentInstance[];
+  recommendations: RecommendationInstance[];
   scrollContainerRef: React.RefObject<HTMLElement | null>;
 }
 
@@ -29,12 +31,13 @@ function hasSectionContent(sectionId: string, notes: Record<string, string>): bo
   );
 }
 
-export function EditorSidebar({ notes, assessments, scrollContainerRef }: EditorSidebarProps) {
+export function EditorSidebar({ notes, assessments, recommendations, scrollContainerRef }: EditorSidebarProps) {
   const isMobile = useIsMobile();
   const [open, setOpen] = useState(!isMobile);
   const [activeSectionId, setActiveSectionId] = useState<string>("");
   const [fcExpanded, setFcExpanded] = useState(true);
   const [assessmentsExpanded, setAssessmentsExpanded] = useState(true);
+  const [recsExpanded, setRecsExpanded] = useState(true);
 
   const updateActiveSection = useCallback(() => {
     const container = scrollContainerRef.current;
@@ -49,6 +52,8 @@ export function EditorSidebar({ notes, assessments, scrollContainerRef }: Editor
     });
     // Add assessment card IDs
     assessments.forEach((a) => allIds.push(`assessment-${a.id}`));
+    // Add recommendation card IDs
+    recommendations.forEach((r) => allIds.push(`recommendation-${r.id}`));
 
     let closest = "";
     let closestDist = Infinity;
@@ -67,7 +72,7 @@ export function EditorSidebar({ notes, assessments, scrollContainerRef }: Editor
     if (closest && closest !== activeSectionId) {
       setActiveSectionId(closest);
     }
-  }, [scrollContainerRef, activeSectionId, assessments]);
+  }, [scrollContainerRef, activeSectionId, assessments, recommendations]);
 
   useEffect(() => {
     const container = scrollContainerRef.current;
@@ -92,7 +97,7 @@ export function EditorSidebar({ notes, assessments, scrollContainerRef }: Editor
   const fcSubIds: string[] = fcSection && "subsections" in fcSection ? (fcSection.subsections?.map((s) => s.id) ?? []) : [];
   const isFcSubActive = fcSubIds.includes(activeSectionId);
   const isAssessmentSubActive = activeSectionId.startsWith("assessment-");
-
+  const isRecommendationSubActive = activeSectionId.startsWith("recommendation-");
   if (isMobile && !open) {
     return (
       <Button
