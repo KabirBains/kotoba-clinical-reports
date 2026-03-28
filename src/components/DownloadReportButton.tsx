@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { ReportData } from "@/ai/reportAssembler";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Download, Loader2, CheckCircle, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
