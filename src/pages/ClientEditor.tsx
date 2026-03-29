@@ -446,16 +446,6 @@ Example format:
 
                     return { rows, total, classification };
                   }
-
-                    if (assessment.isCustom && assessment.customItems) {
-                      for (const item of assessment.customItems) {
-                        if (item.value) rows.push({ label: item.label, value: item.value });
-                      }
-                    }
-
-                    return { rows, total, classification };
-                  }
-
                   const perAssessmentResults: Record<string, {
                     name: string;
                     dateAdministered: string;
