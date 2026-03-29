@@ -220,6 +220,7 @@ export default function ClientEditor() {
                   ];
 
                   // For each domain, collect all its structured field data
+                  console.log('[DEBUG] All note keys:', Object.keys(notes));
                   const domainEntries: { id: string; name: string; reportKey: string; fields: string }[] = [];
                   for (const domain of DOMAIN_SUBSECTIONS) {
                     const fieldLines: string[] = [];
@@ -242,6 +243,7 @@ export default function ClientEditor() {
                       });
                     }
                   }
+                  console.log('[DEBUG] Domain entries found:', domainEntries.map(d => ({ name: d.name, fieldCount: d.fields.split('\n').length })));
 
                   const totalAssessments = assessments.filter(
                     a => a.scores && Object.keys(a.scores).length > 0
@@ -309,10 +311,13 @@ DIAGNOSIS CONTEXT: ${diagnosis || "[Not specified]"}
 
 Write 2-3 paragraphs: (1) what was observed including strengths and limitations, (2) functional impact on daily life, (3) close with a clear support need statement. Use person-first language and third-person active voice. No bullet points.`;
 
+                    console.log('[DEBUG] Generating AI prose for domain:', domain.name, 'reportKey:', domain.reportKey);
+                    console.log('[DEBUG] Prompt being sent:', domainPrompt.substring(0, 200));
                     try {
                       const { data, error } = await supabase.functions.invoke("generate-report", {
                         body: { prompt: domainPrompt, max_tokens: 2000 },
                       });
+                      console.log('[DEBUG] AI response for', domain.name, ':', data?.success ? 'SUCCESS' : 'FAILED', data?.text?.substring(0, 100));
                       if (error) throw error;
                       if (!data?.success) throw new Error(data?.error || "Generation failed");
 
@@ -320,7 +325,7 @@ Write 2-3 paragraphs: (1) what was observed including strengths and limitations,
                       generatedSections.push({ title: `Section 12 - ${domain.name}`, text: data.text });
                       successCount++;
                     } catch (sectionErr: any) {
-                      console.error(`Failed to generate domain ${domain.name}:`, sectionErr);
+                      console.error(`[DEBUG] Failed to generate domain ${domain.name}:`, sectionErr);
                     }
                   }
 
