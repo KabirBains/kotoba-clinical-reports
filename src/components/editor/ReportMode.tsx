@@ -93,7 +93,7 @@ function buildReportData(props: ReportModeProps): ReportData {
       classification: "",
       whySelected: "",
     })),
-    recommendations: recommendations.map((r) => ({
+    recommendations: recommendations.map((r, idx) => ({
       support: r.supportName || "",
       category: r.ndisCategory || "",
       currentHours: r.currentHours || "",
@@ -101,6 +101,11 @@ function buildReportData(props: ReportModeProps): ReportData {
       ratio: r.ratio || "",
       tasks: Array.isArray(r.tasks) ? r.tasks.filter(Boolean).join(", ") : "",
       linkedSections: Array.isArray(r.linkedSections) ? r.linkedSections.join(", ") : "",
+      justification: r.justification || "",
+      consequence: r.consequence || "",
+      outcomes: Array.isArray(r.outcomes) ? r.outcomes.map(o => OUTCOME_OPTIONS.find(opt => opt.id === o)?.label || o).join(", ") : "",
+      s34Justification: r.s34Justification || "",
+      estimatedCost: r.estimatedCost || "",
     })),
   };
 }
