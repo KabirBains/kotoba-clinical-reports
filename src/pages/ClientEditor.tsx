@@ -248,7 +248,7 @@ export default function ClientEditor() {
                   const totalAssessments = assessments.filter(
                     a => a.scores && Object.keys(a.scores).length > 0
                   ).length;
-                  const totalRecs = recommendations.length > 0 ? 1 : 0;
+                  const totalRecs = recommendations.length;
                   const totalSteps = topLevelEntries.length + domainEntries.length + totalAssessments + totalRecs;
 
                   if (topLevelEntries.length === 0 && domainEntries.length === 0 && totalAssessments === 0 && totalRecs === 0) {
@@ -435,66 +435,99 @@ Paragraph 3: Weave in the clinician's notes. Cross-reference findings from earli
                     generatedSections.push({ title: "Section 15 - Standardised Assessments", text: combinedAssessments });
                   }
 
-                  // === STEP 3: Generate recommendation narratives ===
+                  // === STEP 3: Generate recommendation narratives (per-card) ===
                   if (recommendations.length > 0) {
-                    currentStep++;
-                    toast.info(`Generating section ${currentStep} of ${totalSteps} — Recommendations...`);
-
-                    const recsData = recommendations.map(r => ({
-                      support: typeof r.supportName === "string" ? r.supportName : "",
-                      category: typeof r.ndisCategory === "string" ? r.ndisCategory : "",
-                      currentHours: typeof r.currentHours === "string" && r.currentHours ? r.currentHours : "Nil",
-                      recommendedHours: typeof r.recommendedHours === "string" ? r.recommendedHours : "",
-                      ratio: typeof r.ratio === "string" ? r.ratio : "",
-                      tasks: Array.isArray(r.tasks) ? r.tasks : [],
-                      justification: typeof r.justification === "string" ? r.justification : "",
-                      outcomes: Array.isArray(r.outcomes) ? r.outcomes : [],
-                      consequence: typeof r.consequence === "string" ? r.consequence : "",
-                      linkedSections: Array.isArray(r.linkedSections) ? r.linkedSections : [],
-                      s34Justification: typeof r.s34Justification === "string" ? r.s34Justification : "",
-                      estimatedCost: typeof r.estimatedCost === "string" ? r.estimatedCost : "",
-                    }));
-
                     const contextSummary = generatedSections
                       .map(s => `${s.title}: ${typeof s.text === "string" ? s.text.substring(0, 300) : ""}`)
                       .join("\n\n");
 
-                    const recsPrompt = `Write Section 18 (Recommendations) of an NDIS Functional Capacity Assessment for ${clientName}.
+                    const OUTCOME_LABELS: Record<string, string> = {
+                      maintain_safety: "Maintain safety and wellbeing",
+                      build_capacity: "Build capacity toward independence",
+                      social_participation: "Increase social and community participation",
+                      reduce_informal: "Reduce reliance on informal supports",
+                      achieve_goals: "Support achievement of NDIS goals",
+                      prevent_deterioration: "Prevent functional deterioration",
+                      prevent_hospitalisation: "Reduce risk of hospitalisation or crisis",
+                    };
 
-RECOMMENDATIONS DATA:
-${JSON.stringify(recsData, null, 2)}
+                    const perRecResults: Record<string, { text: string; supportName: string; category: string; currentHours: string; recommendedHours: string; ratio: string; estimatedCost: string; isCapital: boolean }> = {};
+
+                    for (let ri = 0; ri < recommendations.length; ri++) {
+                      const r = recommendations[ri];
+                      currentStep++;
+                      toast.info(`Generating section ${currentStep} of ${totalSteps} — Recommendation ${ri + 1}: ${r.supportName}...`);
+
+                      const recPrompt = `Convert the following structured recommendation entry into formal NDIS clinical prose for a Functional Capacity Assessment report.
+Use only the information provided. Do not fabricate. Use person-first language. Use formal clinical writing. No bullet points. Plain text only.
+
+Participant: ${clientName}
+Primary Diagnosis: ${client?.primary_diagnosis || ""}
+
+Recommendation Number: 18.${ri + 1}
+Support Name: ${r.supportName}
+Category: ${r.ndisCategory}
+${r.isCapital || r.isConsumable ? `Estimated Cost: ${r.estimatedCost || "Not specified"}` : `Current Provision: ${r.currentHours || "Nil"}
+Recommended Provision: ${r.recommendedHours || "Not specified"}
+Support Ratio: ${r.ratio || "Not specified"}`}
+
+Tasks Covered:
+${(r.tasks || []).map(t => `- ${t}`).join("\n")}
+
+Clinical Justification: ${r.justification || "Not provided"}
+
+Expected Outcomes:
+${(r.outcomes || []).map(o => `- ${OUTCOME_LABELS[o] || o}`).join("\n")}
+
+Without this support, the participant is at risk of: ${r.consequence || "Not specified"}
+
+Linked Report Sections: ${(r.linkedSections || []).map(s => "S." + s).join(", ") || "None"}
+
+Why NDIS-funded (not independently funded): ${r.s34Justification || "Not provided"}
 
 PREVIOUSLY GENERATED REPORT SECTIONS FOR CONTEXT:
 ${contextSummary}
 
 CRITICAL INSTRUCTIONS:
-For EACH recommendation, write a single cohesive clinical narrative paragraph (not a table, not bullet points) that includes ALL of:
+Write 1 cohesive clinical recommendation paragraph that includes ALL of:
+1. Name the specific diagnosis and explain how it causes the functional limitation requiring this support. Reference the linked report sections.
+2. State current and recommended provision with hours, frequency, and ratio.
+3. List the specific tasks this support will cover.
+4. Explain how this support will help therapeutically.
+5. State expected outcomes.
+6. State the consequence: 'Without this support, ${clientName} is at risk of [specific consequence].'
+7. Close with: 'This support is considered reasonable and necessary under Section 34 of the NDIS Act 2013. [S34 justification].'
 
-1. Bold heading with support name and NDIS category
-2. State current provision and recommended provision with hours, frequency, and ratio
-3. Name the specific diagnosis and explain how it causes the functional limitation that requires this support. Reference the linked report sections.
-4. List the specific tasks this support will cover
-5. Explain how this support will help therapeutically - capacity building, recovery, community integration
-6. State the consequence: 'Without this support, ${clientName} is at risk of [specific consequence]'
-7. Close with: 'This support is considered reasonable and necessary under Section 34 of the NDIS Act 2013. [S34 justification]'
+Use 'is expected to' not 'will'. Name diagnoses explicitly. No bullet points. Plain text only.`;
 
-Use 'is expected to' not 'will'. Name diagnoses explicitly. No bullet points.
-
-After all individual recommendations, write a Total Support Summary paragraph listing the count of supports by NDIS category.`;
-
-                    try {
-                      const { data, error } = await supabase.functions.invoke("generate-report", {
-                        body: { prompt: recsPrompt, max_tokens: 4000 },
-                      });
-                      if (error) throw error;
-                      if (data?.success) {
-                        newContent["recommendations"] = data.text;
-                        generatedSections.push({ title: "Section 18 - Recommendations", text: data.text });
-                        successCount++;
+                      console.log('[DEBUG] Generating recommendation', ri + 1, r.supportName);
+                      try {
+                        const { data, error } = await supabase.functions.invoke("generate-report", {
+                          body: { prompt: recPrompt, max_tokens: 1500 },
+                        });
+                        if (error) throw error;
+                        if (data?.success) {
+                          perRecResults[r.id] = {
+                            text: data.text,
+                            supportName: r.supportName,
+                            category: r.ndisCategory,
+                            currentHours: r.currentHours || "",
+                            recommendedHours: r.recommendedHours || "",
+                            ratio: r.ratio || "",
+                            estimatedCost: r.estimatedCost || "",
+                            isCapital: !!(r.isCapital || r.isConsumable),
+                          };
+                          generatedSections.push({ title: `Recommendation ${ri + 1} - ${r.supportName}`, text: data.text });
+                          successCount++;
+                          console.log('[DEBUG] Recommendation AI response for', r.supportName, ':', data.text?.substring(0, 100));
+                        }
+                      } catch (err: any) {
+                        console.error("Failed to generate recommendation:", r.supportName, err);
                       }
-                    } catch (err: any) {
-                      console.error("Failed to generate recommendations:", err);
                     }
+
+                    // Store as structured JSON so ReportMode can render per-card
+                    newContent["recommendations"] = JSON.stringify(perRecResults);
                   }
 
                   setReportContent(newContent);
