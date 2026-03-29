@@ -5,6 +5,14 @@ import type { ReportData } from "@/ai/reportAssembler";
 import { type AssessmentInstance } from "@/lib/assessment-library";
 import { type RecommendationInstance, OUTCOME_OPTIONS } from "@/lib/recommendations-library";
 import { FunctionalCapacityReport } from "./FunctionalCapacityTables";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 interface ReportModeProps {
   reportContent: Record<string, string>;
@@ -217,6 +225,123 @@ export function ReportMode(props: ReportModeProps) {
                       </div>
                     );
                   })}
+                </div>
+              );
+            }
+
+            // Section 15 — Assessments: render per-assessment structured
+            if (section.id === "assessments") {
+              const rawContent = reportContent["assessments"];
+              if (!rawContent) return null;
+
+              // Try parsing as structured per-assessment JSON
+              let perAssessment: Record<string, {
+                name: string;
+                dateAdministered: string;
+                synopsis: string;
+                scoreRows: { label: string; value: string }[];
+                total: string;
+                classification: string;
+                interpretation: string;
+              }> | null = null;
+              try {
+                perAssessment = JSON.parse(rawContent);
+              } catch {
+                // Legacy: plain text blob
+              }
+
+              if (perAssessment && typeof perAssessment === "object") {
+                const entries = Object.entries(perAssessment);
+                return (
+                  <div key={section.id} className="space-y-8">
+                    <h2 className="text-base font-semibold text-foreground border-b border-border/30 pb-2">
+                      {section.number}. {section.title}
+                    </h2>
+                    {entries.map(([aId, entry], idx) => (
+                      <div key={aId} className="space-y-4 pl-2 border-l-2 border-accent/20">
+                        {/* Assessment heading */}
+                        <h3 className="text-sm font-semibold text-foreground">
+                          15.{idx + 1} {entry.name}
+                        </h3>
+                        {entry.dateAdministered && (
+                          <p className="text-xs text-muted-foreground italic">
+                            Date administered: {entry.dateAdministered}
+                          </p>
+                        )}
+
+                        {/* Synopsis */}
+                        {entry.synopsis && (
+                          <div className="bg-muted/20 border border-border/30 rounded-md p-3">
+                            <h4 className="text-xs font-semibold text-muted-foreground mb-1">Synopsis</h4>
+                            <p className="text-xs text-muted-foreground leading-relaxed">{entry.synopsis}</p>
+                          </div>
+                        )}
+
+                        {/* Results table */}
+                        {(entry.scoreRows?.length > 0 || entry.total || entry.classification) && (
+                          <div>
+                            <h4 className="text-xs font-semibold text-muted-foreground mb-2">Results</h4>
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead className="text-xs h-8">Measure</TableHead>
+                                  <TableHead className="text-xs h-8 text-right">Result</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {entry.total && (
+                                  <TableRow>
+                                    <TableCell className="text-xs py-1.5 font-medium">Total Score</TableCell>
+                                    <TableCell className="text-xs py-1.5 text-right font-mono">{entry.total}</TableCell>
+                                  </TableRow>
+                                )}
+                                {entry.classification && (
+                                  <TableRow>
+                                    <TableCell className="text-xs py-1.5 font-medium">Classification</TableCell>
+                                    <TableCell className="text-xs py-1.5 text-right font-medium text-accent">{entry.classification}</TableCell>
+                                  </TableRow>
+                                )}
+                                {entry.scoreRows?.map((row, ri) => (
+                                  <TableRow key={ri}>
+                                    <TableCell className="text-xs py-1.5 text-foreground/80">{row.label}</TableCell>
+                                    <TableCell className="text-xs py-1.5 text-right font-mono">{row.value}</TableCell>
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </div>
+                        )}
+
+                        {/* AI Interpretation */}
+                        {entry.interpretation && (
+                          <div>
+                            <h4 className="text-xs font-semibold text-muted-foreground mb-2">Interpretation</h4>
+                            <div
+                              className="prose prose-sm max-w-none text-foreground/90"
+                              contentEditable
+                              suppressContentEditableWarning
+                              dangerouslySetInnerHTML={{ __html: entry.interpretation }}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                );
+              }
+
+              // Fallback: render as single prose block (legacy)
+              return (
+                <div key={section.id} className="space-y-3">
+                  <h2 className="text-base font-semibold text-foreground border-b border-border/30 pb-2">
+                    {section.number}. {section.title}
+                  </h2>
+                  <div
+                    className="prose prose-sm max-w-none text-foreground/90"
+                    contentEditable
+                    suppressContentEditableWarning
+                    dangerouslySetInnerHTML={{ __html: rawContent }}
+                  />
                 </div>
               );
             }

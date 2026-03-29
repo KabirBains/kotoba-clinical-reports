@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { TEMPLATE_SECTIONS } from "@/lib/constants";
-import { type AssessmentInstance } from "@/lib/assessment-library";
+import { type AssessmentInstance, ASSESSMENT_LIBRARY, calculateTotal, getClassification, calculateSubscaleTotal } from "@/lib/assessment-library";
 import { type RecommendationInstance } from "@/lib/recommendations-library";
 
 import { KotobaLogo } from "@/components/KotobaLogo";
@@ -383,25 +383,118 @@ Example format:
                     }
                   }
 
-                  // === STEP 2: Generate assessment interpretations ===
-                  const assessmentInterpretations: string[] = [];
+                  // === STEP 2: Generate assessment interpretations (per-assessment structured) ===
+                  const WHODAS_DOMAINS_DEF = [
+                    { id: "cognition", name: "Cognition", items: [1,2,3,4,5,6] },
+                    { id: "mobility", name: "Mobility", items: [7,8,9,10,11] },
+                    { id: "selfcare", name: "Self-Care", items: [12,13,14] },
+                    { id: "getting_along", name: "Getting Along", items: [15,16,17,18,19,20] },
+                    { id: "life_household", name: "Life Activities (Household)", items: [21,22,23,24] },
+                    { id: "life_work", name: "Life Activities (Work/School)", items: [25,26,27,28] },
+                    { id: "participation", name: "Participation", items: [29,30,31,32,33,34,35,36] },
+                  ];
+                  const WHODAS_SCORE_MAP: Record<string, number> = { "None": 0, "Mild": 1, "Moderate": 2, "Severe": 3, "Extreme / Cannot do": 4 };
+
+                  function buildScoreSummary(assessment: AssessmentInstance): { rows: { label: string; value: string }[]; total: string; classification: string } {
+                    const def = ASSESSMENT_LIBRARY.find(d => d.id === assessment.definitionId);
+                    const rows: { label: string; value: string }[] = [];
+                    let total = "";
+                    let classification = "";
+
+                    if (assessment.definitionId === "whodas-2.0") {
+                      let grandTotal = 0;
+                      let maxPossible = 0;
+                      for (const domain of WHODAS_DOMAINS_DEF) {
+                        let domainTotal = 0;
+                        let domainMax = 0;
+                        for (const itemNum of domain.items) {
+                          const val = assessment.scores[`whodas_${itemNum}`];
+                          if (val) { domainTotal += WHODAS_SCORE_MAP[val] ?? 0; domainMax += 4; }
+                        }
+                        if (domainMax > 0) {
+                          const pct = Math.round((domainTotal / domainMax) * 100);
+                          rows.push({ label: domain.name, value: `${pct}%` });
+                          grandTotal += domainTotal;
+                          maxPossible += domainMax;
+                        }
+                      }
+                      if (maxPossible > 0) {
+                        const overallPct = Math.round((grandTotal / maxPossible) * 100);
+                        total = `${grandTotal}/${maxPossible} (${overallPct}%)`;
+                        if (overallPct <= 4) classification = "No disability";
+                        else if (overallPct <= 24) classification = "Mild disability";
+                        else if (overallPct <= 49) classification = "Moderate disability";
+                        else if (overallPct <= 95) classification = "Severe disability";
+                        else classification = "Extreme disability";
+                      }
+                    } else if (def) {
+                      const t = calculateTotal(def, assessment.scores);
+                      classification = getClassification(def, t);
+                      total = String(t);
+                      if (def.subscales.length > 0) {
+                        for (const sub of def.subscales) {
+                          rows.push({ label: sub.label, value: String(calculateSubscaleTotal(def, sub.id, assessment.scores)) });
+                        }
+                      }
+                    }
+
+                    if (assessment.isCustom && assessment.customItems) {
+                      for (const item of assessment.customItems) {
+                        if (item.value) rows.push({ label: item.label, value: item.value });
+                      }
+                    }
+
+                    return { rows, total, classification };
+                  }
+
+                    if (assessment.isCustom && assessment.customItems) {
+                      for (const item of assessment.customItems) {
+                        if (item.value) rows.push({ label: item.label, value: item.value });
+                      }
+                    }
+
+                    return { rows, total, classification };
+                  }
+
+                  const perAssessmentResults: Record<string, {
+                    name: string;
+                    dateAdministered: string;
+                    synopsis: string;
+                    scoreRows: { label: string; value: string }[];
+                    total: string;
+                    classification: string;
+                    interpretation: string;
+                  }> = {};
 
                   for (const assessment of assessments) {
                     if (!assessment.scores || Object.keys(assessment.scores).length === 0) continue;
                     currentStep++;
-                    toast.info(`Generating section ${currentStep} of ${totalSteps} — ${typeof assessment.name === "string" ? assessment.name : "Assessment"}...`);
+                    const aName = typeof assessment.name === "string" ? assessment.name : "Assessment";
+                    toast.info(`Generating section ${currentStep} of ${totalSteps} — ${aName}...`);
 
                     const contextSummary = generatedSections
                       .map(s => `${s.title}: ${typeof s.text === "string" ? s.text.substring(0, 300) : ""}`)
                       .join("\n\n");
 
-                    const assessmentPrompt = `Write the interpretation for ${typeof assessment.name === "string" ? assessment.name : "this assessment"} in Section 15 (Standardised Assessments) of an NDIS Functional Capacity Assessment for ${clientName}.
+                    // Build score summary for this assessment
+                    const scoreSummary = buildScoreSummary(assessment);
+                    const def = ASSESSMENT_LIBRARY.find(d => d.id === assessment.definitionId);
+                    const synopsis = def?.synopsis || "";
 
-ASSESSMENT TOOL: ${typeof assessment.name === "string" ? assessment.name : "Unknown"}
+                    const scoresText = scoreSummary.rows.length > 0
+                      ? scoreSummary.rows.map(r => `- ${r.label}: ${r.value}`).join("\n")
+                      : JSON.stringify(assessment.scores, null, 2);
+
+                    const assessmentPrompt = `Write the interpretation for ${aName} in Section 15 (Standardised Assessments) of an NDIS Functional Capacity Assessment for ${clientName}.
+
+ASSESSMENT TOOL: ${aName}
 DATE ADMINISTERED: ${typeof assessment.dateAdministered === "string" ? assessment.dateAdministered : "Not recorded"}
 
-SCORES:
-${JSON.stringify(assessment.scores, null, 2)}
+TOTAL SCORE: ${scoreSummary.total || "Not calculated"}
+CLASSIFICATION: ${scoreSummary.classification || "Not classified"}
+
+DOMAIN/SUBSCALE SCORES:
+${scoresText}
 
 CLINICIAN INTERPRETATION NOTES:
 ${typeof assessment.interpretation === "string" && assessment.interpretation ? assessment.interpretation : "No clinician notes provided"}
@@ -420,19 +513,26 @@ Paragraph 3: Weave in the clinician's notes. Cross-reference findings from earli
                       });
                       if (error) throw error;
                       if (data?.success) {
-                        const heading = `**${typeof assessment.name === "string" ? assessment.name : "Assessment"}** (${typeof assessment.dateAdministered === "string" ? assessment.dateAdministered : "Date not recorded"})`;
-                        assessmentInterpretations.push(`${heading}\n\n${data.text}`);
+                        perAssessmentResults[assessment.id] = {
+                          name: aName,
+                          dateAdministered: assessment.dateAdministered || "",
+                          synopsis,
+                          scoreRows: scoreSummary.rows,
+                          total: scoreSummary.total,
+                          classification: scoreSummary.classification,
+                          interpretation: data.text,
+                        };
+                        generatedSections.push({ title: `Assessment - ${aName}`, text: data.text });
                         successCount++;
                       }
                     } catch (err: any) {
-                      console.error(`Failed to generate assessment ${assessment.name}:`, err);
+                      console.error(`Failed to generate assessment ${aName}:`, err);
                     }
                   }
 
-                  if (assessmentInterpretations.length > 0) {
-                    const combinedAssessments = assessmentInterpretations.join("\n\n---\n\n");
-                    newContent["assessments"] = combinedAssessments;
-                    generatedSections.push({ title: "Section 15 - Standardised Assessments", text: combinedAssessments });
+                  if (Object.keys(perAssessmentResults).length > 0) {
+                    newContent["assessments"] = JSON.stringify(perAssessmentResults);
+                    generatedSections.push({ title: "Section 15 - Standardised Assessments", text: Object.values(perAssessmentResults).map(a => a.interpretation).join(" ") });
                   }
 
                   // === STEP 3: Generate recommendation narratives (per-card) ===
