@@ -653,7 +653,7 @@ Example format:
                     } else if (def) {
                       // Fallback for library assessments with subscales (e.g. Katz ADL)
                       const t = calculateTotal(def, assessment.scores);
-                      classification = getClassificationLib(def, t);
+                      classification = getClassification(def, t);
                       total = String(t);
                       if (def.subscales.length > 0) {
                         for (const sub of def.subscales) {
