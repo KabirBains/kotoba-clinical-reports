@@ -396,7 +396,7 @@ Example format:
                   const WHODAS_SCORE_MAP: Record<string, number> = { "None": 0, "Mild": 1, "Moderate": 2, "Severe": 3, "Extreme / Cannot do": 4 };
 
                   function buildScoreSummary(assessment: AssessmentInstance): { rows: { label: string; value: string }[]; total: string; classification: string } {
-                    const def = (await import("@/lib/assessment-library")).ASSESSMENT_LIBRARY.find(d => d.id === assessment.definitionId);
+                    const def = ASSESSMENT_LIBRARY.find(d => d.id === assessment.definitionId);
                     const rows: { label: string; value: string }[] = [];
                     let total = "";
                     let classification = "";
@@ -428,17 +428,24 @@ Example format:
                         else classification = "Extreme disability";
                       }
                     } else if (def) {
-                      const { calculateTotal: calcTotal, getClassification: getClass } = await import("@/lib/assessment-library");
-                      const t = calcTotal(def, assessment.scores);
-                      classification = getClass(def, t);
+                      const t = calculateTotal(def, assessment.scores);
+                      classification = getClassification(def, t);
                       total = String(t);
                       if (def.subscales.length > 0) {
-                        const { calculateSubscaleTotal } = await import("@/lib/assessment-library");
                         for (const sub of def.subscales) {
                           rows.push({ label: sub.label, value: String(calculateSubscaleTotal(def, sub.id, assessment.scores)) });
                         }
                       }
                     }
+
+                    if (assessment.isCustom && assessment.customItems) {
+                      for (const item of assessment.customItems) {
+                        if (item.value) rows.push({ label: item.label, value: item.value });
+                      }
+                    }
+
+                    return { rows, total, classification };
+                  }
 
                     if (assessment.isCustom && assessment.customItems) {
                       for (const item of assessment.customItems) {
