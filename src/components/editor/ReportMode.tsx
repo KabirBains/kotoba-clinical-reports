@@ -216,6 +216,72 @@ export function ReportMode(props: ReportModeProps) {
               );
             }
 
+            // Section 18 — Recommendations: render per-card
+            if (section.id === "recommendations") {
+              const rawContent = reportContent["recommendations"];
+              if (!rawContent) return null;
+
+              // Try parsing as structured per-card JSON
+              let perCard: Record<string, { text: string; supportName: string; category: string; currentHours: string; recommendedHours: string; ratio: string; estimatedCost: string; isCapital: boolean }> | null = null;
+              try {
+                perCard = JSON.parse(rawContent);
+              } catch {
+                // Legacy: plain text blob
+              }
+
+              if (perCard && typeof perCard === "object") {
+                const entries = Object.entries(perCard);
+                return (
+                  <div key={section.id} className="space-y-6">
+                    <h2 className="text-base font-semibold text-foreground border-b border-border/30 pb-2">
+                      {section.number}. {section.title}
+                    </h2>
+                    {entries.map(([recId, entry], idx) => (
+                      <div key={recId} className="space-y-2 pl-2 border-l-2 border-border/20">
+                        <h3 className="text-sm font-semibold text-foreground/80">
+                          18.{idx + 1} {entry.supportName}
+                        </h3>
+                        <p className="text-xs text-muted-foreground italic">
+                          {entry.category}
+                          {!entry.isCapital && (
+                            <>
+                              {entry.currentHours && <> · Current: {entry.currentHours}</>}
+                              {entry.recommendedHours && <> · Recommended: {entry.recommendedHours}</>}
+                              {entry.ratio && <> · Ratio: {entry.ratio}</>}
+                            </>
+                          )}
+                          {entry.isCapital && entry.estimatedCost && (
+                            <> · Est. cost: {entry.estimatedCost}</>
+                          )}
+                        </p>
+                        <div
+                          className="prose prose-sm max-w-none text-foreground/90"
+                          contentEditable
+                          suppressContentEditableWarning
+                          dangerouslySetInnerHTML={{ __html: entry.text }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                );
+              }
+
+              // Fallback: render as single prose block (legacy)
+              return (
+                <div key={section.id} className="space-y-3">
+                  <h2 className="text-base font-semibold text-foreground border-b border-border/30 pb-2">
+                    {section.number}. {section.title}
+                  </h2>
+                  <div
+                    className="prose prose-sm max-w-none text-foreground/90"
+                    contentEditable
+                    suppressContentEditableWarning
+                    dangerouslySetInnerHTML={{ __html: rawContent }}
+                  />
+                </div>
+              );
+            }
+
             const content = reportContent[section.id];
             if (!content) return null;
             return (
