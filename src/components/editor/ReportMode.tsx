@@ -5,8 +5,6 @@ import type { ReportData } from "@/ai/reportAssembler";
 import { type AssessmentInstance } from "@/lib/assessment-library";
 import { type RecommendationInstance } from "@/lib/recommendations-library";
 import { FunctionalCapacityReport } from "./FunctionalCapacityTables";
-import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
-import { ChevronDown } from "lucide-react";
 
 interface ReportModeProps {
   reportContent: Record<string, string>;
