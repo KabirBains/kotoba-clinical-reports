@@ -3,7 +3,7 @@ import { FileText } from "lucide-react";
 import DownloadReportButton from "@/components/DownloadReportButton";
 import type { ReportData } from "@/ai/reportAssembler";
 import { type AssessmentInstance } from "@/lib/assessment-library";
-import { type RecommendationInstance } from "@/lib/recommendations-library";
+import { type RecommendationInstance, OUTCOME_OPTIONS } from "@/lib/recommendations-library";
 import { FunctionalCapacityReport } from "./FunctionalCapacityTables";
 
 interface ReportModeProps {
