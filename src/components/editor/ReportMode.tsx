@@ -5,6 +5,8 @@ import type { ReportData } from "@/ai/reportAssembler";
 import { type AssessmentInstance } from "@/lib/assessment-library";
 import { type RecommendationInstance } from "@/lib/recommendations-library";
 import { FunctionalCapacityReport } from "./FunctionalCapacityTables";
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
+import { ChevronDown } from "lucide-react";
 
 interface ReportModeProps {
   reportContent: Record<string, string>;
@@ -125,13 +127,81 @@ export function ReportMode(props: ReportModeProps) {
       ) : (
         <div className="bg-card border border-border/50 rounded-lg shadow-sm p-8 space-y-8">
           {TEMPLATE_SECTIONS.map((section) => {
-            // Section 14 gets its own structured table renderer
+            // Section 14 — render AI-generated prose per domain, with raw table as collapsible fallback
             if (section.id === "functional-capacity") {
+              const DOMAIN_MAP = [
+                { reportKey: "section12_1", noteId: "mobility", label: "14.1 Mobility" },
+                { reportKey: "section12_2", noteId: "transfers", label: "14.2 Transfers" },
+                { reportKey: "section12_3", noteId: "personal-adls", label: "14.3 Personal ADLs" },
+                { reportKey: "section12_4", noteId: "domestic-iadls", label: "14.4 Domestic IADLs" },
+                { reportKey: "section12_5", noteId: "executive-iadls", label: "14.5 Executive IADLs" },
+                { reportKey: "section12_6", noteId: "cognition", label: "14.6 Cognition" },
+                { reportKey: "section12_7", noteId: "communication", label: "14.7 Communication" },
+                { reportKey: "section12_8", noteId: "social-functioning", label: "14.8 Social Functioning" },
+                { reportKey: "section12_9", noteId: "sensory-profile", label: "14.9 Sensory Profile" },
+              ];
+
+              // Check if any AI prose exists for domain subsections
+              const hasAnyDomainProse = DOMAIN_MAP.some(d => {
+                const prose = reportContent[d.reportKey];
+                return typeof prose === "string" && prose.trim();
+              });
+
+              console.log("[DEBUG ReportMode] Section 14 AI prose check:", DOMAIN_MAP.map(d => ({
+                key: d.reportKey,
+                hasContent: !!(reportContent[d.reportKey]?.trim()),
+              })));
+
+              if (!hasAnyDomainProse) {
+                // No AI prose yet — fall back to structured table view
+                return (
+                  <FunctionalCapacityReport
+                    key={section.id}
+                    notes={props.notes}
+                  />
+                );
+              }
+
+              // Render AI-generated prose for each domain
               return (
-                <FunctionalCapacityReport
-                  key={section.id}
-                  notes={props.notes}
-                />
+                <div key={section.id} className="space-y-8">
+                  <h2 className="text-base font-semibold text-foreground border-b border-border/30 pb-2">
+                    14. Functional Capacity — Domain Observations
+                  </h2>
+                  {DOMAIN_MAP.map((domain) => {
+                    const prose = reportContent[domain.reportKey];
+                    if (!prose?.trim()) return null;
+                    return (
+                      <div key={domain.reportKey} className="space-y-2">
+                        <h3 className="text-sm font-semibold text-foreground/80">{domain.label}</h3>
+                        <div
+                          className="prose prose-sm max-w-none text-foreground/90"
+                          contentEditable
+                          suppressContentEditableWarning
+                          dangerouslySetInnerHTML={{ __html: prose }}
+                        />
+                        <Collapsible>
+                          <CollapsibleTrigger className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                            <ChevronDown className="h-3 w-3" />
+                            View raw observations
+                          </CollapsibleTrigger>
+                          <CollapsibleContent className="mt-2 p-3 bg-muted/30 rounded text-xs text-muted-foreground">
+                            {Object.entries(props.notes)
+                              .filter(([k]) => k.startsWith(`${domain.noteId}__`) && k.endsWith("__notes"))
+                              .map(([k, v]) => {
+                                const fieldId = k.replace(`${domain.noteId}__`, "").replace("__notes", "");
+                                const rating = props.notes[`${domain.noteId}__${fieldId}__rating`] || "";
+                                const label = fieldId.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+                                return (
+                                  <div key={k}>{label}: {rating ? `${rating} — ` : ""}{v}</div>
+                                );
+                              })}
+                          </CollapsibleContent>
+                        </Collapsible>
+                      </div>
+                    );
+                  })}
+                </div>
               );
             }
 
