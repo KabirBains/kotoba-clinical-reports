@@ -141,19 +141,12 @@ export function ReportMode(props: ReportModeProps) {
                 { reportKey: "section12_9", noteId: "sensory-profile", label: "14.9 Sensory Profile" },
               ];
 
-              // Check if any AI prose exists for domain subsections
               const hasAnyDomainProse = DOMAIN_MAP.some(d => {
-                const prose = reportContent[d.reportKey];
-                return typeof prose === "string" && prose.trim();
+                const content = reportContent[d.reportKey];
+                return typeof content === "string" && content.trim();
               });
 
-              console.log("[DEBUG ReportMode] Section 14 AI prose check:", DOMAIN_MAP.map(d => ({
-                key: d.reportKey,
-                hasContent: !!(reportContent[d.reportKey]?.trim()),
-              })));
-
               if (!hasAnyDomainProse) {
-                // No AI prose yet — fall back to structured table view
                 return (
                   <FunctionalCapacityReport
                     key={section.id}
@@ -162,15 +155,53 @@ export function ReportMode(props: ReportModeProps) {
                 );
               }
 
-              // Render AI-generated prose for each domain
               return (
                 <div key={section.id} className="space-y-8">
                   <h2 className="text-base font-semibold text-foreground border-b border-border/30 pb-2">
                     14. Functional Capacity — Domain Observations
                   </h2>
                   {DOMAIN_MAP.map((domain) => {
-                    const prose = reportContent[domain.reportKey];
-                    if (!prose?.trim()) return null;
+                    const raw = reportContent[domain.reportKey];
+                    if (!raw?.trim()) return null;
+
+                    // Try to parse as structured per-row JSON
+                    let structured: Record<string, { text: string; rating: string; label: string }> | null = null;
+                    try {
+                      structured = JSON.parse(raw);
+                    } catch {
+                      // Not JSON — legacy single-block prose
+                    }
+
+                    if (structured && typeof structured === "object" && !structured._fullText) {
+                      // Render per-row with subheadings
+                      return (
+                        <div key={domain.reportKey} className="space-y-4">
+                          <h3 className="text-sm font-semibold text-foreground/80">{domain.label}</h3>
+                          {Object.entries(structured).map(([fieldId, entry]) => {
+                            if (!entry?.text) return null;
+                            return (
+                              <div key={fieldId} className="space-y-1 pl-2 border-l-2 border-border/20">
+                                <h4 className="text-sm font-medium text-foreground/70">{entry.label || fieldId}</h4>
+                                {entry.rating && (
+                                  <p className="text-xs text-muted-foreground italic">
+                                    Support level: {entry.rating}
+                                  </p>
+                                )}
+                                <div
+                                  className="prose prose-sm max-w-none text-foreground/90"
+                                  contentEditable
+                                  suppressContentEditableWarning
+                                  dangerouslySetInnerHTML={{ __html: entry.text }}
+                                />
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    }
+
+                    // Fallback: render as single prose block (legacy or _fullText)
+                    const proseText = structured?._fullText?.text || raw;
                     return (
                       <div key={domain.reportKey} className="space-y-2">
                         <h3 className="text-sm font-semibold text-foreground/80">{domain.label}</h3>
@@ -178,26 +209,8 @@ export function ReportMode(props: ReportModeProps) {
                           className="prose prose-sm max-w-none text-foreground/90"
                           contentEditable
                           suppressContentEditableWarning
-                          dangerouslySetInnerHTML={{ __html: prose }}
+                          dangerouslySetInnerHTML={{ __html: proseText }}
                         />
-                        <Collapsible>
-                          <CollapsibleTrigger className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
-                            <ChevronDown className="h-3 w-3" />
-                            View raw observations
-                          </CollapsibleTrigger>
-                          <CollapsibleContent className="mt-2 p-3 bg-muted/30 rounded text-xs text-muted-foreground">
-                            {Object.entries(props.notes)
-                              .filter(([k]) => k.startsWith(`${domain.noteId}__`) && k.endsWith("__notes"))
-                              .map(([k, v]) => {
-                                const fieldId = k.replace(`${domain.noteId}__`, "").replace("__notes", "");
-                                const rating = props.notes[`${domain.noteId}__${fieldId}__rating`] || "";
-                                const label = fieldId.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
-                                return (
-                                  <div key={k}>{label}: {rating ? `${rating} — ` : ""}{v}</div>
-                                );
-                              })}
-                          </CollapsibleContent>
-                        </Collapsible>
                       </div>
                     );
                   })}
