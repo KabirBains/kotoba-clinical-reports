@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { TEMPLATE_SECTIONS } from "@/lib/constants";
-import { type AssessmentInstance } from "@/lib/assessment-library";
+import { type AssessmentInstance, ASSESSMENT_LIBRARY, calculateTotal, getClassification, calculateSubscaleTotal } from "@/lib/assessment-library";
 import { type RecommendationInstance } from "@/lib/recommendations-library";
 
 import { KotobaLogo } from "@/components/KotobaLogo";
@@ -477,8 +477,8 @@ Example format:
                       .join("\n\n");
 
                     // Build score summary for this assessment
-                    const scoreSummary = await buildScoreSummary(assessment);
-                    const def = (await import("@/lib/assessment-library")).ASSESSMENT_LIBRARY.find(d => d.id === assessment.definitionId);
+                    const scoreSummary = buildScoreSummary(assessment);
+                    const def = ASSESSMENT_LIBRARY.find(d => d.id === assessment.definitionId);
                     const synopsis = def?.synopsis || "";
 
                     const scoresText = scoreSummary.rows.length > 0
