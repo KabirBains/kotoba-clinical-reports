@@ -5,6 +5,14 @@ import type { ReportData } from "@/ai/reportAssembler";
 import { type AssessmentInstance } from "@/lib/assessment-library";
 import { type RecommendationInstance, OUTCOME_OPTIONS } from "@/lib/recommendations-library";
 import { FunctionalCapacityReport } from "./FunctionalCapacityTables";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 interface ReportModeProps {
   reportContent: Record<string, string>;
