@@ -295,34 +295,88 @@ Write 2-3 paragraphs of formal NDIS report prose following the observation → i
                     }
                   }
 
-                  // === STEP 1B: Generate domain observation sections (Section 14) ===
+                  // === STEP 1B: Generate domain observation sections (Section 14) per-row ===
                   for (const domain of domainEntries) {
                     currentStep++;
                     toast.info(`Generating section ${currentStep} of ${totalSteps} — ${domain.name}...`);
 
-                    const domainPrompt = `Write the '${domain.name}' subsection of Section 12 (Functional Capacity) of an NDIS FCA for ${clientName}.
+                    // Build per-row data for structured JSON output
+                    const rowData: { fieldId: string; label: string; rating: string; observation: string }[] = [];
+                    for (const [key, val] of Object.entries(notes)) {
+                      if (key.startsWith(`${domain.id}__`) && key.endsWith("__notes")) {
+                        const fieldId = key.replace(`${domain.id}__`, "").replace("__notes", "");
+                        const ratingKey = `${domain.id}__${fieldId}__rating`;
+                        const rating = notes[ratingKey] || "";
+                        const observation = typeof val === "string" ? val.trim() : "";
+                        if (rating || observation) {
+                          const label = fieldId.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+                          rowData.push({ fieldId, label, rating, observation });
+                        }
+                      }
+                    }
+
+                    if (rowData.length === 0) continue;
+
+                    const rowLines = rowData.map(r =>
+                      `- ${r.label} | Support level: ${r.rating || "Not specified"} | Observations: ${r.observation || "Nil documented"}`
+                    ).join("\n");
+
+                    const fieldKeys = rowData.map(r => r.fieldId);
+
+                    const domainPrompt = `You are writing the '${domain.name}' subsection of Section 12 (Functional Capacity) of an NDIS Functional Capacity Assessment for ${clientName}.
 
 DOMAIN: ${domain.name}
 
-CLINICIAN OBSERVATIONS:
-${domain.fields}
+STRUCTURED OBSERVATIONS:
+${rowLines}
 
 DIAGNOSIS CONTEXT: ${diagnosis || "[Not specified]"}
 
-Write 2-3 paragraphs: (1) what was observed including strengths and limitations, (2) functional impact on daily life, (3) close with a clear support need statement. Use person-first language and third-person active voice. No bullet points.`;
+INSTRUCTIONS:
+For EACH row listed above, write 1-2 sentences of formal NDIS clinical prose describing the observed function, impact, and support need.
+Use person-first language. Third-person active voice. No bullet points.
+Do NOT fabricate information beyond what is provided.
 
-                    console.log('[DEBUG] Generating AI prose for domain:', domain.name, 'reportKey:', domain.reportKey);
-                    console.log('[DEBUG] Prompt being sent:', domainPrompt.substring(0, 200));
+CRITICAL: Return your response as valid JSON only — no markdown, no code fences, no extra text.
+The JSON must be an object where each key is the exact field ID from this list: ${JSON.stringify(fieldKeys)}
+Each value must be a string containing the clinical prose for that row.
+
+Example format:
+{"bed": "Mr X requires full physical assistance for bed transfers...", "toilet": "During assessment, Mr X demonstrated..."}`;
+
+                    console.log('[DEBUG] Generating per-row AI prose for domain:', domain.name, 'reportKey:', domain.reportKey);
                     try {
                       const { data, error } = await supabase.functions.invoke("generate-report", {
-                        body: { prompt: domainPrompt, max_tokens: 2000 },
+                        body: { prompt: domainPrompt, max_tokens: 3000 },
                       });
-                      console.log('[DEBUG] AI response for', domain.name, ':', data?.success ? 'SUCCESS' : 'FAILED', data?.text?.substring(0, 100));
+                      console.log('[DEBUG] AI response for', domain.name, ':', data?.success ? 'SUCCESS' : 'FAILED');
                       if (error) throw error;
                       if (!data?.success) throw new Error(data?.error || "Generation failed");
 
-                      newContent[domain.reportKey] = data.text;
-                      generatedSections.push({ title: `Section 12 - ${domain.name}`, text: data.text });
+                      // Parse AI response as structured JSON
+                      let parsed: Record<string, string> = {};
+                      try {
+                        const rawText = data.text.trim().replace(/^```json?\s*/i, "").replace(/```\s*$/, "");
+                        parsed = JSON.parse(rawText);
+                      } catch {
+                        console.warn('[DEBUG] Could not parse per-row JSON for', domain.name, '— storing as single block');
+                        parsed = { _fullText: data.text };
+                      }
+
+                      // Build structured content: { fieldId: { text, rating } }
+                      const structured: Record<string, { text: string; rating: string; label: string }> = {};
+                      for (const row of rowData) {
+                        structured[row.fieldId] = {
+                          text: parsed[row.fieldId] || parsed._fullText || "",
+                          rating: row.rating,
+                          label: row.label,
+                        };
+                      }
+
+                      // Store as JSON string so ReportMode can parse it
+                      newContent[domain.reportKey] = JSON.stringify(structured);
+                      console.log('[DEBUG] Stored structured content for', domain.reportKey, Object.keys(structured));
+                      generatedSections.push({ title: `Section 12 - ${domain.name}`, text: Object.values(parsed).join(" ") });
                       successCount++;
                     } catch (sectionErr: any) {
                       console.error(`[DEBUG] Failed to generate domain ${domain.name}:`, sectionErr);
