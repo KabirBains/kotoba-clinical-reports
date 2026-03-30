@@ -7,6 +7,8 @@ import { TEMPLATE_SECTIONS } from "@/lib/constants";
 import { type AssessmentInstance, ASSESSMENT_LIBRARY, calculateTotal, getClassification, calculateSubscaleTotal } from "@/lib/assessment-library";
 import { type RecommendationInstance } from "@/lib/recommendations-library";
 import { type QueueItem, processQueue } from "@/ai/generationQueue";
+import { getTemplateGuidance, getRubricForSection, FUNCTIONAL_DOMAIN_GUIDANCE, ASSESSMENT_INTERPRETATION_GUIDANCE, RECOMMENDATION_GUIDANCE } from "@/ai/promptGuidance";
+import { SYNOPSIS_LIBRARY } from "@/ai/reportEngine";
 
 import { KotobaLogo } from "@/components/KotobaLogo";
 import { NotesMode } from "@/components/editor/NotesMode";
@@ -252,7 +254,9 @@ export default function ClientEditor() {
 
                   // 1. Top-level text sections
                   for (const [sectionId, observations] of topLevelEntries) {
-                    const prompt = `Write a section of an NDIS Functional Capacity Assessment for ${clientName}.\n\nSECTION: ${sectionId}\n\nCLINICIAN OBSERVATIONS (transform these into formal clinical prose):\n${observations}\n\nDIAGNOSIS CONTEXT: ${diagnosis || "[Not provided]"}\n\nWrite 2-3 paragraphs of formal NDIS report prose. Use observation → impact → support need structure. Person-first language, third-person active voice. No bullet points, no markdown.`;
+                    const templateGuidance = getTemplateGuidance(sectionId);
+                    const rubric = getRubricForSection("text");
+                    const prompt = `Write a section of an NDIS Functional Capacity Assessment for ${clientName}.\n\nSECTION: ${sectionId}\n\n${templateGuidance ? templateGuidance + "\n\n" : ""}CLINICIAN OBSERVATIONS (transform these into formal clinical prose):\n${observations}\n\nDIAGNOSIS CONTEXT: ${diagnosis || "[Not provided]"}\n\n${rubric}\n\nWrite 2-3 paragraphs of formal NDIS report prose. Use observation → impact → support need structure. Person-first language, third-person active voice. No bullet points, no markdown. Output only the section text.`;
                     queueItems.push({ key: sectionId, prompt, maxTokens: 2000, inputForHash: observations, label: `Section: ${sectionId}` });
                   }
 
@@ -264,7 +268,8 @@ export default function ClientEditor() {
                     const fieldKeys = domain.rowData.map(r => r.fieldId);
                     const inputText = domain.rowData.map(r => `${r.fieldId}:${r.rating}:${r.observation}`).join("|");
 
-                    const prompt = `You are writing the '${domain.name}' subsection of Section 12 (Functional Capacity) of an NDIS Functional Capacity Assessment for ${clientName}.\n\nDOMAIN: ${domain.name}\n\nSTRUCTURED OBSERVATIONS:\n${rowLines}\n\nDIAGNOSIS CONTEXT: ${diagnosis || "[Not specified]"}\n\nFor EACH row, write 1-2 sentences of formal NDIS clinical prose describing observed function, impact, and support need. Person-first language, third-person active voice, no bullet points.\n\nReturn valid JSON only — no markdown, no code fences. Keys must be from: ${JSON.stringify(fieldKeys)}\nEach value is a string of clinical prose for that row.\n\nExample: {"bed": "Mr X requires full physical assistance..."}`;
+                    const domainRubric = getRubricForSection("domain");
+                    const prompt = `You are writing the '${domain.name}' subsection of Section 12 (Functional Capacity) of an NDIS Functional Capacity Assessment for ${clientName}.\n\n${FUNCTIONAL_DOMAIN_GUIDANCE}\n\nDOMAIN: ${domain.name}\n\nSTRUCTURED OBSERVATIONS:\n${rowLines}\n\nDIAGNOSIS CONTEXT: ${diagnosis || "[Not specified]"}\n\n${domainRubric}\n\nFor EACH row, write 1-2 sentences of formal NDIS clinical prose describing observed function, impact, and support need. Person-first language, third-person active voice, no bullet points.\n\nReturn valid JSON only — no markdown, no code fences. Keys must be from: ${JSON.stringify(fieldKeys)}\nEach value is a string of clinical prose for that row.\n\nExample: {"bed": "Mr X requires full physical assistance..."}`;
                     queueItems.push({ key: domain.reportKey, prompt, maxTokens: 2000, inputForHash: inputText, label: `Domain: ${domain.name}` });
                   }
 
@@ -517,7 +522,10 @@ export default function ClientEditor() {
                       ? scoreSummary.rows.map(r => `- ${r.label}: ${r.value}`).join("\n")
                       : JSON.stringify(assessment.scores, null, 2);
 
-                    const prompt = `Write the interpretation for ${aName} in Section 15 (Standardised Assessments) of an NDIS Functional Capacity Assessment for ${clientName}.\n\nASSESSMENT TOOL: ${aName}\nDATE ADMINISTERED: ${typeof assessment.dateAdministered === "string" ? assessment.dateAdministered : "Not recorded"}\n\nTOTAL SCORE: ${scoreSummary.total || "Not calculated"}\nCLASSIFICATION: ${scoreSummary.classification || "Not classified"}\n\nDOMAIN/SUBSCALE SCORES:\n${scoresText}\n\nCLINICIAN NOTES:\n${typeof assessment.interpretation === "string" && assessment.interpretation ? assessment.interpretation : "No clinician notes provided"}\n\nWrite 2-3 paragraphs:\nPara 1: What this tool measures and why it was selected.\nPara 2: Scores, classification, highest domains, functional implications.\nPara 3: Clinician notes and cross-references. Person-first language, no markdown.`;
+                    // Get the tool-specific synopsis from the reportEngine library
+                    const toolSynopsis = SYNOPSIS_LIBRARY[assessment.definitionId] || synopsis || "";
+                    const assessRubric = getRubricForSection("assessment");
+                    const prompt = `Write the interpretation for ${aName} in Section 15 (Standardised Assessments) of an NDIS Functional Capacity Assessment for ${clientName}.\n\n${ASSESSMENT_INTERPRETATION_GUIDANCE}\n\n${toolSynopsis ? `FIXED SYNOPSIS (insert verbatim as opening paragraph):\n${toolSynopsis}\n\n` : ""}ASSESSMENT TOOL: ${aName}\nDATE ADMINISTERED: ${typeof assessment.dateAdministered === "string" ? assessment.dateAdministered : "Not recorded"}\n\nTOTAL SCORE: ${scoreSummary.total || "Not calculated"}\nCLASSIFICATION: ${scoreSummary.classification || "Not classified"}\n\nDOMAIN/SUBSCALE SCORES:\n${scoresText}\n\nCLINICIAN NOTES:\n${typeof assessment.interpretation === "string" && assessment.interpretation ? assessment.interpretation : "No clinician notes provided"}\n\n${assessRubric}\n\nWrite 2-3 paragraphs following the interpretation rules above. Person-first language, no markdown. Output only the interpretation text.`;
 
                     const inputHash = `${scoreSummary.total}|${scoreSummary.classification}|${assessment.interpretation || ""}`;
                     queueItems.push({ key: `assessment_${assessment.id}`, prompt, maxTokens: 1500, inputForHash: inputHash, label: `Assessment: ${aName}` });
@@ -536,7 +544,8 @@ export default function ClientEditor() {
 
                   for (let ri = 0; ri < recommendations.length; ri++) {
                     const r = recommendations[ri];
-                    const prompt = `Convert this structured recommendation into formal NDIS clinical prose. Person-first language, no bullet points, no markdown.\n\nParticipant: ${clientName}\nPrimary Diagnosis: ${client?.primary_diagnosis || ""}\n\nRecommendation ${ri + 1}: ${r.supportName}\nCategory: ${r.ndisCategory}\n${r.isCapital || r.isConsumable ? `Estimated Cost: ${r.estimatedCost || "Not specified"}` : `Current Provision: ${r.currentHours || "Nil"}\nRecommended Provision: ${r.recommendedHours || "Not specified"}\nSupport Ratio: ${r.ratio || "Not specified"}`}\n\nTasks:\n${(r.tasks || []).map(t => `- ${t}`).join("\n")}\n\nJustification: ${r.justification || "Not provided"}\nOutcomes:\n${(r.outcomes || []).map(o => `- ${OUTCOME_LABELS[o] || o}`).join("\n")}\nConsequence without support: ${r.consequence || "Not specified"}\nS34 Justification: ${r.s34Justification || "Not provided"}\n\nWrite 1 cohesive paragraph: diagnosis → limitation → support need → hours/ratio → tasks → outcomes → consequence → S34 close. Use 'is expected to' not 'will'.`;
+                    const recRubric = getRubricForSection("recommendation");
+                    const prompt = `${RECOMMENDATION_GUIDANCE}\n\nConvert this structured recommendation into formal NDIS clinical prose. Person-first language, no bullet points, no markdown.\n\nParticipant: ${clientName}\nPrimary Diagnosis: ${client?.primary_diagnosis || ""}\n\nRecommendation ${ri + 1}: ${r.supportName}\nCategory: ${r.ndisCategory}\n${r.isCapital || r.isConsumable ? `Estimated Cost: ${r.estimatedCost || "Not specified"}` : `Current Provision: ${r.currentHours || "Nil"}\nRecommended Provision: ${r.recommendedHours || "Not specified"}\nSupport Ratio: ${r.ratio || "Not specified"}`}\n\nTasks:\n${(r.tasks || []).map(t => `- ${t}`).join("\n")}\n\nJustification: ${r.justification || "Not provided"}\nOutcomes:\n${(r.outcomes || []).map(o => `- ${OUTCOME_LABELS[o] || o}`).join("\n")}\nConsequence without support: ${r.consequence || "Not specified"}\nS34 Justification: ${r.s34Justification || "Not provided"}\n\n${recRubric}\n\nWrite 1 cohesive paragraph following the recommendation reasoning chain above. Use 'is expected to' not 'will'. Output only the recommendation text.`;
 
                     const inputHash = `${r.supportName}|${r.justification || ""}|${r.consequence || ""}|${(r.tasks || []).join(",")}`;
                     queueItems.push({ key: `rec_${r.id}`, prompt, maxTokens: 1500, inputForHash: inputHash, label: `Recommendation: ${r.supportName}` });
