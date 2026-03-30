@@ -6,6 +6,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { TEMPLATE_SECTIONS } from "@/lib/constants";
 import { type AssessmentInstance, ASSESSMENT_LIBRARY, calculateTotal, getClassification, calculateSubscaleTotal } from "@/lib/assessment-library";
 import { type RecommendationInstance } from "@/lib/recommendations-library";
+import { type QueueItem, processQueue } from "@/ai/generationQueue";
 
 import { KotobaLogo } from "@/components/KotobaLogo";
 import { NotesMode } from "@/components/editor/NotesMode";
@@ -195,7 +196,7 @@ export default function ClientEditor() {
                   const clientName = client?.client_name || "the participant";
                   const diagnosis = client?.primary_diagnosis || "";
 
-                  // Collect top-level section notes (exclude compound keys and special keys)
+                  // ── Collect top-level section notes ──
                   const topLevelEntries = Object.entries(notes).filter(
                     ([key, val]) =>
                       typeof val === "string" &&
@@ -206,7 +207,7 @@ export default function ClientEditor() {
                       !key.includes("__")
                   );
 
-                  // Collect structured domain observations (Section 14)
+                  // ── Collect Section 14 domain observations ──
                   const DOMAIN_SUBSECTIONS = [
                     { id: "mobility", name: "Mobility & Upper Limb Function", reportKey: "section12_1" },
                     { id: "transfers", name: "Transfers", reportKey: "section12_2" },
@@ -219,88 +220,8 @@ export default function ClientEditor() {
                     { id: "sensory-profile", name: "Sensory Profile", reportKey: "section12_9" },
                   ];
 
-                  // For each domain, collect all its structured field data
-                  console.log('[DEBUG] All note keys:', Object.keys(notes));
-                  const domainEntries: { id: string; name: string; reportKey: string; fields: string }[] = [];
+                  const domainEntries: { id: string; name: string; reportKey: string; rowData: { fieldId: string; label: string; rating: string; observation: string }[] }[] = [];
                   for (const domain of DOMAIN_SUBSECTIONS) {
-                    const fieldLines: string[] = [];
-                    for (const [key, val] of Object.entries(notes)) {
-                      if (key.startsWith(`${domain.id}__`) && key.endsWith("__notes")) {
-                        const fieldId = key.replace(`${domain.id}__`, "").replace("__notes", "");
-                        const ratingKey = `${domain.id}__${fieldId}__rating`;
-                        const rating = notes[ratingKey] || "";
-                        const observation = typeof val === "string" ? val : "";
-                        if (rating || observation.trim()) {
-                          const label = fieldId.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
-                          fieldLines.push(`${label}: ${rating ? rating + " — " : ""}${observation}`);
-                        }
-                      }
-                    }
-                    if (fieldLines.length > 0) {
-                      domainEntries.push({
-                        ...domain,
-                        fields: fieldLines.join("\n"),
-                      });
-                    }
-                  }
-                  console.log('[DEBUG] Domain entries found:', domainEntries.map(d => ({ name: d.name, fieldCount: d.fields.split('\n').length })));
-
-                  const totalAssessments = assessments.filter(
-                    a => a.scores && Object.keys(a.scores).length > 0
-                  ).length;
-                  const totalRecs = recommendations.length;
-                  const totalSteps = topLevelEntries.length + domainEntries.length + totalAssessments + totalRecs;
-
-                  if (topLevelEntries.length === 0 && domainEntries.length === 0 && totalAssessments === 0 && totalRecs === 0) {
-                    toast.warning("Add notes, assessments, or recommendations before generating.");
-                    setGeneratingReport(false);
-                    return;
-                  }
-
-                  let currentStep = 0;
-                  const newContent: Record<string, string> = { ...reportContent };
-                  let successCount = 0;
-
-                  // Track generated section summaries for cross-referencing
-                  const generatedSections: { title: string; text: string }[] = [];
-
-                  // === STEP 1: Generate top-level text sections from notes ===
-                  for (const [sectionId, observations] of topLevelEntries) {
-                    currentStep++;
-                    toast.info(`Generating section ${currentStep} of ${totalSteps}...`);
-
-                    const prompt = `Write a section of an NDIS Functional Capacity Assessment for ${clientName}.
-
-SECTION: ${sectionId}
-
-CLINICIAN OBSERVATIONS (transform these into formal clinical prose):
-${observations}
-
-DIAGNOSIS CONTEXT: ${diagnosis || "[Not provided]"}
-
-Write 2-3 paragraphs of formal NDIS report prose following the observation → impact → support need structure. Use person-first language and third-person active voice.`;
-
-                    try {
-                      const { data, error } = await supabase.functions.invoke("generate-report", {
-                        body: { prompt, max_tokens: 3000 },
-                      });
-                      if (error) throw error;
-                      if (!data?.success) throw new Error(data?.error || "Generation failed");
-
-                      newContent[sectionId] = data.text;
-                      generatedSections.push({ title: sectionId, text: data.text });
-                      successCount++;
-                    } catch (sectionErr: any) {
-                      console.error(`Failed to generate ${sectionId}:`, sectionErr);
-                    }
-                  }
-
-                  // === STEP 1B: Generate domain observation sections (Section 14) per-row ===
-                  for (const domain of domainEntries) {
-                    currentStep++;
-                    toast.info(`Generating section ${currentStep} of ${totalSteps} — ${domain.name}...`);
-
-                    // Build per-row data for structured JSON output
                     const rowData: { fieldId: string; label: string; rating: string; observation: string }[] = [];
                     for (const [key, val] of Object.entries(notes)) {
                       if (key.startsWith(`${domain.id}__`) && key.endsWith("__notes")) {
@@ -314,76 +235,41 @@ Write 2-3 paragraphs of formal NDIS report prose following the observation → i
                         }
                       }
                     }
-
-                    if (rowData.length === 0) continue;
-
-                    const rowLines = rowData.map(r =>
-                      `- ${r.label} | Support level: ${r.rating || "Not specified"} | Observations: ${r.observation || "Nil documented"}`
-                    ).join("\n");
-
-                    const fieldKeys = rowData.map(r => r.fieldId);
-
-                    const domainPrompt = `You are writing the '${domain.name}' subsection of Section 12 (Functional Capacity) of an NDIS Functional Capacity Assessment for ${clientName}.
-
-DOMAIN: ${domain.name}
-
-STRUCTURED OBSERVATIONS:
-${rowLines}
-
-DIAGNOSIS CONTEXT: ${diagnosis || "[Not specified]"}
-
-INSTRUCTIONS:
-For EACH row listed above, write 1-2 sentences of formal NDIS clinical prose describing the observed function, impact, and support need.
-Use person-first language. Third-person active voice. No bullet points.
-Do NOT fabricate information beyond what is provided.
-
-CRITICAL: Return your response as valid JSON only — no markdown, no code fences, no extra text.
-The JSON must be an object where each key is the exact field ID from this list: ${JSON.stringify(fieldKeys)}
-Each value must be a string containing the clinical prose for that row.
-
-Example format:
-{"bed": "Mr X requires full physical assistance for bed transfers...", "toilet": "During assessment, Mr X demonstrated..."}`;
-
-                    console.log('[DEBUG] Generating per-row AI prose for domain:', domain.name, 'reportKey:', domain.reportKey);
-                    try {
-                      const { data, error } = await supabase.functions.invoke("generate-report", {
-                        body: { prompt: domainPrompt, max_tokens: 3000 },
-                      });
-                      console.log('[DEBUG] AI response for', domain.name, ':', data?.success ? 'SUCCESS' : 'FAILED');
-                      if (error) throw error;
-                      if (!data?.success) throw new Error(data?.error || "Generation failed");
-
-                      // Parse AI response as structured JSON
-                      let parsed: Record<string, string> = {};
-                      try {
-                        const rawText = data.text.trim().replace(/^```json?\s*/i, "").replace(/```\s*$/, "");
-                        parsed = JSON.parse(rawText);
-                      } catch {
-                        console.warn('[DEBUG] Could not parse per-row JSON for', domain.name, '— storing as single block');
-                        parsed = { _fullText: data.text };
-                      }
-
-                      // Build structured content: { fieldId: { text, rating } }
-                      const structured: Record<string, { text: string; rating: string; label: string }> = {};
-                      for (const row of rowData) {
-                        structured[row.fieldId] = {
-                          text: parsed[row.fieldId] || parsed._fullText || "",
-                          rating: row.rating,
-                          label: row.label,
-                        };
-                      }
-
-                      // Store as JSON string so ReportMode can parse it
-                      newContent[domain.reportKey] = JSON.stringify(structured);
-                      console.log('[DEBUG] Stored structured content for', domain.reportKey, Object.keys(structured));
-                      generatedSections.push({ title: `Section 12 - ${domain.name}`, text: Object.values(parsed).join(" ") });
-                      successCount++;
-                    } catch (sectionErr: any) {
-                      console.error(`[DEBUG] Failed to generate domain ${domain.name}:`, sectionErr);
-                    }
+                    if (rowData.length > 0) domainEntries.push({ ...domain, rowData });
                   }
 
-                  // === STEP 2: Generate assessment interpretations (per-assessment structured) ===
+                  const scoredAssessments = assessments.filter(a => a.scores && Object.keys(a.scores).length > 0);
+
+                  if (topLevelEntries.length === 0 && domainEntries.length === 0 && scoredAssessments.length === 0 && recommendations.length === 0) {
+                    toast.warning("Add notes, assessments, or recommendations before generating.");
+                    setGeneratingReport(false);
+                    return;
+                  }
+
+                  // ── Build queue items ──
+                  const queueItems: QueueItem[] = [];
+                  const newContent: Record<string, string> = { ...reportContent };
+
+                  // 1. Top-level text sections
+                  for (const [sectionId, observations] of topLevelEntries) {
+                    const prompt = `Write a section of an NDIS Functional Capacity Assessment for ${clientName}.\n\nSECTION: ${sectionId}\n\nCLINICIAN OBSERVATIONS (transform these into formal clinical prose):\n${observations}\n\nDIAGNOSIS CONTEXT: ${diagnosis || "[Not provided]"}\n\nWrite 2-3 paragraphs of formal NDIS report prose. Use observation → impact → support need structure. Person-first language, third-person active voice. No bullet points, no markdown.`;
+                    queueItems.push({ key: sectionId, prompt, maxTokens: 2000, inputForHash: observations, label: `Section: ${sectionId}` });
+                  }
+
+                  // 2. Section 14 functional domains
+                  for (const domain of domainEntries) {
+                    const rowLines = domain.rowData.map(r =>
+                      `- ${r.label} | Support level: ${r.rating || "Not specified"} | Observations: ${r.observation || "Nil documented"}`
+                    ).join("\n");
+                    const fieldKeys = domain.rowData.map(r => r.fieldId);
+                    const inputText = domain.rowData.map(r => `${r.fieldId}:${r.rating}:${r.observation}`).join("|");
+
+                    const prompt = `You are writing the '${domain.name}' subsection of Section 12 (Functional Capacity) of an NDIS Functional Capacity Assessment for ${clientName}.\n\nDOMAIN: ${domain.name}\n\nSTRUCTURED OBSERVATIONS:\n${rowLines}\n\nDIAGNOSIS CONTEXT: ${diagnosis || "[Not specified]"}\n\nFor EACH row, write 1-2 sentences of formal NDIS clinical prose describing observed function, impact, and support need. Person-first language, third-person active voice, no bullet points.\n\nReturn valid JSON only — no markdown, no code fences. Keys must be from: ${JSON.stringify(fieldKeys)}\nEach value is a string of clinical prose for that row.\n\nExample: {"bed": "Mr X requires full physical assistance..."}`;
+                    queueItems.push({ key: domain.reportKey, prompt, maxTokens: 2000, inputForHash: inputText, label: `Domain: ${domain.name}` });
+                  }
+
+                  // 3. Assessments
+                  // Build score summaries first
                   const WHODAS_DOMAINS_DEF = [
                     { id: "cognition", name: "Cognition", items: [1,2,3,4,5,6] },
                     { id: "mobility", name: "Mobility", items: [7,8,9,10,11] },
@@ -403,11 +289,9 @@ Example format:
                     const sc = assessment.scores;
 
                     if (assessment.definitionId === "whodas-2.0") {
-                      let grandTotal = 0;
-                      let maxPossible = 0;
+                      let grandTotal = 0; let maxPossible = 0;
                       for (const domain of WHODAS_DOMAINS_DEF) {
-                        let domainTotal = 0;
-                        let domainMax = 0;
+                        let domainTotal = 0; let domainMax = 0;
                         for (const itemNum of domain.items) {
                           const val = sc[`whodas_${itemNum}`];
                           if (val) { domainTotal += WHODAS_SCORE_MAP[val] ?? 0; domainMax += 4; }
@@ -415,8 +299,7 @@ Example format:
                         if (domainMax > 0) {
                           const pct = Math.round((domainTotal / domainMax) * 100);
                           rows.push({ label: domain.name, value: `${pct}%` });
-                          grandTotal += domainTotal;
-                          maxPossible += domainMax;
+                          grandTotal += domainTotal; maxPossible += domainMax;
                         }
                       }
                       if (maxPossible > 0) {
@@ -428,9 +311,7 @@ Example format:
                         else if (overallPct <= 95) classification = "Severe disability";
                         else classification = "Extreme disability";
                       }
-
                     } else if (assessment.definitionId === "lsp-16") {
-                      // LSP-16: keys "1".."16", values "0".."3"
                       const LSP_SUBSCALES: Record<string, { name: string; max: number; items: number[] }> = {
                         withdrawal: { name: "Withdrawal", max: 12, items: [1, 2, 3, 8] },
                         selfcare: { name: "Self-Care", max: 15, items: [4, 5, 6, 9, 16] },
@@ -451,10 +332,7 @@ Example format:
                         for (const n of sub.items) { const v = sc[String(n)]; if (v !== undefined && v !== "") subSum += parseInt(v); }
                         rows.push({ label: sub.name, value: `${subSum}/${sub.max}` });
                       }
-                      console.log("[DEBUG] LSP-16 buildScoreSummary:", { sum, answered, total, classification });
-
                     } else if (assessment.definitionId === "zarit") {
-                      // Zarit: keys "1".."22", values "0".."4"
                       let sum = 0; let answered = 0;
                       for (let i = 1; i <= 22; i++) {
                         const val = sc[String(i)];
@@ -466,13 +344,8 @@ Example format:
                         else if (sum <= 40) classification = "Mild to Moderate Burden";
                         else if (sum <= 60) classification = "Moderate to Severe Burden";
                         else classification = "Severe Burden";
-                      } else {
-                        classification = `Incomplete (${answered}/22)`;
-                      }
-                      console.log("[DEBUG] Zarit buildScoreSummary:", { sum, answered, total, classification });
-
+                      } else { classification = `Incomplete (${answered}/22)`; }
                     } else if (assessment.definitionId === "frat") {
-                      // FRAT: Part 1 keys "part1_recent_falls", "part1_medications", "part1_psychological", "part1_cognitive"
                       const FRAT_ITEMS = [
                         { id: "recent_falls", name: "Recent Falls", options: [
                           { text: "None in last 12 months", score: 2 }, { text: "One or more between 3 and 12 months ago", score: 4 },
@@ -497,77 +370,48 @@ Example format:
                         if (idx !== undefined && idx !== "") {
                           const optIdx = parseInt(idx);
                           const score = item.options[optIdx]?.score ?? 0;
-                          fratTotal += score;
-                          fratAnswered++;
+                          fratTotal += score; fratAnswered++;
                           rows.push({ label: item.name, value: `${item.options[optIdx]?.text} (${score})` });
                         }
                       }
                       const anyAutoHigh = sc["auto_functional_change"] === "true" || sc["auto_dizziness"] === "true";
-                      if (anyAutoHigh) {
-                        classification = "High risk (automatic trigger)";
-                        total = `${fratTotal}/20 (auto HIGH)`;
-                      } else if (fratAnswered === 4) {
+                      if (anyAutoHigh) { classification = "High risk (automatic trigger)"; total = `${fratTotal}/20 (auto HIGH)`; }
+                      else if (fratAnswered === 4) {
                         total = `${fratTotal}/20`;
                         if (fratTotal >= 16) classification = "High risk";
                         else if (fratTotal >= 12) classification = "Medium risk";
                         else classification = "Low risk";
-                      } else {
-                        total = `${fratTotal}/20 (${fratAnswered}/4 answered)`;
-                        classification = "Incomplete";
-                      }
-                      // AMTS subscore
+                      } else { total = `${fratTotal}/20 (${fratAnswered}/4 answered)`; classification = "Incomplete"; }
                       let amtsTotal = 0; let amtsAnswered = 0;
-                      for (let i = 1; i <= 10; i++) {
-                        const v = sc[`amts_${i}`];
-                        if (v !== undefined && v !== "") { amtsTotal += parseInt(v); amtsAnswered++; }
-                      }
+                      for (let i = 1; i <= 10; i++) { const v = sc[`amts_${i}`]; if (v !== undefined && v !== "") { amtsTotal += parseInt(v); amtsAnswered++; } }
                       if (amtsAnswered > 0) rows.push({ label: "AMTS Score", value: `${amtsTotal}/10` });
-                      console.log("[DEBUG] FRAT buildScoreSummary:", { fratTotal, fratAnswered, anyAutoHigh, total, classification });
-
                     } else if (assessment.definitionId === "cans") {
-                      // CANS: keys "1".."28" (true/false), "__cans_level" for override
                       const CANS_GROUPS = [
                         { id: "A", name: "Group A", items: [1,2,3,4,5,6,7,8,9,10] },
                         { id: "B", name: "Group B", items: [11,12,13,14] },
                         { id: "C", name: "Group C", items: [15,16,17,18,19,20,21,22,23,24,25] },
                         { id: "D", name: "Group D", items: [26,27,28] },
                       ];
-                      let totalYes = 0; let totalAnswered = 0;
-                      let highestGroup: string | null = null;
+                      let totalYes = 0; let totalAnswered = 0; let highestGroup: string | null = null;
                       for (const g of CANS_GROUPS) {
                         let groupYes = 0; let groupAnswered = 0;
-                        for (const n of g.items) {
-                          const v = sc[String(n)];
-                          if (v === "true") { groupYes++; groupAnswered++; }
-                          else if (v === "false") { groupAnswered++; }
-                        }
-                        totalYes += groupYes;
-                        totalAnswered += groupAnswered;
+                        for (const n of g.items) { const v = sc[String(n)]; if (v === "true") { groupYes++; groupAnswered++; } else if (v === "false") { groupAnswered++; } }
+                        totalYes += groupYes; totalAnswered += groupAnswered;
                         if (groupYes > 0 && !highestGroup) highestGroup = g.id;
                         rows.push({ label: g.name, value: `${groupYes} needs identified` });
                       }
                       const cansLevel = sc["__cans_level"] || null;
                       const CANS_LEVELS: Record<string, string> = {
                         "7": "Cannot be left alone — 24hr support", "6": "Can be left alone a few hours — 20–23hr support",
-                        "5": "Can be left alone part of day, not overnight — 12–19hr", "4.3": "Can be left alone part of day and overnight — up to 11hr (Group A)",
+                        "5": "Can be left alone part of day, not overnight — 12–19hr", "4.3": "Up to 11hr (Group A)",
                         "4.2": "Up to 11hr (Group B)", "4.1": "Up to 11hr (Group C)",
                         "3": "Needs support a few days a week", "2": "Needs support at least once a week",
                         "1": "Needs intermittent support (less than weekly)", "0": "No support needed",
                       };
-                      if (cansLevel) {
-                        total = `Level ${cansLevel}`;
-                        classification = CANS_LEVELS[cansLevel] || `Level ${cansLevel}`;
-                      } else if (highestGroup) {
-                        total = `${totalYes} needs identified`;
-                        classification = `Highest group: ${highestGroup} (level not set)`;
-                      } else if (totalAnswered === 28) {
-                        total = "0 needs identified";
-                        classification = "No support needed (Level 0)";
-                      }
-                      console.log("[DEBUG] CANS buildScoreSummary:", { totalYes, totalAnswered, highestGroup, cansLevel, total, classification });
-
+                      if (cansLevel) { total = `Level ${cansLevel}`; classification = CANS_LEVELS[cansLevel] || `Level ${cansLevel}`; }
+                      else if (highestGroup) { total = `${totalYes} needs identified`; classification = `Highest group: ${highestGroup} (level not set)`; }
+                      else if (totalAnswered === 28) { total = "0 needs identified"; classification = "No support needed (Level 0)"; }
                     } else if (assessment.definitionId === "lawton-iadl") {
-                      // Lawton IADL: keys are domain ids ("telephone", "shopping", etc.), values are option indices
                       const LAWTON_DOMAINS = [
                         { id: "telephone", name: "Telephone", maleIncluded: true, options: [1,1,1,0] },
                         { id: "shopping", name: "Shopping", maleIncluded: true, options: [1,0,0,0] },
@@ -586,8 +430,7 @@ Example format:
                         if (val !== undefined && val !== "") {
                           const optIdx = parseInt(val);
                           const score = domain.options[optIdx] ?? 0;
-                          sum += score;
-                          answered++;
+                          sum += score; answered++;
                           rows.push({ label: domain.name, value: score === 1 ? "Independent" : "Dependent" });
                         }
                       }
@@ -595,10 +438,7 @@ Example format:
                       if (sum === activeDomains.length) classification = "High function — independent";
                       else if (sum >= 5) classification = "Moderate function — some assistance needed";
                       else classification = "Low function — significant assistance needed";
-                      console.log("[DEBUG] Lawton IADL buildScoreSummary:", { sum, answered, total, classification, gender });
-
                     } else if (assessment.definitionId === "sensory-profile") {
-                      // Sensory Profile: keys "1".."60", values "1".."5"; quadrant scoring with age norms
                       const SP_QUADRANTS: Record<string, { name: string; items: number[] }> = {
                         registration: { name: "Low Registration", items: [3,6,12,15,21,23,36,37,39,41,44,45,52,55,59] },
                         seeking: { name: "Sensation Seeking", items: [2,4,8,10,14,17,19,28,30,32,40,42,47,50,58] },
@@ -638,20 +478,13 @@ Example format:
                         let classLabel = "Incomplete";
                         if (answered === q.items.length) {
                           const norms = SP_NORMS[ageGroup]?.[key];
-                          if (norms) {
-                            for (const [clKey, range] of Object.entries(norms)) {
-                              if (sum >= range[0] && sum <= range[1]) { classLabel = CLASS_LABELS[clKey] || clKey; break; }
-                            }
-                          }
+                          if (norms) { for (const [clKey, range] of Object.entries(norms)) { if (sum >= range[0] && sum <= range[1]) { classLabel = CLASS_LABELS[clKey] || clKey; break; } } }
                         }
                         rows.push({ label: q.name, value: `${sum}/75 — ${classLabel}` });
                       }
                       total = `${totalAnswered}/60 items scored`;
                       classification = "See quadrant breakdown";
-                      console.log("[DEBUG] Sensory Profile buildScoreSummary:", { totalAnswered, rows });
-
                     } else if (def) {
-                      // Fallback for library assessments with subscales (e.g. Katz ADL)
                       const t = calculateTotal(def, assessment.scores);
                       classification = getClassification(def, t);
                       total = String(t);
@@ -668,186 +501,142 @@ Example format:
                       }
                     }
 
-                    console.log("[DEBUG] buildScoreSummary result for", assessment.definitionId, ":", { total, classification, rowCount: rows.length });
                     return { rows, total, classification };
                   }
-                  const perAssessmentResults: Record<string, {
-                    name: string;
-                    dateAdministered: string;
-                    synopsis: string;
-                    scoreRows: { label: string; value: string }[];
-                    total: string;
-                    classification: string;
-                    interpretation: string;
-                  }> = {};
 
-                  for (const assessment of assessments) {
-                    if (!assessment.scores || Object.keys(assessment.scores).length === 0) continue;
-                    currentStep++;
-                    const aName = typeof assessment.name === "string" ? assessment.name : "Assessment";
-                    toast.info(`Generating section ${currentStep} of ${totalSteps} — ${aName}...`);
-
-                    const contextSummary = generatedSections
-                      .map(s => `${s.title}: ${typeof s.text === "string" ? s.text.substring(0, 300) : ""}`)
-                      .join("\n\n");
-
-                    // Build score summary for this assessment
+                  // Pre-compute assessment data for queue items
+                  const assessmentMeta: { assessment: AssessmentInstance; scoreSummary: ReturnType<typeof buildScoreSummary>; synopsis: string; aName: string }[] = [];
+                  for (const assessment of scoredAssessments) {
                     const scoreSummary = buildScoreSummary(assessment);
                     const def = ASSESSMENT_LIBRARY.find(d => d.id === assessment.definitionId);
                     const synopsis = def?.synopsis || "";
+                    const aName = typeof assessment.name === "string" ? assessment.name : "Assessment";
+                    assessmentMeta.push({ assessment, scoreSummary, synopsis, aName });
 
                     const scoresText = scoreSummary.rows.length > 0
                       ? scoreSummary.rows.map(r => `- ${r.label}: ${r.value}`).join("\n")
                       : JSON.stringify(assessment.scores, null, 2);
 
-                    const assessmentPrompt = `Write the interpretation for ${aName} in Section 15 (Standardised Assessments) of an NDIS Functional Capacity Assessment for ${clientName}.
+                    const prompt = `Write the interpretation for ${aName} in Section 15 (Standardised Assessments) of an NDIS Functional Capacity Assessment for ${clientName}.\n\nASSESSMENT TOOL: ${aName}\nDATE ADMINISTERED: ${typeof assessment.dateAdministered === "string" ? assessment.dateAdministered : "Not recorded"}\n\nTOTAL SCORE: ${scoreSummary.total || "Not calculated"}\nCLASSIFICATION: ${scoreSummary.classification || "Not classified"}\n\nDOMAIN/SUBSCALE SCORES:\n${scoresText}\n\nCLINICIAN NOTES:\n${typeof assessment.interpretation === "string" && assessment.interpretation ? assessment.interpretation : "No clinician notes provided"}\n\nWrite 2-3 paragraphs:\nPara 1: What this tool measures and why it was selected.\nPara 2: Scores, classification, highest domains, functional implications.\nPara 3: Clinician notes and cross-references. Person-first language, no markdown.`;
 
-ASSESSMENT TOOL: ${aName}
-DATE ADMINISTERED: ${typeof assessment.dateAdministered === "string" ? assessment.dateAdministered : "Not recorded"}
+                    const inputHash = `${scoreSummary.total}|${scoreSummary.classification}|${assessment.interpretation || ""}`;
+                    queueItems.push({ key: `assessment_${assessment.id}`, prompt, maxTokens: 1500, inputForHash: inputHash, label: `Assessment: ${aName}` });
+                  }
 
-TOTAL SCORE: ${scoreSummary.total || "Not calculated"}
-CLASSIFICATION: ${scoreSummary.classification || "Not classified"}
+                  // 4. Recommendations
+                  const OUTCOME_LABELS: Record<string, string> = {
+                    maintain_safety: "Maintain safety and wellbeing",
+                    build_capacity: "Build capacity toward independence",
+                    social_participation: "Increase social and community participation",
+                    reduce_informal: "Reduce reliance on informal supports",
+                    achieve_goals: "Support achievement of NDIS goals",
+                    prevent_deterioration: "Prevent functional deterioration",
+                    prevent_hospitalisation: "Reduce risk of hospitalisation or crisis",
+                  };
 
-DOMAIN/SUBSCALE SCORES:
-${scoresText}
+                  for (let ri = 0; ri < recommendations.length; ri++) {
+                    const r = recommendations[ri];
+                    const prompt = `Convert this structured recommendation into formal NDIS clinical prose. Person-first language, no bullet points, no markdown.\n\nParticipant: ${clientName}\nPrimary Diagnosis: ${client?.primary_diagnosis || ""}\n\nRecommendation ${ri + 1}: ${r.supportName}\nCategory: ${r.ndisCategory}\n${r.isCapital || r.isConsumable ? `Estimated Cost: ${r.estimatedCost || "Not specified"}` : `Current Provision: ${r.currentHours || "Nil"}\nRecommended Provision: ${r.recommendedHours || "Not specified"}\nSupport Ratio: ${r.ratio || "Not specified"}`}\n\nTasks:\n${(r.tasks || []).map(t => `- ${t}`).join("\n")}\n\nJustification: ${r.justification || "Not provided"}\nOutcomes:\n${(r.outcomes || []).map(o => `- ${OUTCOME_LABELS[o] || o}`).join("\n")}\nConsequence without support: ${r.consequence || "Not specified"}\nS34 Justification: ${r.s34Justification || "Not provided"}\n\nWrite 1 cohesive paragraph: diagnosis → limitation → support need → hours/ratio → tasks → outcomes → consequence → S34 close. Use 'is expected to' not 'will'.`;
 
-CLINICIAN INTERPRETATION NOTES:
-${typeof assessment.interpretation === "string" && assessment.interpretation ? assessment.interpretation : "No clinician notes provided"}
+                    const inputHash = `${r.supportName}|${r.justification || ""}|${r.consequence || ""}|${(r.tasks || []).join(",")}`;
+                    queueItems.push({ key: `rec_${r.id}`, prompt, maxTokens: 1500, inputForHash: inputHash, label: `Recommendation: ${r.supportName}` });
+                  }
 
-PREVIOUSLY GENERATED REPORT SECTIONS FOR CONTEXT:
-${contextSummary}
+                  // ── Process queue sequentially with throttle ──
+                  const results = await processQueue(queueItems, (step, total, label, status) => {
+                    if (status === "generating") {
+                      toast.info(`Generating ${step} of ${total} — ${label}...`);
+                    }
+                  });
 
-Write 2-3 paragraphs of formal NDIS clinical prose:
-Paragraph 1: State what this assessment tool measures and why it was selected for this participant.
-Paragraph 2: State the scores and classification. Identify the highest-scoring domains or subscales and describe their functional implications.
-Paragraph 3: Weave in the clinician's notes. Cross-reference findings from earlier sections of the report using the format: 'This finding is consistent with [observation] documented in Section [X] of this report.'`;
+                  // ── Map results back ──
+                  let successCount = 0;
 
-                    try {
-                      const { data, error } = await supabase.functions.invoke("generate-report", {
-                        body: { prompt: assessmentPrompt, max_tokens: 2000 },
-                      });
-                      if (error) throw error;
-                      if (data?.success) {
-                        perAssessmentResults[assessment.id] = {
-                          name: aName,
-                          dateAdministered: assessment.dateAdministered || "",
-                          synopsis,
-                          scoreRows: scoreSummary.rows,
-                          total: scoreSummary.total,
-                          classification: scoreSummary.classification,
-                          interpretation: data.text,
+                  for (const result of results) {
+                    if (result.skipped && result.skipReason === "unchanged") {
+                      // Keep existing content
+                      successCount++;
+                      continue;
+                    }
+                    if (!result.success) continue;
+
+                    // Top-level sections
+                    const topMatch = topLevelEntries.find(([id]) => id === result.key);
+                    if (topMatch) { newContent[result.key] = result.text || ""; successCount++; continue; }
+
+                    // Domain sections — parse JSON response
+                    const domainMatch = domainEntries.find(d => d.reportKey === result.key);
+                    if (domainMatch && result.text) {
+                      let parsed: Record<string, string> = {};
+                      try {
+                        const rawText = result.text.trim().replace(/^```json?\s*/i, "").replace(/```\s*$/, "");
+                        parsed = JSON.parse(rawText);
+                      } catch { parsed = { _fullText: result.text }; }
+
+                      const structured: Record<string, { text: string; rating: string; label: string }> = {};
+                      for (const row of domainMatch.rowData) {
+                        structured[row.fieldId] = { text: parsed[row.fieldId] || parsed._fullText || "", rating: row.rating, label: row.label };
+                      }
+                      newContent[result.key] = JSON.stringify(structured);
+                      successCount++;
+                      continue;
+                    }
+
+                    // Assessments
+                    if (result.key.startsWith("assessment_")) {
+                      const assessId = result.key.replace("assessment_", "");
+                      const meta = assessmentMeta.find(m => m.assessment.id === assessId);
+                      if (meta) {
+                        // Build per-assessment result entry
+                        const existing = newContent["assessments"] ? JSON.parse(newContent["assessments"]) : {};
+                        existing[assessId] = {
+                          name: meta.aName,
+                          dateAdministered: meta.assessment.dateAdministered || "",
+                          synopsis: meta.synopsis,
+                          scoreRows: meta.scoreSummary.rows,
+                          total: meta.scoreSummary.total,
+                          classification: meta.scoreSummary.classification,
+                          interpretation: result.text || "",
                         };
-                        generatedSections.push({ title: `Assessment - ${aName}`, text: data.text });
+                        newContent["assessments"] = JSON.stringify(existing);
                         successCount++;
                       }
-                    } catch (err: any) {
-                      console.error(`Failed to generate assessment ${aName}:`, err);
+                      continue;
                     }
-                  }
 
-                  if (Object.keys(perAssessmentResults).length > 0) {
-                    newContent["assessments"] = JSON.stringify(perAssessmentResults);
-                    generatedSections.push({ title: "Section 15 - Standardised Assessments", text: Object.values(perAssessmentResults).map(a => a.interpretation).join(" ") });
-                  }
-
-                  // === STEP 3: Generate recommendation narratives (per-card) ===
-                  if (recommendations.length > 0) {
-                    const contextSummary = generatedSections
-                      .map(s => `${s.title}: ${typeof s.text === "string" ? s.text.substring(0, 300) : ""}`)
-                      .join("\n\n");
-
-                    const OUTCOME_LABELS: Record<string, string> = {
-                      maintain_safety: "Maintain safety and wellbeing",
-                      build_capacity: "Build capacity toward independence",
-                      social_participation: "Increase social and community participation",
-                      reduce_informal: "Reduce reliance on informal supports",
-                      achieve_goals: "Support achievement of NDIS goals",
-                      prevent_deterioration: "Prevent functional deterioration",
-                      prevent_hospitalisation: "Reduce risk of hospitalisation or crisis",
-                    };
-
-                    const perRecResults: Record<string, { text: string; supportName: string; category: string; currentHours: string; recommendedHours: string; ratio: string; estimatedCost: string; isCapital: boolean }> = {};
-
-                    for (let ri = 0; ri < recommendations.length; ri++) {
+                    // Recommendations
+                    if (result.key.startsWith("rec_")) {
+                      const recId = result.key.replace("rec_", "");
+                      const ri = recommendations.findIndex(r => r.id === recId);
                       const r = recommendations[ri];
-                      currentStep++;
-                      toast.info(`Generating section ${currentStep} of ${totalSteps} — Recommendation ${ri + 1}: ${r.supportName}...`);
-
-                      const recPrompt = `Convert the following structured recommendation entry into formal NDIS clinical prose for a Functional Capacity Assessment report.
-Use only the information provided. Do not fabricate. Use person-first language. Use formal clinical writing. No bullet points. Plain text only.
-
-Participant: ${clientName}
-Primary Diagnosis: ${client?.primary_diagnosis || ""}
-
-Recommendation Number: 18.${ri + 1}
-Support Name: ${r.supportName}
-Category: ${r.ndisCategory}
-${r.isCapital || r.isConsumable ? `Estimated Cost: ${r.estimatedCost || "Not specified"}` : `Current Provision: ${r.currentHours || "Nil"}
-Recommended Provision: ${r.recommendedHours || "Not specified"}
-Support Ratio: ${r.ratio || "Not specified"}`}
-
-Tasks Covered:
-${(r.tasks || []).map(t => `- ${t}`).join("\n")}
-
-Clinical Justification: ${r.justification || "Not provided"}
-
-Expected Outcomes:
-${(r.outcomes || []).map(o => `- ${OUTCOME_LABELS[o] || o}`).join("\n")}
-
-Without this support, the participant is at risk of: ${r.consequence || "Not specified"}
-
-Linked Report Sections: ${(r.linkedSections || []).map(s => "S." + s).join(", ") || "None"}
-
-Why NDIS-funded (not independently funded): ${r.s34Justification || "Not provided"}
-
-PREVIOUSLY GENERATED REPORT SECTIONS FOR CONTEXT:
-${contextSummary}
-
-CRITICAL INSTRUCTIONS:
-Write 1 cohesive clinical recommendation paragraph that includes ALL of:
-1. Name the specific diagnosis and explain how it causes the functional limitation requiring this support. Reference the linked report sections.
-2. State current and recommended provision with hours, frequency, and ratio.
-3. List the specific tasks this support will cover.
-4. Explain how this support will help therapeutically.
-5. State expected outcomes.
-6. State the consequence: 'Without this support, ${clientName} is at risk of [specific consequence].'
-7. Close with: 'This support is considered reasonable and necessary under Section 34 of the NDIS Act 2013. [S34 justification].'
-
-Use 'is expected to' not 'will'. Name diagnoses explicitly. No bullet points. Plain text only.`;
-
-                      console.log('[DEBUG] Generating recommendation', ri + 1, r.supportName);
-                      try {
-                        const { data, error } = await supabase.functions.invoke("generate-report", {
-                          body: { prompt: recPrompt, max_tokens: 1500 },
-                        });
-                        if (error) throw error;
-                        if (data?.success) {
-                          perRecResults[r.id] = {
-                            text: data.text,
-                            supportName: r.supportName,
-                            category: r.ndisCategory,
-                            currentHours: r.currentHours || "",
-                            recommendedHours: r.recommendedHours || "",
-                            ratio: r.ratio || "",
-                            estimatedCost: r.estimatedCost || "",
-                            isCapital: !!(r.isCapital || r.isConsumable),
-                          };
-                          generatedSections.push({ title: `Recommendation ${ri + 1} - ${r.supportName}`, text: data.text });
-                          successCount++;
-                          console.log('[DEBUG] Recommendation AI response for', r.supportName, ':', data.text?.substring(0, 100));
-                        }
-                      } catch (err: any) {
-                        console.error("Failed to generate recommendation:", r.supportName, err);
+                      if (r) {
+                        const existing = newContent["recommendations"] ? JSON.parse(newContent["recommendations"]) : {};
+                        existing[r.id] = {
+                          text: result.text || "",
+                          supportName: r.supportName,
+                          category: r.ndisCategory,
+                          currentHours: r.currentHours || "",
+                          recommendedHours: r.recommendedHours || "",
+                          ratio: r.ratio || "",
+                          estimatedCost: r.estimatedCost || "",
+                          isCapital: !!(r.isCapital || r.isConsumable),
+                        };
+                        newContent["recommendations"] = JSON.stringify(existing);
+                        successCount++;
                       }
+                      continue;
                     }
-
-                    // Store as structured JSON so ReportMode can render per-card
-                    newContent["recommendations"] = JSON.stringify(perRecResults);
                   }
 
                   setReportContent(newContent);
                   setMode("report");
-                  toast.success(`Generated ${successCount}/${totalSteps} sections successfully. Use the Download button to build your .docx.`);
+
+                  const skippedCount = results.filter(r => r.skipped).length;
+                  const failedCount = results.filter(r => !r.success && !r.skipped).length;
+                  let msg = `Generated ${successCount}/${queueItems.length} sections.`;
+                  if (skippedCount > 0) msg += ` ${skippedCount} skipped (unchanged).`;
+                  if (failedCount > 0) msg += ` ${failedCount} failed.`;
+                  toast.success(msg);
                 } catch (err: any) {
                   console.error("Generation error:", err);
                   toast.error("Failed to generate: " + (err?.message || "Unknown error"));
