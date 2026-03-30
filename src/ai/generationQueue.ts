@@ -1,0 +1,166 @@
+// ============================================================
+// GENERATION QUEUE — Sequential, throttled AI generation
+// ============================================================
+// Prevents 429 rate limits by:
+// 1. Processing requests sequentially with a configurable delay
+// 2. Retrying once on 429 after a longer backoff
+// 3. Skipping items whose input hasn't changed (dirty-check)
+// 4. Preventing duplicate in-flight calls for the same key
+// ============================================================
+
+import { supabase } from "@/integrations/supabase/client";
+
+const INTER_REQUEST_DELAY = 2500; // ms between requests
+const RETRY_429_DELAY = 8000;     // ms to wait on 429 before single retry
+
+// ── In-flight tracking ──────────────────────────────────────
+const inFlight = new Set<string>();
+
+// ── Input hash cache (key → hash of last generated input) ───
+const inputHashCache = new Map<string, string>();
+
+function simpleHash(str: string): string {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const ch = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + ch;
+    hash |= 0;
+  }
+  return String(hash);
+}
+
+export function hasInputChanged(key: string, input: string): boolean {
+  const hash = simpleHash(input);
+  const prev = inputHashCache.get(key);
+  if (prev === hash) return false;
+  return true;
+}
+
+export function markInputGenerated(key: string, input: string): void {
+  inputHashCache.set(key, simpleHash(input));
+}
+
+export function clearInputCache(): void {
+  inputHashCache.clear();
+}
+
+// ── Queue item type ─────────────────────────────────────────
+export interface QueueItem {
+  key: string;          // unique identifier (e.g. "section12_1", "rec_abc123")
+  prompt: string;       // the AI prompt
+  maxTokens: number;
+  inputForHash: string; // raw input text to hash for dirty-check
+  label: string;        // human-readable label for logs/toasts
+}
+
+export interface QueueResult {
+  key: string;
+  success: boolean;
+  text?: string;
+  skipped?: boolean;
+  skipReason?: string;
+  error?: string;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(r => setTimeout(r, ms));
+}
+
+// ── Single invoke with 429 retry ────────────────────────────
+async function invokeWithRetry(prompt: string, maxTokens: number, label: string): Promise<{ success: boolean; text?: string; error?: string }> {
+  const doCall = async () => {
+    const { data, error } = await supabase.functions.invoke("generate-report", {
+      body: { prompt, max_tokens: maxTokens },
+    });
+    if (error) {
+      const errMsg = error.message || "";
+      // Check if it's a 429 from the edge function response
+      if (errMsg.includes("429") || errMsg.includes("rate") || errMsg.includes("Rate")) {
+        return { is429: true, data: null, error: errMsg };
+      }
+      return { is429: false, data: null, error: errMsg };
+    }
+    if (!data?.success) {
+      const detail = data?.details || data?.error || "";
+      if (detail.includes("429") || detail.includes("rate")) {
+        return { is429: true, data: null, error: detail };
+      }
+      return { is429: false, data: null, error: data?.error || "Generation failed" };
+    }
+    return { is429: false, data, error: null };
+  };
+
+  // First attempt
+  const r1 = await doCall();
+  if (!r1.error) return { success: true, text: r1.data?.text };
+
+  if (r1.is429) {
+    console.log(`[QUEUE] 429 rate limit for "${label}" — waiting ${RETRY_429_DELAY}ms before retry`);
+    await sleep(RETRY_429_DELAY);
+    console.log(`[QUEUE] Retrying "${label}" after 429 backoff`);
+    const r2 = await doCall();
+    if (!r2.error) return { success: true, text: r2.data?.text };
+    console.error(`[QUEUE] Retry failed for "${label}":`, r2.error);
+    return { success: false, error: r2.error || "Retry failed after 429" };
+  }
+
+  return { success: false, error: r1.error };
+}
+
+// ── Process queue sequentially ──────────────────────────────
+export async function processQueue(
+  items: QueueItem[],
+  onProgress?: (step: number, total: number, label: string, status: string) => void,
+): Promise<QueueResult[]> {
+  const results: QueueResult[] = [];
+  const total = items.length;
+
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+
+    // 1. Check if already in-flight
+    if (inFlight.has(item.key)) {
+      console.log(`[QUEUE] SKIP (in-flight): "${item.label}"`);
+      onProgress?.(i + 1, total, item.label, "skipped (already generating)");
+      results.push({ key: item.key, success: false, skipped: true, skipReason: "already generating" });
+      continue;
+    }
+
+    // 2. Check if input unchanged
+    if (!hasInputChanged(item.key, item.inputForHash)) {
+      console.log(`[QUEUE] SKIP (unchanged): "${item.label}"`);
+      onProgress?.(i + 1, total, item.label, "skipped (unchanged)");
+      results.push({ key: item.key, success: true, skipped: true, skipReason: "unchanged" });
+      continue;
+    }
+
+    // 3. Add inter-request delay (except for first item)
+    if (i > 0) {
+      await sleep(INTER_REQUEST_DELAY);
+    }
+
+    // 4. Mark in-flight and generate
+    inFlight.add(item.key);
+    console.log(`[QUEUE] START (${i + 1}/${total}): "${item.label}"`);
+    onProgress?.(i + 1, total, item.label, "generating");
+
+    try {
+      const result = await invokeWithRetry(item.prompt, item.maxTokens, item.label);
+      if (result.success) {
+        markInputGenerated(item.key, item.inputForHash);
+        console.log(`[QUEUE] SUCCESS: "${item.label}" (${result.text?.length || 0} chars)`);
+        results.push({ key: item.key, success: true, text: result.text });
+      } else {
+        console.error(`[QUEUE] FAILED: "${item.label}" — ${result.error}`);
+        results.push({ key: item.key, success: false, error: result.error });
+      }
+    } catch (err: any) {
+      console.error(`[QUEUE] ERROR: "${item.label}" —`, err);
+      results.push({ key: item.key, success: false, error: err?.message || "Unknown error" });
+    } finally {
+      inFlight.delete(item.key);
+    }
+  }
+
+  return results;
+}
