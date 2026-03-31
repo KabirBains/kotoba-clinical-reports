@@ -477,12 +477,11 @@ export function ReportMode(props: ReportModeProps) {
               );
             }
 
-            // Section 18 — Recommendations: render per-card
+            // Section 18 — Recommendations: render per-card structured
             if (section.id === "recommendations") {
               const rawContent = reportContent["recommendations"];
               if (!rawContent) return null;
 
-              // Try parsing as structured per-card JSON
               let perCard: Record<string, { text: string; supportName: string; category: string; currentHours: string; recommendedHours: string; ratio: string; estimatedCost: string; isCapital: boolean }> | null = null;
               try {
                 perCard = JSON.parse(rawContent);
@@ -492,37 +491,135 @@ export function ReportMode(props: ReportModeProps) {
 
               if (perCard && typeof perCard === "object") {
                 const entries = Object.entries(perCard);
+                // Find the matching recommendation instance for each card
                 return (
                   <div key={section.id} className="space-y-6">
                     <h2 className="text-base font-semibold text-foreground border-b border-border/30 pb-2">
                       {section.number}. {section.title}
                     </h2>
-                    {entries.map(([recId, entry], idx) => (
-                      <div key={recId} className="space-y-2 pl-2 border-l-2 border-border/20">
-                        <h3 className="text-sm font-semibold text-foreground/80">
-                          18.{idx + 1} {entry.supportName}
-                        </h3>
-                        <p className="text-xs text-muted-foreground italic">
-                          {entry.category}
-                          {!entry.isCapital && (
-                            <>
-                              {entry.currentHours && <> · Current: {entry.currentHours}</>}
-                              {entry.recommendedHours && <> · Recommended: {entry.recommendedHours}</>}
-                              {entry.ratio && <> · Ratio: {entry.ratio}</>}
-                            </>
-                          )}
-                          {entry.isCapital && entry.estimatedCost && (
-                            <> · Est. cost: {entry.estimatedCost}</>
-                          )}
-                        </p>
-                        <div
-                          className="prose prose-sm max-w-none text-foreground/90"
-                          contentEditable
-                          suppressContentEditableWarning
-                          dangerouslySetInnerHTML={{ __html: entry.text }}
-                        />
-                      </div>
-                    ))}
+                    {entries.map(([recId, entry], idx) => {
+                      // Find matching recommendation instance for tasks, outcomes, consequence, etc.
+                      const rec = props.recommendations.find(r => r.id === recId || r.supportName === entry.supportName);
+                      const tasks = rec?.tasks?.filter(Boolean) || [];
+                      const outcomeLabels = (rec?.outcomes || []).map(o => OUTCOME_OPTIONS.find(opt => opt.id === o)?.label || o);
+                      const consequence = rec?.consequence || "";
+                      const linkedSections = rec?.linkedSections?.filter(Boolean) || [];
+                      const justification = rec?.justification || "";
+                      const s34 = rec?.s34Justification || "";
+
+                      return (
+                        <div key={recId}>
+                          {idx > 0 && <hr className="border-border/30 mb-6" />}
+                          <div className="space-y-3">
+                            {/* Heading row */}
+                            <div className="flex items-center justify-between" style={{ borderLeft: "4px solid #6b7280", paddingLeft: "12px" }}>
+                              <h3 style={{ fontSize: "16px", fontWeight: 600 }} className="text-foreground">
+                                18.{idx + 1} {entry.supportName}
+                              </h3>
+                              <span style={{ fontSize: "12px", backgroundColor: "#f3f4f6", color: "#374151", padding: "2px 10px", borderRadius: "9999px" }}>
+                                {entry.category}
+                              </span>
+                            </div>
+
+                            {/* Key-value table */}
+                            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "14px" }}>
+                              <tbody>
+                                {!entry.isCapital && (
+                                  <>
+                                    <tr style={{ borderBottom: "0.5px solid #e5e7eb" }}>
+                                      <td style={{ width: "200px", padding: "8px 12px", backgroundColor: "#f9fafb", color: "#6b7280", fontWeight: 500 }}>Current provision</td>
+                                      <td style={{ padding: "8px 12px" }}>{entry.currentHours || "—"}</td>
+                                    </tr>
+                                    <tr style={{ borderBottom: "0.5px solid #e5e7eb" }}>
+                                      <td style={{ width: "200px", padding: "8px 12px", backgroundColor: "#f9fafb", color: "#6b7280", fontWeight: 500 }}>Recommended provision</td>
+                                      <td style={{ padding: "8px 12px", fontWeight: 700 }}>{entry.recommendedHours || "—"}</td>
+                                    </tr>
+                                    <tr style={{ borderBottom: "0.5px solid #e5e7eb" }}>
+                                      <td style={{ width: "200px", padding: "8px 12px", backgroundColor: "#f9fafb", color: "#6b7280", fontWeight: 500 }}>Support ratio</td>
+                                      <td style={{ padding: "8px 12px" }}>{entry.ratio || "—"}</td>
+                                    </tr>
+                                  </>
+                                )}
+                                {entry.isCapital && entry.estimatedCost && (
+                                  <tr style={{ borderBottom: "0.5px solid #e5e7eb" }}>
+                                    <td style={{ width: "200px", padding: "8px 12px", backgroundColor: "#f9fafb", color: "#6b7280", fontWeight: 500 }}>Estimated cost</td>
+                                    <td style={{ padding: "8px 12px", fontWeight: 700 }}>{entry.estimatedCost}</td>
+                                  </tr>
+                                )}
+                                {tasks.length > 0 && (
+                                  <tr style={{ borderBottom: "0.5px solid #e5e7eb" }}>
+                                    <td style={{ width: "200px", padding: "8px 12px", backgroundColor: "#f9fafb", color: "#6b7280", fontWeight: 500, verticalAlign: "top" }}>Tasks covered</td>
+                                    <td style={{ padding: "8px 12px" }}>
+                                      <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
+                                        {tasks.map((t, ti) => (
+                                          <span key={ti} style={{ fontSize: "12px", backgroundColor: "#f3f4f6", color: "#374151", padding: "2px 8px", borderRadius: "4px" }}>{t}</span>
+                                        ))}
+                                      </div>
+                                    </td>
+                                  </tr>
+                                )}
+                                {justification && (
+                                  <tr style={{ borderBottom: "0.5px solid #e5e7eb" }}>
+                                    <td style={{ width: "200px", padding: "8px 12px", backgroundColor: "#f9fafb", color: "#6b7280", fontWeight: 500, verticalAlign: "top" }}>Clinical justification</td>
+                                    <td style={{ padding: "8px 12px" }}>{justification}</td>
+                                  </tr>
+                                )}
+                                {outcomeLabels.length > 0 && (
+                                  <tr style={{ borderBottom: "0.5px solid #e5e7eb" }}>
+                                    <td style={{ width: "200px", padding: "8px 12px", backgroundColor: "#f9fafb", color: "#6b7280", fontWeight: 500, verticalAlign: "top" }}>Expected outcomes</td>
+                                    <td style={{ padding: "8px 12px" }}>
+                                      <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
+                                        {outcomeLabels.map((o, oi) => (
+                                          <span key={oi} style={{ fontSize: "12px", backgroundColor: "#f3f4f6", color: "#374151", padding: "2px 8px", borderRadius: "4px" }}>{o}</span>
+                                        ))}
+                                      </div>
+                                    </td>
+                                  </tr>
+                                )}
+                                {consequence && (
+                                  <tr style={{ borderBottom: "0.5px solid #e5e7eb" }}>
+                                    <td style={{ width: "200px", padding: "8px 12px", backgroundColor: "#f9fafb", color: "#6b7280", fontWeight: 500, verticalAlign: "top" }}>Without this support</td>
+                                    <td style={{ padding: "8px 12px", color: "#991b1b" }}>{consequence}</td>
+                                  </tr>
+                                )}
+                                {linkedSections.length > 0 && (
+                                  <tr style={{ borderBottom: "0.5px solid #e5e7eb" }}>
+                                    <td style={{ width: "200px", padding: "8px 12px", backgroundColor: "#f9fafb", color: "#6b7280", fontWeight: 500, verticalAlign: "top" }}>Linked report sections</td>
+                                    <td style={{ padding: "8px 12px" }}>
+                                      <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
+                                        {linkedSections.map((s, si) => (
+                                          <span key={si} style={{ fontSize: "12px", fontFamily: "monospace", backgroundColor: "#f3f4f6", color: "#374151", padding: "2px 8px", borderRadius: "4px" }}>S.{s}</span>
+                                        ))}
+                                      </div>
+                                    </td>
+                                  </tr>
+                                )}
+                                {s34 && (
+                                  <tr style={{ borderBottom: "0.5px solid #e5e7eb" }}>
+                                    <td style={{ width: "200px", padding: "8px 12px", backgroundColor: "#f9fafb", color: "#6b7280", fontWeight: 500, verticalAlign: "top" }}>Why NDIS-funded</td>
+                                    <td style={{ padding: "8px 12px" }}>{s34}</td>
+                                  </tr>
+                                )}
+                              </tbody>
+                            </table>
+
+                            {/* AI narrative block */}
+                            {entry.text && (
+                              <div style={{ backgroundColor: "#f9fafb", borderLeft: "3px solid #9ca3af", padding: "12px 16px", borderRadius: "0 6px 6px 0" }}>
+                                <p style={{ fontSize: "11px", color: "#9ca3af", fontWeight: 600, marginBottom: "6px", textTransform: "uppercase", letterSpacing: "0.05em" }}>AI-generated narrative</p>
+                                <div
+                                  className="prose prose-sm max-w-none"
+                                  style={{ fontSize: "14px", color: "#1f2937" }}
+                                  contentEditable
+                                  suppressContentEditableWarning
+                                  dangerouslySetInnerHTML={{ __html: entry.text }}
+                                />
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 );
               }
