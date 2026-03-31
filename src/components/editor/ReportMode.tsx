@@ -448,7 +448,8 @@ export function ReportMode(props: ReportModeProps) {
                           </div>
                         )}
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 );
               }
