@@ -368,7 +368,14 @@ export function ReportMode(props: ReportModeProps) {
                     <h2 className="text-base font-semibold text-foreground border-b border-border/30 pb-2">
                       {section.number}. {section.title}
                     </h2>
-                    {entries.map(([aId, entry], idx) => (
+                    {entries.map(([aId, entry], idx) => {
+                      const isWhodas = aId.includes("whodas") || entry.name?.toLowerCase().includes("whodas");
+                      // Find matching assessment instance to get raw scores for WHODAS domain table
+                      const matchingAssessment = isWhodas
+                        ? props.assessments.find(a => a.definitionId === "whodas-2.0" || a.name?.toLowerCase().includes("whodas"))
+                        : null;
+
+                      return (
                       <div key={aId} className="space-y-4 pl-2 border-l-2 border-accent/20">
                         {/* Assessment heading */}
                         <h3 className="text-sm font-semibold text-foreground">
@@ -388,8 +395,13 @@ export function ReportMode(props: ReportModeProps) {
                           </div>
                         )}
 
-                        {/* Results table */}
-                        {(entry.scoreRows?.length > 0 || entry.total || entry.classification) && (
+                        {/* WHODAS Domain Results Table */}
+                        {isWhodas && matchingAssessment?.scores && (
+                          <WhodasDomainTable scores={matchingAssessment.scores} />
+                        )}
+
+                        {/* Generic Results table (non-WHODAS) */}
+                        {!isWhodas && (entry.scoreRows?.length > 0 || entry.total || entry.classification) && (
                           <div>
                             <h4 className="text-xs font-semibold text-muted-foreground mb-2">Results</h4>
                             <Table>
