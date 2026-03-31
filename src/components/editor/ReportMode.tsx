@@ -42,11 +42,18 @@ function buildWhodasDomainRows(scores: Record<string, string>): WhodasDomainRow[
     let sum = 0;
     let answered = 0;
     for (const itemNum of d.items) {
-      const key = String(itemNum);
-      const val = scores[key];
-      if (val && val in WHODAS_SCORE_MAP) {
-        sum += WHODAS_SCORE_MAP[val];
-        answered++;
+      // Try all key formats: "whodas-1", "1", "item_1", "q1"
+      const val = scores[`whodas-${itemNum}`] ?? scores[String(itemNum)] ?? scores[`item_${itemNum}`] ?? scores[`q${itemNum}`];
+      if (val !== undefined && val !== null && val !== "") {
+        // Value may be a numeric string ("3") or a label ("Severe")
+        const numeric = Number(val);
+        if (!isNaN(numeric)) {
+          sum += numeric;
+          answered++;
+        } else if (val in WHODAS_SCORE_MAP) {
+          sum += WHODAS_SCORE_MAP[val];
+          answered++;
+        }
       }
     }
     const assessed = answered > 0;
