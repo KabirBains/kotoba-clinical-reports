@@ -2,8 +2,119 @@ import { TEMPLATE_SECTIONS } from "@/lib/constants";
 import { FileText } from "lucide-react";
 import DownloadReportButton from "@/components/DownloadReportButton";
 import type { ReportData } from "@/ai/reportAssembler";
-import { type AssessmentInstance } from "@/lib/assessment-library";
+import { type AssessmentInstance, getScoreForOption } from "@/lib/assessment-library";
 import { type RecommendationInstance, OUTCOME_OPTIONS } from "@/lib/recommendations-library";
+
+/* ─── WHODAS 2.0 domain table helper ─── */
+const WHODAS_DOMAINS = [
+  { name: "Cognition", items: [1,2,3,4,5,6], max: 24 },
+  { name: "Mobility", items: [7,8,9,10,11], max: 20 },
+  { name: "Self-Care", items: [12,13,14], max: 12 },
+  { name: "Getting Along", items: [15,16,17,18,19,20], max: 24 },
+  { name: "Life Activities (Household)", items: [21,22,23,24], max: 16 },
+  { name: "Life Activities (Work/School)", items: [25,26,27,28], max: 16, optional: true },
+  { name: "Participation", items: [29,30,31,32,33,34,35,36], max: 32 },
+];
+
+const WHODAS_SCORE_MAP: Record<string, number> = {
+  "None": 0, "Mild": 1, "Moderate": 2, "Severe": 3, "Extreme / Cannot do": 4,
+};
+
+function whodasClassification(pct: number): { label: string; color: string } {
+  if (pct <= 4) return { label: "None", color: "#16a34a" };
+  if (pct <= 24) return { label: "Mild", color: "#65a30d" };
+  if (pct <= 49) return { label: "Moderate", color: "#d97706" };
+  if (pct <= 95) return { label: "Severe", color: "#dc2626" };
+  return { label: "Extreme", color: "#7f1d1d" };
+}
+
+interface WhodasDomainRow {
+  name: string;
+  raw: number;
+  max: number;
+  pct: number;
+  cls: { label: string; color: string };
+  assessed: boolean;
+}
+
+function buildWhodasDomainRows(scores: Record<string, string>): WhodasDomainRow[] {
+  return WHODAS_DOMAINS.map((d) => {
+    let sum = 0;
+    let answered = 0;
+    for (const itemNum of d.items) {
+      const key = String(itemNum);
+      const val = scores[key];
+      if (val && val in WHODAS_SCORE_MAP) {
+        sum += WHODAS_SCORE_MAP[val];
+        answered++;
+      }
+    }
+    const assessed = answered > 0;
+    const pct = assessed ? Math.round((sum / d.max) * 100) : 0;
+    return {
+      name: d.name,
+      raw: sum,
+      max: d.max,
+      pct,
+      cls: assessed ? whodasClassification(pct) : { label: "Not assessed", color: "#a1a1aa" },
+      assessed,
+    };
+  });
+}
+
+function WhodasDomainTable({ scores }: { scores: Record<string, string> }) {
+  const rows = buildWhodasDomainRows(scores);
+  const assessed = rows.filter(r => r.assessed);
+  const totalRaw = assessed.reduce((s, r) => s + r.raw, 0);
+  const totalMax = assessed.reduce((s, r) => s + r.max, 0);
+  const totalPct = totalMax > 0 ? Math.round((totalRaw / totalMax) * 100) : 0;
+  const totalCls = totalMax > 0 ? whodasClassification(totalPct) : { label: "Not assessed", color: "#a1a1aa" };
+
+  return (
+    <div>
+      <h4 className="text-xs font-semibold text-muted-foreground mb-2">Domain Results</h4>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="text-xs h-8">Domain</TableHead>
+            <TableHead className="text-xs h-8 text-right">Raw Score</TableHead>
+            <TableHead className="text-xs h-8 text-right">Percentage</TableHead>
+            <TableHead className="text-xs h-8 text-right">Classification</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((r) => (
+            <TableRow key={r.name}>
+              <TableCell className="text-xs py-1.5 font-medium">{r.name}</TableCell>
+              <TableCell className="text-xs py-1.5 text-right font-mono">
+                {r.assessed ? `${r.raw}/${r.max}` : "--"}
+              </TableCell>
+              <TableCell className="text-xs py-1.5 text-right font-mono">
+                {r.assessed ? `${r.pct}%` : "--"}
+              </TableCell>
+              <TableCell className="text-xs py-1.5 text-right font-semibold" style={{ color: r.cls.color }}>
+                {r.cls.label}
+              </TableCell>
+            </TableRow>
+          ))}
+          {/* Total row */}
+          <TableRow className="border-t-2 border-border">
+            <TableCell className="text-xs py-1.5 font-bold">TOTAL</TableCell>
+            <TableCell className="text-xs py-1.5 text-right font-mono font-bold">
+              {totalMax > 0 ? `${totalRaw}/${totalMax}` : "--"}
+            </TableCell>
+            <TableCell className="text-xs py-1.5 text-right font-mono font-bold">
+              {totalMax > 0 ? `${totalPct}%` : "--"}
+            </TableCell>
+            <TableCell className="text-xs py-1.5 text-right font-bold" style={{ color: totalCls.color }}>
+              {totalCls.label}
+            </TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
 import { FunctionalCapacityReport } from "./FunctionalCapacityTables";
 import {
   Table,
@@ -257,7 +368,14 @@ export function ReportMode(props: ReportModeProps) {
                     <h2 className="text-base font-semibold text-foreground border-b border-border/30 pb-2">
                       {section.number}. {section.title}
                     </h2>
-                    {entries.map(([aId, entry], idx) => (
+                    {entries.map(([aId, entry], idx) => {
+                      const isWhodas = aId.includes("whodas") || entry.name?.toLowerCase().includes("whodas");
+                      // Find matching assessment instance to get raw scores for WHODAS domain table
+                      const matchingAssessment = isWhodas
+                        ? props.assessments.find(a => a.definitionId === "whodas-2.0" || a.name?.toLowerCase().includes("whodas"))
+                        : null;
+
+                      return (
                       <div key={aId} className="space-y-4 pl-2 border-l-2 border-accent/20">
                         {/* Assessment heading */}
                         <h3 className="text-sm font-semibold text-foreground">
@@ -277,8 +395,13 @@ export function ReportMode(props: ReportModeProps) {
                           </div>
                         )}
 
-                        {/* Results table */}
-                        {(entry.scoreRows?.length > 0 || entry.total || entry.classification) && (
+                        {/* WHODAS Domain Results Table */}
+                        {isWhodas && matchingAssessment?.scores && (
+                          <WhodasDomainTable scores={matchingAssessment.scores} />
+                        )}
+
+                        {/* Generic Results table (non-WHODAS) */}
+                        {!isWhodas && (entry.scoreRows?.length > 0 || entry.total || entry.classification) && (
                           <div>
                             <h4 className="text-xs font-semibold text-muted-foreground mb-2">Results</h4>
                             <Table>
@@ -325,7 +448,8 @@ export function ReportMode(props: ReportModeProps) {
                           </div>
                         )}
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 );
               }
