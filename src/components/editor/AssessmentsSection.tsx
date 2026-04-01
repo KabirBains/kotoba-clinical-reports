@@ -268,34 +268,34 @@ function AssessmentCard({
                 variant="outline"
                 size="sm"
                 className="text-xs h-7"
-                disabled={instance._generatingInterpretation}
+                disabled={generating}
                 onClick={async () => {
-                  if (instance._generatingInterpretation) return;
-                  onUpdate({ ...instance, _generatingInterpretation: true });
+                  if (generating) return;
+                  setGenerating(true);
                   try {
-                    const scoreSummary = definition ? buildAssessmentScoreSummary(definition, instance) : null;
-                    const scoresText = scoreSummary?.rows?.length
-                      ? scoreSummary.rows.map((r: any) => `- ${r.label}: ${r.value}`).join("\n")
+                    const totalScore = definition ? calculateTotal(definition, instance.scores) : 0;
+                    const cls = definition ? getClassification(definition, totalScore) : "";
+                    const scoresText = definition && definition.subscales.length > 0
+                      ? definition.subscales.map(sub => `- ${sub.label}: ${calculateSubscaleTotal(definition, sub.id, instance.scores)}`).join("\n")
                       : JSON.stringify(instance.scores, null, 2);
-                    const prompt = `Write an interpretation for ${instance.name} assessment results.\n\nDo NOT include a synopsis or describe what the tool measures — that is displayed separately.\n\nASSESSMENT TOOL: ${instance.name}\nTOTAL SCORE: ${scoreSummary?.total || "Not calculated"}\nCLASSIFICATION: ${scoreSummary?.classification || "Not classified"}\n\nDOMAIN/SUBSCALE SCORES:\n${scoresText}\n\nCLINICIAN NOTES:\n${instance.interpretation || "None provided"}\n\nWrite 2 paragraphs:\n1. State the scores and classification. Identify the 2-3 highest domains or subscales and describe their functional implications.\n2. Cross-reference any clinician notes provided.\n\nPerson-first language, no markdown, continuous prose only.`;
+                    const prompt = `Write an interpretation for ${instance.name} assessment results.\n\nDo NOT include a synopsis or describe what the tool measures — that is displayed separately.\n\nASSESSMENT TOOL: ${instance.name}\nTOTAL SCORE: ${totalScore || "Not calculated"}\nCLASSIFICATION: ${cls || "Not classified"}\n\nDOMAIN/SUBSCALE SCORES:\n${scoresText}\n\nCLINICIAN NOTES:\n${instance.interpretation || "None provided"}\n\nWrite 2 paragraphs:\n1. State the scores and classification. Identify the 2-3 highest domains or subscales and describe their functional implications.\n2. Cross-reference any clinician notes provided.\n\nPerson-first language, no markdown, continuous prose only.`;
                     const { data, error } = await supabase.functions.invoke("generate-report", {
                       body: { prompt, maxTokens: 1200 },
                     });
                     if (error || !data?.text) {
                       toast.error("Failed to generate interpretation");
                     } else {
-                      onUpdate({ ...instance, interpretation: data.text, _generatingInterpretation: false });
+                      onUpdate({ ...instance, interpretation: data.text });
                       toast.success("Interpretation generated");
-                      return;
                     }
                   } catch {
                     toast.error("Failed to generate interpretation");
                   }
-                  onUpdate({ ...instance, _generatingInterpretation: false });
+                  setGenerating(false);
                 }}
               >
                 <Sparkles className="h-3 w-3 mr-1" />
-                {instance._generatingInterpretation ? "Generating…" : "Generate interpretation"}
+                {generating ? "Generating…" : "Generate interpretation"}
               </Button>
             </div>
           </div>
