@@ -637,7 +637,11 @@ export function ReportMode(props: ReportModeProps) {
                                 {justification && (
                                   <tr style={{ borderBottom: "0.5px solid #e5e7eb" }}>
                                     <td style={{ width: "200px", padding: "8px 12px", backgroundColor: "#f9fafb", color: "#6b7280", fontWeight: 500, verticalAlign: "top" }}>Clinical justification</td>
-                                    <td style={{ padding: "8px 12px" }}>{justification}</td>
+                                    <EditableCell
+                                      value={justification}
+                                      onChange={(v) => { if (rec && recIdx >= 0) props.onUpdateRecommendation?.(recIdx, { ...rec, justification: v }); }}
+                                      style={{ padding: "8px 12px" }}
+                                    />
                                   </tr>
                                 )}
                                 {outcomeLabels.length > 0 && (
