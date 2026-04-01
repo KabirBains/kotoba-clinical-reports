@@ -1,9 +1,66 @@
+import { useState, useRef, useEffect, useCallback } from "react";
 import { TEMPLATE_SECTIONS } from "@/lib/constants";
 import { FileText } from "lucide-react";
 import DownloadReportButton from "@/components/DownloadReportButton";
 import type { ReportData } from "@/ai/reportAssembler";
 import { type AssessmentInstance, getScoreForOption } from "@/lib/assessment-library";
 import { type RecommendationInstance, OUTCOME_OPTIONS } from "@/lib/recommendations-library";
+
+/* ─── Editable cell component ─── */
+function EditableCell({ value, onChange, style, redText }: {
+  value: string;
+  onChange: (v: string) => void;
+  style?: React.CSSProperties;
+  redText?: boolean;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const ref = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => { setDraft(value); }, [value]);
+  useEffect(() => {
+    if (editing && ref.current) {
+      ref.current.focus();
+      ref.current.style.height = "auto";
+      ref.current.style.height = ref.current.scrollHeight + "px";
+    }
+  }, [editing]);
+
+  if (editing) {
+    return (
+      <td style={{ ...style, padding: "4px 8px" }}>
+        <textarea
+          ref={ref}
+          value={draft}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            e.target.style.height = "auto";
+            e.target.style.height = e.target.scrollHeight + "px";
+          }}
+          onBlur={() => { onChange(draft); setEditing(false); }}
+          onKeyDown={(e) => { if (e.key === "Escape") { setDraft(value); setEditing(false); } }}
+          className="w-full text-sm bg-transparent border border-border/50 rounded px-2 py-1 resize-none focus:outline-none focus:ring-1 focus:ring-accent/50"
+          style={{ color: redText ? "#991b1b" : undefined }}
+        />
+      </td>
+    );
+  }
+
+  return (
+    <td
+      onClick={() => setEditing(true)}
+      style={{
+        ...style,
+        cursor: "pointer",
+        color: redText ? "#991b1b" : style?.color,
+      }}
+      className="hover:bg-muted/40 transition-colors"
+      title="Click to edit"
+    >
+      {value || "—"}
+    </td>
+  );
+}
 
 /* ─── WHODAS 2.0 domain table helper ─── */
 const WHODAS_DOMAINS = [
