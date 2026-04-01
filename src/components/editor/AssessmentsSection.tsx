@@ -17,7 +17,7 @@ import { LSP16Scoring } from "./LSP16Scoring";
 import { SensoryProfileScoring } from "./SensoryProfileScoring";
 import { 
   ChevronDown, ChevronRight, Plus, Library, PenLine, 
-  Trash2, GripVertical, Calendar, Sparkles, FileInput 
+  Trash2, GripVertical, Calendar, Sparkles 
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
