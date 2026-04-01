@@ -72,11 +72,13 @@ export const FUNCTIONAL_DOMAIN_GUIDANCE = `FUNCTIONAL DOMAIN WRITING RULES (from
 // ── ASSESSMENT INTERPRETATION GUIDANCE (from Prompt Templates) ──
 
 export const ASSESSMENT_INTERPRETATION_GUIDANCE = `ASSESSMENT INTERPRETATION WRITING RULES (from AI Prompt Templates):
-- Paragraph 1: Insert the assessment synopsis verbatim as the opening. Explain why the tool was selected for this participant.
-- Paragraph 2: State the total score + classification. Identify the 2-3 highest-scoring domains/subscales and describe their functional implications in daily life.
-- Paragraph 3: Incorporate clinician notes. Cross-reference findings from earlier sections using: 'This finding is consistent with [observation] documented in Section [X] of this report.'
+- The synopsis for this assessment tool has already been displayed above this section. Do NOT repeat what the tool measures or how it is scored.
+- Go straight to interpreting the results for this participant.
+- Paragraph 1: State the scores and classification. Identify the 2-3 highest domains or subscales and describe their functional implications for this participant specifically.
+- Paragraph 2: Cross-reference findings from earlier sections of the report. Weave in the clinician's notes if provided. Use: 'This finding is consistent with [observation] documented in Section [X] of this report.'
 - Use the tool's published scoring criteria — do not interpret scores beyond the published classification.
-- Do NOT fabricate domain scores or classifications.`;
+- Do NOT fabricate domain scores or classifications.
+- Do NOT repeat the synopsis or describe what the tool measures.`;
 
 // ── RECOMMENDATION GUIDANCE (from Template + Prompt Templates) ──
 
