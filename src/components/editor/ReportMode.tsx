@@ -558,7 +558,8 @@ export function ReportMode(props: ReportModeProps) {
                     </h2>
                     {entries.map(([recId, entry], idx) => {
                       // Find matching recommendation instance for tasks, outcomes, consequence, etc.
-                      const rec = props.recommendations.find(r => r.id === recId || r.supportName === entry.supportName);
+                      const recIdx = props.recommendations.findIndex(r => r.id === recId || r.supportName === entry.supportName);
+                      const rec = recIdx >= 0 ? props.recommendations[recIdx] : null;
                       const tasks = rec?.tasks?.filter(Boolean) || [];
                       const outcomeLabels = (rec?.outcomes || []).map(o => OUTCOME_OPTIONS.find(opt => opt.id === o)?.label || o);
                       const consequence = rec?.consequence || "";
