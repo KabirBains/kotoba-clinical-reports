@@ -612,10 +612,14 @@ export function ReportMode(props: ReportModeProps) {
                                     </tr>
                                   </>
                                 )}
-                                {entry.isCapital && entry.estimatedCost && (
+                                {entry.isCapital && (
                                   <tr style={{ borderBottom: "0.5px solid #e5e7eb" }}>
                                     <td style={{ width: "200px", padding: "8px 12px", backgroundColor: "#f9fafb", color: "#6b7280", fontWeight: 500 }}>Estimated cost</td>
-                                    <td style={{ padding: "8px 12px", fontWeight: 700 }}>{entry.estimatedCost}</td>
+                                    <EditableCell
+                                      value={entry.estimatedCost || ""}
+                                      onChange={(v) => { if (rec && recIdx >= 0) props.onUpdateRecommendation?.(recIdx, { ...rec, estimatedCost: v }); }}
+                                      style={{ padding: "8px 12px", fontWeight: 700 }}
+                                    />
                                   </tr>
                                 )}
                                 {tasks.length > 0 && (
