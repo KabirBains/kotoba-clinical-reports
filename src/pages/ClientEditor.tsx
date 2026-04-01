@@ -522,8 +522,6 @@ export default function ClientEditor() {
                       ? scoreSummary.rows.map(r => `- ${r.label}: ${r.value}`).join("\n")
                       : JSON.stringify(assessment.scores, null, 2);
 
-                    // Get the tool-specific synopsis from the reportEngine library
-                    const toolSynopsis = SYNOPSIS_LIBRARY[assessment.definitionId] || synopsis || "";
                     const assessRubric = getRubricForSection("assessment");
                     const prompt = `Write the interpretation for ${aName} in Section 15 (Standardised Assessments) of an NDIS Functional Capacity Assessment for ${clientName}.\n\n${ASSESSMENT_INTERPRETATION_GUIDANCE}\n\nASSESSMENT TOOL: ${aName}\nDATE ADMINISTERED: ${typeof assessment.dateAdministered === "string" ? assessment.dateAdministered : "Not recorded"}\n\nTOTAL SCORE: ${scoreSummary.total || "Not calculated"}\nCLASSIFICATION: ${scoreSummary.classification || "Not classified"}\n\nDOMAIN/SUBSCALE SCORES:\n${scoresText}\n\nCLINICIAN NOTES:\n${typeof assessment.interpretation === "string" && assessment.interpretation ? assessment.interpretation : "No clinician notes provided"}\n\n${assessRubric}\n\nWrite 2 paragraphs following the interpretation rules above. Do NOT include a synopsis — it is displayed separately. Person-first language, no markdown. Output only the interpretation text.`;
 
