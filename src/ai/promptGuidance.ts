@@ -121,7 +121,7 @@ const RUBRIC_RECOMMENDATION = `ADDITIONAL QUALITY CRITERIA (recommendations):
 13. Current vs recommended provision compared.`;
 
 const RUBRIC_ASSESSMENT = `ADDITIONAL QUALITY CRITERIA (assessment interpretations):
-9. Synopsis inserted verbatim as opening.
+9. Synopsis is NOT repeated — it is displayed separately above.
 10. Scores and classification stated accurately from scoring tool output.
 11. Highest domains/subscales identified and functional implications described.
 12. Cross-references to earlier report sections present.
