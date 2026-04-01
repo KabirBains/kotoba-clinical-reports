@@ -586,16 +586,28 @@ export function ReportMode(props: ReportModeProps) {
                                 {!entry.isCapital && (
                                   <>
                                     <tr style={{ borderBottom: "0.5px solid #e5e7eb" }}>
-                                      <td style={{ width: "200px", padding: "8px 12px", backgroundColor: "#f9fafb", color: "#6b7280", fontWeight: 500 }}>Current provision</td>
-                                      <td style={{ padding: "8px 12px" }}>{entry.currentHours || "—"}</td>
+                                     <td style={{ width: "200px", padding: "8px 12px", backgroundColor: "#f9fafb", color: "#6b7280", fontWeight: 500 }}>Current provision</td>
+                                      <EditableCell
+                                        value={entry.currentHours || ""}
+                                        onChange={(v) => { if (rec && recIdx >= 0) props.onUpdateRecommendation?.(recIdx, { ...rec, currentHours: v }); }}
+                                        style={{ padding: "8px 12px" }}
+                                      />
                                     </tr>
                                     <tr style={{ borderBottom: "0.5px solid #e5e7eb" }}>
                                       <td style={{ width: "200px", padding: "8px 12px", backgroundColor: "#f9fafb", color: "#6b7280", fontWeight: 500 }}>Recommended provision</td>
-                                      <td style={{ padding: "8px 12px", fontWeight: 700 }}>{entry.recommendedHours || "—"}</td>
+                                      <EditableCell
+                                        value={entry.recommendedHours || ""}
+                                        onChange={(v) => { if (rec && recIdx >= 0) props.onUpdateRecommendation?.(recIdx, { ...rec, recommendedHours: v }); }}
+                                        style={{ padding: "8px 12px", fontWeight: 700 }}
+                                      />
                                     </tr>
                                     <tr style={{ borderBottom: "0.5px solid #e5e7eb" }}>
                                       <td style={{ width: "200px", padding: "8px 12px", backgroundColor: "#f9fafb", color: "#6b7280", fontWeight: 500 }}>Support ratio</td>
-                                      <td style={{ padding: "8px 12px" }}>{entry.ratio || "—"}</td>
+                                      <EditableCell
+                                        value={entry.ratio || ""}
+                                        onChange={(v) => { if (rec && recIdx >= 0) props.onUpdateRecommendation?.(recIdx, { ...rec, ratio: v }); }}
+                                        style={{ padding: "8px 12px" }}
+                                      />
                                     </tr>
                                   </>
                                 )}
