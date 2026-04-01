@@ -659,7 +659,12 @@ export function ReportMode(props: ReportModeProps) {
                                 {consequence && (
                                   <tr style={{ borderBottom: "0.5px solid #e5e7eb" }}>
                                     <td style={{ width: "200px", padding: "8px 12px", backgroundColor: "#f9fafb", color: "#6b7280", fontWeight: 500, verticalAlign: "top" }}>Without this support</td>
-                                    <td style={{ padding: "8px 12px", color: "#991b1b" }}>{consequence}</td>
+                                    <EditableCell
+                                      value={consequence}
+                                      onChange={(v) => { if (rec && recIdx >= 0) props.onUpdateRecommendation?.(recIdx, { ...rec, consequence: v }); }}
+                                      style={{ padding: "8px 12px" }}
+                                      redText
+                                    />
                                   </tr>
                                 )}
                                 {linkedSections.length > 0 && (
