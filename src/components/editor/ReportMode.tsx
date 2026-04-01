@@ -1,9 +1,66 @@
+import { useState, useRef, useEffect, useCallback } from "react";
 import { TEMPLATE_SECTIONS } from "@/lib/constants";
 import { FileText } from "lucide-react";
 import DownloadReportButton from "@/components/DownloadReportButton";
 import type { ReportData } from "@/ai/reportAssembler";
 import { type AssessmentInstance, getScoreForOption } from "@/lib/assessment-library";
 import { type RecommendationInstance, OUTCOME_OPTIONS } from "@/lib/recommendations-library";
+
+/* ─── Editable cell component ─── */
+function EditableCell({ value, onChange, style, redText }: {
+  value: string;
+  onChange: (v: string) => void;
+  style?: React.CSSProperties;
+  redText?: boolean;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const ref = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => { setDraft(value); }, [value]);
+  useEffect(() => {
+    if (editing && ref.current) {
+      ref.current.focus();
+      ref.current.style.height = "auto";
+      ref.current.style.height = ref.current.scrollHeight + "px";
+    }
+  }, [editing]);
+
+  if (editing) {
+    return (
+      <td style={{ ...style, padding: "4px 8px" }}>
+        <textarea
+          ref={ref}
+          value={draft}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            e.target.style.height = "auto";
+            e.target.style.height = e.target.scrollHeight + "px";
+          }}
+          onBlur={() => { onChange(draft); setEditing(false); }}
+          onKeyDown={(e) => { if (e.key === "Escape") { setDraft(value); setEditing(false); } }}
+          className="w-full text-sm bg-transparent border border-border/50 rounded px-2 py-1 resize-none focus:outline-none focus:ring-1 focus:ring-accent/50"
+          style={{ color: redText ? "#991b1b" : undefined }}
+        />
+      </td>
+    );
+  }
+
+  return (
+    <td
+      onClick={() => setEditing(true)}
+      style={{
+        ...style,
+        cursor: "pointer",
+        color: redText ? "#991b1b" : style?.color,
+      }}
+      className="hover:bg-muted/40 transition-colors"
+      title="Click to edit"
+    >
+      {value || "—"}
+    </td>
+  );
+}
 
 /* ─── WHODAS 2.0 domain table helper ─── */
 const WHODAS_DOMAINS = [
@@ -140,6 +197,8 @@ interface ReportModeProps {
   ndisNumber: string;
   assessments: AssessmentInstance[];
   recommendations: RecommendationInstance[];
+  onUpdateRecommendation?: (index: number, updated: RecommendationInstance) => void;
+  onUpdateReportContent?: (key: string, value: string) => void;
   clinicianProfile: {
     clinician_name: string | null;
     qualifications: string | null;
@@ -499,7 +558,8 @@ export function ReportMode(props: ReportModeProps) {
                     </h2>
                     {entries.map(([recId, entry], idx) => {
                       // Find matching recommendation instance for tasks, outcomes, consequence, etc.
-                      const rec = props.recommendations.find(r => r.id === recId || r.supportName === entry.supportName);
+                      const recIdx = props.recommendations.findIndex(r => r.id === recId || r.supportName === entry.supportName);
+                      const rec = recIdx >= 0 ? props.recommendations[recIdx] : null;
                       const tasks = rec?.tasks?.filter(Boolean) || [];
                       const outcomeLabels = (rec?.outcomes || []).map(o => OUTCOME_OPTIONS.find(opt => opt.id === o)?.label || o);
                       const consequence = rec?.consequence || "";
@@ -527,23 +587,39 @@ export function ReportMode(props: ReportModeProps) {
                                 {!entry.isCapital && (
                                   <>
                                     <tr style={{ borderBottom: "0.5px solid #e5e7eb" }}>
-                                      <td style={{ width: "200px", padding: "8px 12px", backgroundColor: "#f9fafb", color: "#6b7280", fontWeight: 500 }}>Current provision</td>
-                                      <td style={{ padding: "8px 12px" }}>{entry.currentHours || "—"}</td>
+                                     <td style={{ width: "200px", padding: "8px 12px", backgroundColor: "#f9fafb", color: "#6b7280", fontWeight: 500 }}>Current provision</td>
+                                      <EditableCell
+                                        value={entry.currentHours || ""}
+                                        onChange={(v) => { if (rec && recIdx >= 0) props.onUpdateRecommendation?.(recIdx, { ...rec, currentHours: v }); }}
+                                        style={{ padding: "8px 12px" }}
+                                      />
                                     </tr>
                                     <tr style={{ borderBottom: "0.5px solid #e5e7eb" }}>
                                       <td style={{ width: "200px", padding: "8px 12px", backgroundColor: "#f9fafb", color: "#6b7280", fontWeight: 500 }}>Recommended provision</td>
-                                      <td style={{ padding: "8px 12px", fontWeight: 700 }}>{entry.recommendedHours || "—"}</td>
+                                      <EditableCell
+                                        value={entry.recommendedHours || ""}
+                                        onChange={(v) => { if (rec && recIdx >= 0) props.onUpdateRecommendation?.(recIdx, { ...rec, recommendedHours: v }); }}
+                                        style={{ padding: "8px 12px", fontWeight: 700 }}
+                                      />
                                     </tr>
                                     <tr style={{ borderBottom: "0.5px solid #e5e7eb" }}>
                                       <td style={{ width: "200px", padding: "8px 12px", backgroundColor: "#f9fafb", color: "#6b7280", fontWeight: 500 }}>Support ratio</td>
-                                      <td style={{ padding: "8px 12px" }}>{entry.ratio || "—"}</td>
+                                      <EditableCell
+                                        value={entry.ratio || ""}
+                                        onChange={(v) => { if (rec && recIdx >= 0) props.onUpdateRecommendation?.(recIdx, { ...rec, ratio: v }); }}
+                                        style={{ padding: "8px 12px" }}
+                                      />
                                     </tr>
                                   </>
                                 )}
-                                {entry.isCapital && entry.estimatedCost && (
+                                {entry.isCapital && (
                                   <tr style={{ borderBottom: "0.5px solid #e5e7eb" }}>
                                     <td style={{ width: "200px", padding: "8px 12px", backgroundColor: "#f9fafb", color: "#6b7280", fontWeight: 500 }}>Estimated cost</td>
-                                    <td style={{ padding: "8px 12px", fontWeight: 700 }}>{entry.estimatedCost}</td>
+                                    <EditableCell
+                                      value={entry.estimatedCost || ""}
+                                      onChange={(v) => { if (rec && recIdx >= 0) props.onUpdateRecommendation?.(recIdx, { ...rec, estimatedCost: v }); }}
+                                      style={{ padding: "8px 12px", fontWeight: 700 }}
+                                    />
                                   </tr>
                                 )}
                                 {tasks.length > 0 && (
@@ -561,7 +637,11 @@ export function ReportMode(props: ReportModeProps) {
                                 {justification && (
                                   <tr style={{ borderBottom: "0.5px solid #e5e7eb" }}>
                                     <td style={{ width: "200px", padding: "8px 12px", backgroundColor: "#f9fafb", color: "#6b7280", fontWeight: 500, verticalAlign: "top" }}>Clinical justification</td>
-                                    <td style={{ padding: "8px 12px" }}>{justification}</td>
+                                    <EditableCell
+                                      value={justification}
+                                      onChange={(v) => { if (rec && recIdx >= 0) props.onUpdateRecommendation?.(recIdx, { ...rec, justification: v }); }}
+                                      style={{ padding: "8px 12px" }}
+                                    />
                                   </tr>
                                 )}
                                 {outcomeLabels.length > 0 && (
@@ -579,7 +659,12 @@ export function ReportMode(props: ReportModeProps) {
                                 {consequence && (
                                   <tr style={{ borderBottom: "0.5px solid #e5e7eb" }}>
                                     <td style={{ width: "200px", padding: "8px 12px", backgroundColor: "#f9fafb", color: "#6b7280", fontWeight: 500, verticalAlign: "top" }}>Without this support</td>
-                                    <td style={{ padding: "8px 12px", color: "#991b1b" }}>{consequence}</td>
+                                    <EditableCell
+                                      value={consequence}
+                                      onChange={(v) => { if (rec && recIdx >= 0) props.onUpdateRecommendation?.(recIdx, { ...rec, consequence: v }); }}
+                                      style={{ padding: "8px 12px" }}
+                                      redText
+                                    />
                                   </tr>
                                 )}
                                 {linkedSections.length > 0 && (
@@ -597,7 +682,11 @@ export function ReportMode(props: ReportModeProps) {
                                 {s34 && (
                                   <tr style={{ borderBottom: "0.5px solid #e5e7eb" }}>
                                     <td style={{ width: "200px", padding: "8px 12px", backgroundColor: "#f9fafb", color: "#6b7280", fontWeight: 500, verticalAlign: "top" }}>Why NDIS-funded</td>
-                                    <td style={{ padding: "8px 12px" }}>{s34}</td>
+                                    <EditableCell
+                                      value={s34}
+                                      onChange={(v) => { if (rec && recIdx >= 0) props.onUpdateRecommendation?.(recIdx, { ...rec, s34Justification: v }); }}
+                                      style={{ padding: "8px 12px" }}
+                                    />
                                   </tr>
                                 )}
                               </tbody>
