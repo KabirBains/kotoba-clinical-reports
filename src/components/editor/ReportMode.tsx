@@ -402,6 +402,19 @@ export function ReportMode(props: ReportModeProps) {
                           </div>
                         )}
 
+                        {/* AI Interpretation (before results table) */}
+                        {entry.interpretation && (
+                          <div>
+                            <h4 className="text-xs font-semibold text-muted-foreground mb-2">Interpretation</h4>
+                            <div
+                              className="prose prose-sm max-w-none text-foreground/90"
+                              contentEditable
+                              suppressContentEditableWarning
+                              dangerouslySetInnerHTML={{ __html: entry.interpretation }}
+                            />
+                          </div>
+                        )}
+
                         {/* WHODAS Domain Results Table */}
                         {isWhodas && matchingAssessment?.scores && (
                           <WhodasDomainTable scores={matchingAssessment.scores} />
@@ -439,19 +452,6 @@ export function ReportMode(props: ReportModeProps) {
                                 ))}
                               </TableBody>
                             </Table>
-                          </div>
-                        )}
-
-                        {/* AI Interpretation */}
-                        {entry.interpretation && (
-                          <div>
-                            <h4 className="text-xs font-semibold text-muted-foreground mb-2">Interpretation</h4>
-                            <div
-                              className="prose prose-sm max-w-none text-foreground/90"
-                              contentEditable
-                              suppressContentEditableWarning
-                              dangerouslySetInnerHTML={{ __html: entry.interpretation }}
-                            />
                           </div>
                         )}
                       </div>
