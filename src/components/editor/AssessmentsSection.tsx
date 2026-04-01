@@ -48,6 +48,7 @@ function AssessmentCard({
   onRemove: () => void;
 }) {
   const [open, setOpen] = useState(true);
+  const [generating, setGenerating] = useState(false);
   const total = definition ? calculateTotal(definition, instance.scores) : 0;
   const classification = definition ? getClassification(definition, total) : "";
 
