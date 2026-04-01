@@ -699,6 +699,12 @@ export default function ClientEditor() {
               ndisNumber={client?.ndis_number || ""}
               assessments={assessments}
               recommendations={recommendations}
+              onUpdateRecommendation={(idx, updated) => {
+                setRecommendations(prev => prev.map((r, i) => i === idx ? updated : r));
+              }}
+              onUpdateReportContent={(key, value) => {
+                setReportContent(prev => ({ ...prev, [key]: value }));
+              }}
               clinicianProfile={profile || null}
             />
           )}
