@@ -31,6 +31,7 @@ export default function ClientEditor() {
   const [reportContent, setReportContent] = useState<Record<string, string>>({});
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [generatingReport, setGeneratingReport] = useState(false);
+  const [generateProgress, setGenerateProgress] = useState({ current: 0, total: 0, label: "" });
   const saveTimerRef = useRef<ReturnType<typeof setInterval>>();
   const mainRef = useRef<HTMLElement>(null);
 
@@ -550,9 +551,22 @@ export default function ClientEditor() {
                   }
 
                   // ── Process queue sequentially with throttle ──
+                  setGenerateProgress({ current: 0, total: queueItems.length, label: "Starting report generation..." });
                   const results = await processQueue(queueItems, (step, total, label, status) => {
                     if (status === "generating") {
-                      toast.info(`Generating ${step} of ${total} — ${label}...`);
+                      // Build human-readable label
+                      const humanLabel = label.startsWith("Section:") 
+                        ? `Generating ${label.replace("Section: ", "")}...`
+                        : label.startsWith("Domain:") 
+                        ? `Generating ${label.replace("Domain: ", "")}...`
+                        : label.startsWith("Assessment:") 
+                        ? `Generating ${label.replace("Assessment: ", "")} interpretation...`
+                        : label.startsWith("Recommendation:") 
+                        ? `Generating ${label.replace("Recommendation: ", "")} recommendation...`
+                        : `Generating ${label}...`;
+                      setGenerateProgress({ current: step, total, label: humanLabel });
+                    } else {
+                      setGenerateProgress(prev => ({ ...prev, current: step }));
                     }
                   });
 
@@ -643,12 +657,14 @@ export default function ClientEditor() {
                   let msg = `Generated ${successCount}/${queueItems.length} sections.`;
                   if (skippedCount > 0) msg += ` ${skippedCount} skipped (unchanged).`;
                   if (failedCount > 0) msg += ` ${failedCount} failed.`;
+                  setGenerateProgress(prev => ({ ...prev, current: prev.total, label: "Report generation complete!" }));
                   toast.success(msg);
                 } catch (err: any) {
                   console.error("Generation error:", err);
                   toast.error("Failed to generate: " + (err?.message || "Unknown error"));
                 } finally {
                   setGeneratingReport(false);
+                  setTimeout(() => setGenerateProgress({ current: 0, total: 0, label: "" }), 3000);
                 }
               }}
             >
@@ -658,7 +674,28 @@ export default function ClientEditor() {
         </div>
       </header>
 
-      {/* Progress bar */}
+      {/* Generation progress bar */}
+      {generateProgress.total > 0 && (
+        <div className="bg-card border-b border-border/30">
+          <div className="max-w-7xl mx-auto px-4 py-3">
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-sm text-foreground">{generateProgress.label}</span>
+              <span className="text-sm font-semibold text-muted-foreground">
+                {generateProgress.current}/{generateProgress.total}
+              </span>
+            </div>
+            <div className="w-full h-2 rounded-full overflow-hidden bg-muted">
+              <div
+                className="h-full rounded-full transition-all duration-300"
+                style={{
+                  width: `${(generateProgress.current / generateProgress.total) * 100}%`,
+                  backgroundColor: generateProgress.current === generateProgress.total ? "hsl(var(--chart-2))" : "hsl(var(--primary))",
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
       {mode === "notes" && (
         <div className="bg-card border-b border-border/30">
           <div className="max-w-4xl mx-auto px-4 py-2 flex items-center gap-3">
