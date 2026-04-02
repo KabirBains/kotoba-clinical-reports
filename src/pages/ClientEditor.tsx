@@ -551,9 +551,22 @@ export default function ClientEditor() {
                   }
 
                   // ── Process queue sequentially with throttle ──
+                  setGenerateProgress({ current: 0, total: queueItems.length, label: "Starting report generation..." });
                   const results = await processQueue(queueItems, (step, total, label, status) => {
                     if (status === "generating") {
-                      toast.info(`Generating ${step} of ${total} — ${label}...`);
+                      // Build human-readable label
+                      const humanLabel = label.startsWith("Section:") 
+                        ? `Generating ${label.replace("Section: ", "")}...`
+                        : label.startsWith("Domain:") 
+                        ? `Generating ${label.replace("Domain: ", "")}...`
+                        : label.startsWith("Assessment:") 
+                        ? `Generating ${label.replace("Assessment: ", "")} interpretation...`
+                        : label.startsWith("Recommendation:") 
+                        ? `Generating ${label.replace("Recommendation: ", "")} recommendation...`
+                        : `Generating ${label}...`;
+                      setGenerateProgress({ current: step, total, label: humanLabel });
+                    } else {
+                      setGenerateProgress(prev => ({ ...prev, current: step }));
                     }
                   });
 
