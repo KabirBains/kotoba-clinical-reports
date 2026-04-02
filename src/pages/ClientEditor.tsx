@@ -31,6 +31,7 @@ export default function ClientEditor() {
   const [reportContent, setReportContent] = useState<Record<string, string>>({});
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [generatingReport, setGeneratingReport] = useState(false);
+  const [generateProgress, setGenerateProgress] = useState({ current: 0, total: 0, label: "" });
   const saveTimerRef = useRef<ReturnType<typeof setInterval>>();
   const mainRef = useRef<HTMLElement>(null);
 
