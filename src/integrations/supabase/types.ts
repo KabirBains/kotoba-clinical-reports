@@ -87,9 +87,12 @@ export type Database = {
         Row: {
           client_id: string
           created_at: string
+          dismissed_issue_keys: Json | null
           id: string
           is_current: boolean
+          issue_statuses: Json | null
           notes: Json
+          quality_scorecard: Json | null
           report_content: Json | null
           updated_at: string
           user_id: string
@@ -98,9 +101,12 @@ export type Database = {
         Insert: {
           client_id: string
           created_at?: string
+          dismissed_issue_keys?: Json | null
           id?: string
           is_current?: boolean
+          issue_statuses?: Json | null
           notes?: Json
+          quality_scorecard?: Json | null
           report_content?: Json | null
           updated_at?: string
           user_id: string
@@ -109,9 +115,12 @@ export type Database = {
         Update: {
           client_id?: string
           created_at?: string
+          dismissed_issue_keys?: Json | null
           id?: string
           is_current?: boolean
+          issue_statuses?: Json | null
           notes?: Json
+          quality_scorecard?: Json | null
           report_content?: Json | null
           updated_at?: string
           user_id?: string

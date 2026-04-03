@@ -6,8 +6,8 @@ import DownloadReportButton from "@/components/DownloadReportButton";
 import type { ReportData } from "@/ai/reportAssembler";
 import { type AssessmentInstance, getScoreForOption } from "@/lib/assessment-library";
 import { type RecommendationInstance, OUTCOME_OPTIONS } from "@/lib/recommendations-library";
-import { QualityScorecard, QualitySummaryBar, type Scorecard, type IssueStatus } from "./QualityScorecard";
-
+import { QualityScorecard, QualitySummaryBar, type Scorecard, type IssueStatus, type QualityIssue } from "./QualityScorecard";
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
 /* ─── Editable cell component ─── */
 function EditableCell({ value, onChange, style, redText }: {
   value: string;
@@ -266,6 +266,7 @@ interface ReportModeProps {
   scorecard: Scorecard | null;
   issueStatuses: Record<string, IssueStatus>;
   scorecardVisible: boolean;
+  hasUnresolvedIssues: boolean;
   onQualityCheck: () => void;
   onAcceptIssue: (id: string) => void;
   onDismissIssue: (id: string) => void;
@@ -274,6 +275,8 @@ interface ReportModeProps {
   onApplyCorrections: () => void;
   onToggleScorecard: () => void;
   onRecheck: () => void;
+  onClearAndRecheck: () => void;
+  onFindInReport: (issue: QualityIssue) => void;
 }
 
 // Map app note keys → reportAssembler section keys
@@ -367,11 +370,49 @@ function buildReportData(props: ReportModeProps): ReportData {
 export function ReportMode(props: ReportModeProps) {
   const { reportContent } = props;
   const hasContent = Object.values(reportContent).some((v) => typeof v === "string" && v.trim());
+  const [highlightedText, setHighlightedText] = useState<string | null>(null);
+  const [highlightedIssue, setHighlightedIssue] = useState<QualityIssue | null>(null);
+  const reportContainerRef = useRef<HTMLDivElement>(null);
 
   const reportData = buildReportData(props);
 
+  // Find-in-report handler: scroll to and highlight flagged text
+  const handleFindInReport = useCallback((issue: QualityIssue) => {
+    setHighlightedText(issue.flaggedText);
+    setHighlightedIssue(issue);
+
+    // Scroll to the text after a tick so highlights render
+    setTimeout(() => {
+      const container = reportContainerRef.current;
+      if (!container) return;
+      const mark = container.querySelector("mark[data-quality-highlight]");
+      if (mark) {
+        mark.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }, 100);
+  }, []);
+
+  // Wire this handler to the parent prop
+  useEffect(() => {
+    // The parent calls props.onFindInReport which we handle here
+  }, []);
+
+  // Helper: wrap flagged text in a highlight mark within rendered HTML
+  const highlightContent = useCallback((html: string): string => {
+    if (!highlightedText || !html) return html;
+    const idx = html.indexOf(highlightedText);
+    if (idx === -1) return html;
+    return (
+      html.substring(0, idx) +
+      `<mark data-quality-highlight style="background-color: #fef08a; padding: 2px 0; border-radius: 2px;">` +
+      highlightedText +
+      `</mark>` +
+      html.substring(idx + highlightedText.length)
+    );
+  }, [highlightedText]);
+
   return (
-    <div className="max-w-4xl mx-auto py-6 px-4">
+    <div className="max-w-4xl mx-auto py-6 px-4" ref={reportContainerRef}>
       {!hasContent ? (
         <div className="py-20 text-center text-muted-foreground">
           <FileText className="h-16 w-16 mx-auto mb-4 opacity-20" />
@@ -850,26 +891,81 @@ export function ReportMode(props: ReportModeProps) {
             onApplyCorrections={props.onApplyCorrections}
             onClose={props.onToggleScorecard}
             onRecheck={props.onRecheck}
+            onClearAndRecheck={props.onClearAndRecheck}
+            onFindInReport={(issue) => {
+              handleFindInReport(issue);
+              props.onFindInReport(issue);
+            }}
             isApplying={props.qualityCheckStatus === "correcting"}
             isRechecking={props.qualityCheckStatus === "checking"}
           />
         </div>
       )}
 
+      {/* Highlighted issue popover */}
+      {highlightedIssue && highlightedText && (
+        <div className="fixed bottom-4 right-4 z-50 bg-card border border-border shadow-lg rounded-lg p-4 max-w-sm space-y-2">
+          <div className="flex items-start justify-between">
+            <h4 className="text-sm font-semibold text-foreground">{highlightedIssue.criterion}: {highlightedIssue.title}</h4>
+            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => { setHighlightedText(null); setHighlightedIssue(null); }}>
+              <span className="text-xs">✕</span>
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">{highlightedIssue.description}</p>
+          {highlightedIssue.suggestedFix && (
+            <div className="text-xs p-2 rounded" style={{ backgroundColor: "hsl(142 76% 36% / 0.06)", borderLeft: "3px solid hsl(142 76% 36% / 0.4)" }}>
+              <span className="font-medium text-muted-foreground">Suggested: </span>"{highlightedIssue.suggestedFix}"
+            </div>
+          )}
+          <div className="flex gap-2">
+            {highlightedIssue.tier === "auto_correct" && highlightedIssue.suggestedFix ? (
+              <Button size="sm" className="h-7 text-xs bg-green-600 hover:bg-green-700 text-white" onClick={() => {
+                props.onAcceptIssue(highlightedIssue.id);
+                setHighlightedText(null);
+                setHighlightedIssue(null);
+              }}>
+                Accept Fix
+              </Button>
+            ) : (
+              <Button size="sm" className="h-7 text-xs bg-blue-600 hover:bg-blue-700 text-white" onClick={() => {
+                props.onAcknowledgeIssue(highlightedIssue.id);
+                setHighlightedText(null);
+                setHighlightedIssue(null);
+              }}>
+                Mark as Reviewed
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Action buttons */}
       <div className="flex items-center justify-center gap-3 mt-6">
-        <Button
-          variant="outline"
-          disabled={!hasContent || props.qualityCheckStatus === "checking"}
-          onClick={props.onQualityCheck}
-          className="border-primary/50 text-primary hover:bg-primary/5"
-        >
-          {props.qualityCheckStatus === "checking" ? (
-            <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Checking quality…</>
-          ) : (
-            <><ShieldCheck className="h-4 w-4 mr-2" /> Check Report Quality</>
-          )}
-        </Button>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span>
+                <Button
+                  variant="outline"
+                  disabled={!hasContent || props.qualityCheckStatus === "checking" || props.hasUnresolvedIssues}
+                  onClick={props.onQualityCheck}
+                  className="border-primary/50 text-primary hover:bg-primary/5"
+                >
+                  {props.qualityCheckStatus === "checking" ? (
+                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Checking quality…</>
+                  ) : (
+                    <><ShieldCheck className="h-4 w-4 mr-2" /> Check Report Quality</>
+                  )}
+                </Button>
+              </span>
+            </TooltipTrigger>
+            {props.hasUnresolvedIssues && (
+              <TooltipContent>
+                <p>Resolve all current issues before running a new quality check.</p>
+              </TooltipContent>
+            )}
+          </Tooltip>
+        </TooltipProvider>
         <DownloadReportButton reportData={reportData} />
       </div>
     </div>
