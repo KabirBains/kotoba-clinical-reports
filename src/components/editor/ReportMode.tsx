@@ -235,6 +235,7 @@ function Dass42DomainTable({ scores }: { scores: Record<string, string> }) {
     </div>
   );
 }
+import { FunctionalCapacityReport } from "./FunctionalCapacityTables";
 import {
   Table,
   TableBody,
