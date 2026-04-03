@@ -266,6 +266,7 @@ interface ReportModeProps {
   scorecard: Scorecard | null;
   issueStatuses: Record<string, IssueStatus>;
   scorecardVisible: boolean;
+  hasUnresolvedIssues: boolean;
   onQualityCheck: () => void;
   onAcceptIssue: (id: string) => void;
   onDismissIssue: (id: string) => void;
@@ -274,6 +275,8 @@ interface ReportModeProps {
   onApplyCorrections: () => void;
   onToggleScorecard: () => void;
   onRecheck: () => void;
+  onClearAndRecheck: () => void;
+  onFindInReport: (issue: QualityIssue) => void;
 }
 
 // Map app note keys → reportAssembler section keys
