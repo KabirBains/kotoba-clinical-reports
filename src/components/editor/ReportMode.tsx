@@ -451,9 +451,12 @@ export function ReportMode(props: ReportModeProps) {
                     </h2>
                     {entries.map(([aId, entry], idx) => {
                       const isWhodas = aId.includes("whodas") || entry.name?.toLowerCase().includes("whodas");
-                      // Find matching assessment instance to get raw scores for WHODAS domain table
+                      const isDass42 = aId.includes("dass") || entry.name?.toLowerCase().includes("dass");
+                      // Find matching assessment instance
                       const matchingAssessment = isWhodas
                         ? props.assessments.find(a => a.definitionId === "whodas-2.0" || a.name?.toLowerCase().includes("whodas"))
+                        : isDass42
+                        ? props.assessments.find(a => a.definitionId === "dass-42" || a.name?.toLowerCase().includes("dass"))
                         : null;
 
                       return (
