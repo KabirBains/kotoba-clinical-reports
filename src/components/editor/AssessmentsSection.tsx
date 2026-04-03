@@ -15,6 +15,7 @@ import { ZaritScoring } from "./ZaritScoring";
 import { CANSScoring } from "./CANSScoring";
 import { LSP16Scoring } from "./LSP16Scoring";
 import { SensoryProfileScoring } from "./SensoryProfileScoring";
+import { DASS42Scoring } from "./DASS42Scoring";
 import { 
   ChevronDown, ChevronRight, Plus, Library, PenLine, 
   Trash2, GripVertical, Calendar, Sparkles 
