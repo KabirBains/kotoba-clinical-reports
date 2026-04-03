@@ -370,11 +370,49 @@ function buildReportData(props: ReportModeProps): ReportData {
 export function ReportMode(props: ReportModeProps) {
   const { reportContent } = props;
   const hasContent = Object.values(reportContent).some((v) => typeof v === "string" && v.trim());
+  const [highlightedText, setHighlightedText] = useState<string | null>(null);
+  const [highlightedIssue, setHighlightedIssue] = useState<QualityIssue | null>(null);
+  const reportContainerRef = useRef<HTMLDivElement>(null);
 
   const reportData = buildReportData(props);
 
+  // Find-in-report handler: scroll to and highlight flagged text
+  const handleFindInReport = useCallback((issue: QualityIssue) => {
+    setHighlightedText(issue.flaggedText);
+    setHighlightedIssue(issue);
+
+    // Scroll to the text after a tick so highlights render
+    setTimeout(() => {
+      const container = reportContainerRef.current;
+      if (!container) return;
+      const mark = container.querySelector("mark[data-quality-highlight]");
+      if (mark) {
+        mark.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }, 100);
+  }, []);
+
+  // Wire this handler to the parent prop
+  useEffect(() => {
+    // The parent calls props.onFindInReport which we handle here
+  }, []);
+
+  // Helper: wrap flagged text in a highlight mark within rendered HTML
+  const highlightContent = useCallback((html: string): string => {
+    if (!highlightedText || !html) return html;
+    const idx = html.indexOf(highlightedText);
+    if (idx === -1) return html;
+    return (
+      html.substring(0, idx) +
+      `<mark data-quality-highlight style="background-color: #fef08a; padding: 2px 0; border-radius: 2px;">` +
+      highlightedText +
+      `</mark>` +
+      html.substring(idx + highlightedText.length)
+    );
+  }, [highlightedText]);
+
   return (
-    <div className="max-w-4xl mx-auto py-6 px-4">
+    <div className="max-w-4xl mx-auto py-6 px-4" ref={reportContainerRef}>
       {!hasContent ? (
         <div className="py-20 text-center text-muted-foreground">
           <FileText className="h-16 w-16 mx-auto mb-4 opacity-20" />
