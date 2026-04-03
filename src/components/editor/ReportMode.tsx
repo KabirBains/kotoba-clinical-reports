@@ -6,8 +6,8 @@ import DownloadReportButton from "@/components/DownloadReportButton";
 import type { ReportData } from "@/ai/reportAssembler";
 import { type AssessmentInstance, getScoreForOption } from "@/lib/assessment-library";
 import { type RecommendationInstance, OUTCOME_OPTIONS } from "@/lib/recommendations-library";
-import { QualityScorecard, QualitySummaryBar, type Scorecard, type IssueStatus } from "./QualityScorecard";
-
+import { QualityScorecard, QualitySummaryBar, type Scorecard, type IssueStatus, type QualityIssue } from "./QualityScorecard";
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
 /* ─── Editable cell component ─── */
 function EditableCell({ value, onChange, style, redText }: {
   value: string;
