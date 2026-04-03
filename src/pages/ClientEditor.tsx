@@ -32,6 +32,9 @@ export default function ClientEditor() {
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [generatingReport, setGeneratingReport] = useState(false);
   const [generateProgress, setGenerateProgress] = useState({ current: 0, total: 0, label: "" });
+  const [qualityCheckStatus, setQualityCheckStatus] = useState<"idle" | "checking" | "complete" | "correcting">("idle");
+  const [scorecard, setScorecard] = useState<any>(null);
+  const [acceptedIssues, setAcceptedIssues] = useState<string[]>([]);
   const saveTimerRef = useRef<ReturnType<typeof setInterval>>();
   const mainRef = useRef<HTMLElement>(null);
 
