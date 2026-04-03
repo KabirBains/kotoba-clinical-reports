@@ -763,6 +763,37 @@ export function ReportMode(props: ReportModeProps) {
         </div>
       )}
 
+      {/* Quality summary bar (persistent) */}
+      {props.scorecard && (
+        <div className="mt-6">
+          <QualitySummaryBar
+            scorecard={props.scorecard}
+            issueStatuses={props.issueStatuses}
+            isExpanded={props.scorecardVisible}
+            onToggle={props.onToggleScorecard}
+          />
+        </div>
+      )}
+
+      {/* Quality scorecard panel (inline, collapsible) */}
+      {props.scorecardVisible && props.scorecard && (
+        <div className="mt-3">
+          <QualityScorecard
+            scorecard={props.scorecard}
+            issueStatuses={props.issueStatuses}
+            onAccept={props.onAcceptIssue}
+            onDismiss={props.onDismissIssue}
+            onAcknowledge={props.onAcknowledgeIssue}
+            onAcceptAll={props.onAcceptAllIssues}
+            onApplyCorrections={props.onApplyCorrections}
+            onClose={props.onToggleScorecard}
+            onRecheck={props.onRecheck}
+            isApplying={props.qualityCheckStatus === "correcting"}
+            isRechecking={props.qualityCheckStatus === "checking"}
+          />
+        </div>
+      )}
+
       {/* Action buttons */}
       <div className="flex items-center justify-center gap-3 mt-6">
         <Button
@@ -779,20 +810,6 @@ export function ReportMode(props: ReportModeProps) {
         </Button>
         <DownloadReportButton reportData={reportData} />
       </div>
-
-      {/* Quality scorecard modal */}
-      {props.qualityCheckStatus !== "idle" && props.scorecard && (
-        <QualityScorecard
-          scorecard={props.scorecard}
-          acceptedIssues={props.acceptedIssues}
-          onAccept={props.onAcceptIssue}
-          onDismiss={props.onDismissIssue}
-          onAcceptAll={props.onAcceptAllIssues}
-          onApplyCorrections={props.onApplyCorrections}
-          onClose={props.onCloseScorecard}
-          isApplying={props.qualityCheckStatus === "correcting"}
-        />
-      )}
     </div>
   );
 }
