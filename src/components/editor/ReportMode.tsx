@@ -497,8 +497,13 @@ export function ReportMode(props: ReportModeProps) {
                           <WhodasDomainTable scores={matchingAssessment.scores} />
                         )}
 
-                        {/* Generic Results table (non-WHODAS) */}
-                        {!isWhodas && (entry.scoreRows?.length > 0 || entry.total || entry.classification) && (
+                        {/* DASS-42 Subscale Results Table */}
+                        {isDass42 && matchingAssessment?.scores && (
+                          <Dass42DomainTable scores={matchingAssessment.scores} />
+                        )}
+
+                        {/* Generic Results table (non-WHODAS, non-DASS) */}
+                        {!isWhodas && !isDass42 && (entry.scoreRows?.length > 0 || entry.total || entry.classification) && (
                           <div>
                             <h4 className="text-xs font-semibold text-muted-foreground mb-2">Results</h4>
                             <Table>
