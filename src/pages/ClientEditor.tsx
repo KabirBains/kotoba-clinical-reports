@@ -124,15 +124,25 @@ export default function ClientEditor() {
   const saveToCloud = useCallback(async () => {
     if (!report?.id) return;
     const notesWithAssessments = { ...notes, __assessments__: assessments as any, __recommendations__: recommendations as any };
+    const updatePayload: Record<string, any> = {
+      notes: notesWithAssessments,
+      report_content: reportContent || null,
+    };
+    // Persist quality scorecard alongside report
+    if (scorecard) {
+      updatePayload.quality_scorecard = scorecard;
+      updatePayload.issue_statuses = issueStatuses;
+      updatePayload.dismissed_issue_keys = [...dismissedIssueKeys];
+    }
     const { error } = await supabase
       .from("reports")
-      .update({ notes: notesWithAssessments, report_content: reportContent || null })
+      .update(updatePayload as any)
       .eq("id", report.id);
     if (!error) {
       setLastSaved(new Date());
       if (clientId) localStorage.setItem(`kotoba-notes-${clientId}`, JSON.stringify(notes));
     }
-  }, [report?.id, notes, assessments, recommendations, reportContent, clientId]);
+  }, [report?.id, notes, assessments, recommendations, reportContent, clientId, scorecard, issueStatuses, dismissedIssueKeys]);
 
   // Autosave every 30 seconds
   useEffect(() => {
