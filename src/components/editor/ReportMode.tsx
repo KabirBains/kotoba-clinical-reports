@@ -1,10 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { TEMPLATE_SECTIONS } from "@/lib/constants";
-import { FileText } from "lucide-react";
+import { FileText, ShieldCheck, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import DownloadReportButton from "@/components/DownloadReportButton";
 import type { ReportData } from "@/ai/reportAssembler";
 import { type AssessmentInstance, getScoreForOption } from "@/lib/assessment-library";
 import { type RecommendationInstance, OUTCOME_OPTIONS } from "@/lib/recommendations-library";
+import { QualityScorecard, type Scorecard } from "./QualityScorecard";
 
 /* ─── Editable cell component ─── */
 function EditableCell({ value, onChange, style, redText }: {
