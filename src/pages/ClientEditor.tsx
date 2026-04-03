@@ -81,7 +81,7 @@ export default function ClientEditor() {
     },
   });
 
-  // Load notes and report from DB
+  // Load notes, report, and quality scorecard from DB
   useEffect(() => {
     if (report) {
       const savedNotes = report.notes as Record<string, string> | null;
@@ -94,6 +94,20 @@ export default function ClientEditor() {
       // Load recommendations from notes JSON
       const savedRecs = (savedNotes as any)?.["__recommendations__"];
       if (Array.isArray(savedRecs)) setRecommendations(savedRecs);
+      // Load persisted quality scorecard
+      const savedScorecard = (report as any).quality_scorecard;
+      if (savedScorecard && typeof savedScorecard === "object" && savedScorecard.score !== undefined) {
+        setScorecard(savedScorecard);
+        setQualityCheckStatus("complete");
+      }
+      const savedIssueStatuses = (report as any).issue_statuses;
+      if (savedIssueStatuses && typeof savedIssueStatuses === "object") {
+        setIssueStatuses(savedIssueStatuses);
+      }
+      const savedDismissedKeys = (report as any).dismissed_issue_keys;
+      if (Array.isArray(savedDismissedKeys)) {
+        setDismissedIssueKeys(new Set(savedDismissedKeys));
+      }
     }
   }, [report]);
 
