@@ -207,6 +207,16 @@ interface ReportModeProps {
     ahpra_number: string | null;
     practice_name: string | null;
   } | null;
+  // Quality check props
+  qualityCheckStatus: "idle" | "checking" | "complete" | "correcting";
+  scorecard: Scorecard | null;
+  acceptedIssues: string[];
+  onQualityCheck: () => void;
+  onAcceptIssue: (id: string) => void;
+  onDismissIssue: (id: string) => void;
+  onAcceptAllIssues: () => void;
+  onApplyCorrections: () => void;
+  onCloseScorecard: () => void;
 }
 
 // Map app note keys → reportAssembler section keys
