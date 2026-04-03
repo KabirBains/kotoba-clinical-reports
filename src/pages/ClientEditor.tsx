@@ -34,7 +34,9 @@ export default function ClientEditor() {
   const [generateProgress, setGenerateProgress] = useState({ current: 0, total: 0, label: "" });
   const [qualityCheckStatus, setQualityCheckStatus] = useState<"idle" | "checking" | "complete" | "correcting">("idle");
   const [scorecard, setScorecard] = useState<any>(null);
-  const [acceptedIssues, setAcceptedIssues] = useState<string[]>([]);
+  const [issueStatuses, setIssueStatuses] = useState<Record<string, "unresolved" | "accepted" | "dismissed" | "acknowledged">>({});
+  const [dismissedIssueKeys, setDismissedIssueKeys] = useState<Set<string>>(new Set());
+  const [scorecardVisible, setScorecardVisible] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setInterval>>();
   const mainRef = useRef<HTMLElement>(null);
 
