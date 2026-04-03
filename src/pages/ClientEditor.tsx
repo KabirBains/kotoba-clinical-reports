@@ -34,7 +34,9 @@ export default function ClientEditor() {
   const [generateProgress, setGenerateProgress] = useState({ current: 0, total: 0, label: "" });
   const [qualityCheckStatus, setQualityCheckStatus] = useState<"idle" | "checking" | "complete" | "correcting">("idle");
   const [scorecard, setScorecard] = useState<any>(null);
-  const [acceptedIssues, setAcceptedIssues] = useState<string[]>([]);
+  const [issueStatuses, setIssueStatuses] = useState<Record<string, "unresolved" | "accepted" | "dismissed" | "acknowledged">>({});
+  const [dismissedIssueKeys, setDismissedIssueKeys] = useState<Set<string>>(new Set());
+  const [scorecardVisible, setScorecardVisible] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setInterval>>();
   const mainRef = useRef<HTMLElement>(null);
 
@@ -748,7 +750,8 @@ export default function ClientEditor() {
               clinicianProfile={profile || null}
               qualityCheckStatus={qualityCheckStatus}
               scorecard={scorecard}
-              acceptedIssues={acceptedIssues}
+              issueStatuses={issueStatuses}
+              scorecardVisible={scorecardVisible}
               onQualityCheck={async () => {
                 setQualityCheckStatus("checking");
                 try {
@@ -787,30 +790,50 @@ export default function ClientEditor() {
                   });
                   if (error) throw error;
                   if (!data?.success) throw new Error(data?.error || "Quality check failed");
-                  setScorecard(data.scorecard);
-                  setAcceptedIssues([]);
+                  // Filter out previously dismissed issues
+                  const filteredIssues = (data.scorecard.issues || []).filter((issue: any) => {
+                    const key = issue.criterion + "::" + issue.section + "::" + (issue.flaggedText || "").substring(0, 50);
+                    return !dismissedIssueKeys.has(key);
+                  });
+                  setScorecard({ ...data.scorecard, issues: filteredIssues });
+                  setIssueStatuses({});
+                  setScorecardVisible(true);
                   setQualityCheckStatus("complete");
                 } catch (err: any) {
                   console.error("Quality check error:", err);
                   toast.error("Quality check failed: " + (err?.message || "Unknown error"));
-                  setQualityCheckStatus("idle");
+                  setQualityCheckStatus("complete");
                 }
               }}
-              onAcceptIssue={(id) => setAcceptedIssues(prev => [...prev, id])}
+              onAcceptIssue={(id) => setIssueStatuses(prev => ({ ...prev, [id]: "accepted" }))}
               onDismissIssue={(id) => {
-                setScorecard((prev: any) => prev ? { ...prev, issues: prev.issues.filter((i: any) => i.id !== id) } : prev);
+                setIssueStatuses(prev => ({ ...prev, [id]: "dismissed" }));
+                // Track dismissed key to prevent re-flagging
+                if (scorecard?.issues) {
+                  const issue = scorecard.issues.find((i: any) => i.id === id);
+                  if (issue) {
+                    const key = issue.criterion + "::" + issue.section + "::" + (issue.flaggedText || "").substring(0, 50);
+                    setDismissedIssueKeys(prev => new Set([...prev, key]));
+                  }
+                }
               }}
+              onAcknowledgeIssue={(id) => setIssueStatuses(prev => ({ ...prev, [id]: "acknowledged" }))}
               onAcceptAllIssues={() => {
                 if (scorecard?.issues) {
-                  const autoIds = scorecard.issues.filter((i: any) => i.tier === "auto_correct").map((i: any) => i.id);
-                  setAcceptedIssues(autoIds);
+                  const updates: Record<string, "accepted"> = {};
+                  scorecard.issues.forEach((i: any) => {
+                    if (i.tier === "auto_correct" && (!issueStatuses[i.id] || issueStatuses[i.id] === "unresolved")) {
+                      updates[i.id] = "accepted";
+                    }
+                  });
+                  setIssueStatuses(prev => ({ ...prev, ...updates }));
                 }
               }}
               onApplyCorrections={async () => {
                 setQualityCheckStatus("correcting");
                 try {
                   const acceptedFixes = scorecard.issues
-                    .filter((issue: any) => issue.tier === "auto_correct" && acceptedIssues.includes(issue.id))
+                    .filter((issue: any) => issue.tier === "auto_correct" && issueStatuses[issue.id] === "accepted")
                     .map((issue: any) => ({
                       section: issue.section, sectionText: reportContent[issue.section] || "",
                       criterion: issue.criterion, flaggedText: issue.flaggedText,
@@ -825,8 +848,6 @@ export default function ClientEditor() {
                     setReportContent(prev => ({ ...prev, [sectionKey]: correctedText as string }));
                   }
                   toast.success(`Corrections applied to ${Object.keys(data.correctedSections).length} sections`);
-                  setScorecard((prev: any) => prev ? { ...prev, issues: prev.issues.filter((i: any) => !acceptedIssues.includes(i.id)) } : prev);
-                  setAcceptedIssues([]);
                   setQualityCheckStatus("complete");
                 } catch (err: any) {
                   console.error("Correction error:", err);
@@ -834,7 +855,58 @@ export default function ClientEditor() {
                   setQualityCheckStatus("complete");
                 }
               }}
-              onCloseScorecard={() => { setQualityCheckStatus("idle"); setScorecard(null); setAcceptedIssues([]); }}
+              onToggleScorecard={() => setScorecardVisible(prev => !prev)}
+              onRecheck={async () => {
+                setQualityCheckStatus("checking");
+                try {
+                  const sectionLabels: Record<string, string> = {
+                    "reason-referral": "Section 1 - Reason for Referral",
+                    "background": "Section 2 - Background Information",
+                    "participant-goals": "Section 3 - Participant Goals",
+                    "diagnoses": "Section 4 - Diagnoses",
+                    "ot-case-history": "Section 5 - Allied Health Case History",
+                    "methodology": "Section 6 - Methodology",
+                    "informal-supports": "Section 7 - Informal Supports",
+                    "home-environment": "Section 8 - Home Environment",
+                    "social-environment": "Section 9 - Social Environment",
+                    "typical-week": "Section 10 - Typical Week",
+                    "risk-safety": "Section 11 - Risk and Safety Profile",
+                    "section12_1": "Section 14.1 - Mobility",
+                    "section12_2": "Section 14.2 - Transfers",
+                    "section12_3": "Section 14.3 - Personal ADLs",
+                    "section12_4": "Section 14.4 - Domestic IADLs",
+                    "section12_5": "Section 14.5 - Executive IADLs",
+                    "section12_6": "Section 14.6 - Cognition",
+                    "section12_7": "Section 14.7 - Communication",
+                    "section12_8": "Section 14.8 - Social Functioning",
+                    "section12_9": "Section 14.9 - Sensory Profile",
+                    "assessments": "Section 15 - Standardised Assessments",
+                    "limitations-barriers": "Section 16 - Limitations and Barriers",
+                    "functional-impact": "Section 17 - Functional Impact Summary",
+                    "recommendations": "Section 18 - Recommendations",
+                  };
+                  const reportText = Object.entries(reportContent)
+                    .filter(([, text]) => text && text.trim())
+                    .map(([key, text]) => `=== ${sectionLabels[key] || key} ===\n${text}`)
+                    .join("\n\n");
+                  const { data, error } = await supabase.functions.invoke("review-report", {
+                    body: { reportText, participantName: client?.client_name || "" },
+                  });
+                  if (error) throw error;
+                  if (!data?.success) throw new Error(data?.error || "Quality check failed");
+                  const filteredIssues = (data.scorecard.issues || []).filter((issue: any) => {
+                    const key = issue.criterion + "::" + issue.section + "::" + (issue.flaggedText || "").substring(0, 50);
+                    return !dismissedIssueKeys.has(key);
+                  });
+                  setScorecard({ ...data.scorecard, issues: filteredIssues });
+                  setIssueStatuses({});
+                  setQualityCheckStatus("complete");
+                } catch (err: any) {
+                  console.error("Quality check error:", err);
+                  toast.error("Quality check failed: " + (err?.message || "Unknown error"));
+                  setQualityCheckStatus("complete");
+                }
+              }}
             />
           )}
         </main>

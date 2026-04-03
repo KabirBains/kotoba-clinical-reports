@@ -6,7 +6,7 @@ import DownloadReportButton from "@/components/DownloadReportButton";
 import type { ReportData } from "@/ai/reportAssembler";
 import { type AssessmentInstance, getScoreForOption } from "@/lib/assessment-library";
 import { type RecommendationInstance, OUTCOME_OPTIONS } from "@/lib/recommendations-library";
-import { QualityScorecard, type Scorecard } from "./QualityScorecard";
+import { QualityScorecard, QualitySummaryBar, type Scorecard, type IssueStatus } from "./QualityScorecard";
 
 /* ─── Editable cell component ─── */
 function EditableCell({ value, onChange, style, redText }: {
@@ -210,13 +210,16 @@ interface ReportModeProps {
   // Quality check props
   qualityCheckStatus: "idle" | "checking" | "complete" | "correcting";
   scorecard: Scorecard | null;
-  acceptedIssues: string[];
+  issueStatuses: Record<string, IssueStatus>;
+  scorecardVisible: boolean;
   onQualityCheck: () => void;
   onAcceptIssue: (id: string) => void;
   onDismissIssue: (id: string) => void;
+  onAcknowledgeIssue: (id: string) => void;
   onAcceptAllIssues: () => void;
   onApplyCorrections: () => void;
-  onCloseScorecard: () => void;
+  onToggleScorecard: () => void;
+  onRecheck: () => void;
 }
 
 // Map app note keys → reportAssembler section keys
@@ -760,6 +763,37 @@ export function ReportMode(props: ReportModeProps) {
         </div>
       )}
 
+      {/* Quality summary bar (persistent) */}
+      {props.scorecard && (
+        <div className="mt-6">
+          <QualitySummaryBar
+            scorecard={props.scorecard}
+            issueStatuses={props.issueStatuses}
+            isExpanded={props.scorecardVisible}
+            onToggle={props.onToggleScorecard}
+          />
+        </div>
+      )}
+
+      {/* Quality scorecard panel (inline, collapsible) */}
+      {props.scorecardVisible && props.scorecard && (
+        <div className="mt-3">
+          <QualityScorecard
+            scorecard={props.scorecard}
+            issueStatuses={props.issueStatuses}
+            onAccept={props.onAcceptIssue}
+            onDismiss={props.onDismissIssue}
+            onAcknowledge={props.onAcknowledgeIssue}
+            onAcceptAll={props.onAcceptAllIssues}
+            onApplyCorrections={props.onApplyCorrections}
+            onClose={props.onToggleScorecard}
+            onRecheck={props.onRecheck}
+            isApplying={props.qualityCheckStatus === "correcting"}
+            isRechecking={props.qualityCheckStatus === "checking"}
+          />
+        </div>
+      )}
+
       {/* Action buttons */}
       <div className="flex items-center justify-center gap-3 mt-6">
         <Button
@@ -776,20 +810,6 @@ export function ReportMode(props: ReportModeProps) {
         </Button>
         <DownloadReportButton reportData={reportData} />
       </div>
-
-      {/* Quality scorecard modal */}
-      {props.qualityCheckStatus !== "idle" && props.scorecard && (
-        <QualityScorecard
-          scorecard={props.scorecard}
-          acceptedIssues={props.acceptedIssues}
-          onAccept={props.onAcceptIssue}
-          onDismiss={props.onDismissIssue}
-          onAcceptAll={props.onAcceptAllIssues}
-          onApplyCorrections={props.onApplyCorrections}
-          onClose={props.onCloseScorecard}
-          isApplying={props.qualityCheckStatus === "correcting"}
-        />
-      )}
     </div>
   );
 }
