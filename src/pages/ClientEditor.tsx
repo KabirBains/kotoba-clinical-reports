@@ -495,6 +495,23 @@ export default function ClientEditor() {
                       }
                       total = `${totalAnswered}/60 items scored`;
                       classification = "See quadrant breakdown";
+                    } else if (assessment.definitionId === "dass-42") {
+                      const DASS_SUBSCALES = [
+                        { id: "depression", name: "Depression", short: "D", items: [3,5,10,13,16,17,21,24,26,31,34,37,38,42], thresholds: [{max:9,label:"Normal"},{max:13,label:"Mild"},{max:20,label:"Moderate"},{max:27,label:"Severe"},{max:999,label:"Extremely Severe"}] },
+                        { id: "anxiety", name: "Anxiety", short: "A", items: [2,4,7,9,15,19,20,23,25,28,30,36,40,41], thresholds: [{max:7,label:"Normal"},{max:9,label:"Mild"},{max:14,label:"Moderate"},{max:19,label:"Severe"},{max:999,label:"Extremely Severe"}] },
+                        { id: "stress", name: "Stress", short: "S", items: [1,6,8,11,12,14,18,22,27,29,32,33,35,39], thresholds: [{max:14,label:"Normal"},{max:18,label:"Mild"},{max:25,label:"Moderate"},{max:33,label:"Severe"},{max:999,label:"Extremely Severe"}] },
+                      ];
+                      let grandTotal = 0; let grandAnswered = 0;
+                      for (const sub of DASS_SUBSCALES) {
+                        let subSum = 0; let subAnswered = 0;
+                        for (const n of sub.items) { const v = sc[String(n)]; if (v !== undefined && v !== "") { subSum += parseInt(v); subAnswered++; } }
+                        grandTotal += subSum; grandAnswered += subAnswered;
+                        let cls = "Incomplete";
+                        if (subAnswered === sub.items.length) { for (const t of sub.thresholds) { if (subSum <= t.max) { cls = t.label; break; } } }
+                        rows.push({ label: `${sub.name} (${sub.short})`, value: `${subSum}/${sub.items.length * 3} — ${cls}` });
+                      }
+                      total = `${grandTotal}/126`;
+                      classification = grandAnswered === 42 ? "See subscale breakdown" : `Incomplete (${grandAnswered}/42)`;
                     } else if (def) {
                       const t = calculateTotal(def, assessment.scores);
                       classification = getClassification(def, t);
