@@ -793,63 +793,11 @@ export default function ClientEditor() {
               scorecard={scorecard}
               issueStatuses={issueStatuses}
               scorecardVisible={scorecardVisible}
-              onQualityCheck={async () => {
-                setQualityCheckStatus("checking");
-                try {
-                  const sectionLabels: Record<string, string> = {
-                    "reason-referral": "Section 1 - Reason for Referral",
-                    "background": "Section 2 - Background Information",
-                    "participant-goals": "Section 3 - Participant Goals",
-                    "diagnoses": "Section 4 - Diagnoses",
-                    "ot-case-history": "Section 5 - Allied Health Case History",
-                    "methodology": "Section 6 - Methodology",
-                    "informal-supports": "Section 7 - Informal Supports",
-                    "home-environment": "Section 8 - Home Environment",
-                    "social-environment": "Section 9 - Social Environment",
-                    "typical-week": "Section 10 - Typical Week",
-                    "risk-safety": "Section 11 - Risk and Safety Profile",
-                    "section12_1": "Section 14.1 - Mobility",
-                    "section12_2": "Section 14.2 - Transfers",
-                    "section12_3": "Section 14.3 - Personal ADLs",
-                    "section12_4": "Section 14.4 - Domestic IADLs",
-                    "section12_5": "Section 14.5 - Executive IADLs",
-                    "section12_6": "Section 14.6 - Cognition",
-                    "section12_7": "Section 14.7 - Communication",
-                    "section12_8": "Section 14.8 - Social Functioning",
-                    "section12_9": "Section 14.9 - Sensory Profile",
-                    "assessments": "Section 15 - Standardised Assessments",
-                    "limitations-barriers": "Section 16 - Limitations and Barriers",
-                    "functional-impact": "Section 17 - Functional Impact Summary",
-                    "recommendations": "Section 18 - Recommendations",
-                  };
-                  const reportText = Object.entries(reportContent)
-                    .filter(([, text]) => text && text.trim())
-                    .map(([key, text]) => `=== ${sectionLabels[key] || key} ===\n${text}`)
-                    .join("\n\n");
-                  const { data, error } = await supabase.functions.invoke("review-report", {
-                    body: { reportText, participantName: client?.client_name || "" },
-                  });
-                  if (error) throw error;
-                  if (!data?.success) throw new Error(data?.error || "Quality check failed");
-                  // Filter out previously dismissed issues
-                  const filteredIssues = (data.scorecard.issues || []).filter((issue: any) => {
-                    const key = issue.criterion + "::" + issue.section + "::" + (issue.flaggedText || "").substring(0, 50);
-                    return !dismissedIssueKeys.has(key);
-                  });
-                  setScorecard({ ...data.scorecard, issues: filteredIssues });
-                  setIssueStatuses({});
-                  setScorecardVisible(true);
-                  setQualityCheckStatus("complete");
-                } catch (err: any) {
-                  console.error("Quality check error:", err);
-                  toast.error("Quality check failed: " + (err?.message || "Unknown error"));
-                  setQualityCheckStatus("complete");
-                }
-              }}
+              hasUnresolvedIssues={!!(scorecard && scorecard.issues.length > 0 && scorecard.issues.some((i: any) => !issueStatuses[i.id] || issueStatuses[i.id] === "unresolved"))}
+              onQualityCheck={runQualityCheck}
               onAcceptIssue={(id) => setIssueStatuses(prev => ({ ...prev, [id]: "accepted" }))}
               onDismissIssue={(id) => {
                 setIssueStatuses(prev => ({ ...prev, [id]: "dismissed" }));
-                // Track dismissed key to prevent re-flagging
                 if (scorecard?.issues) {
                   const issue = scorecard.issues.find((i: any) => i.id === id);
                   if (issue) {
@@ -897,57 +845,16 @@ export default function ClientEditor() {
                 }
               }}
               onToggleScorecard={() => setScorecardVisible(prev => !prev)}
-              onRecheck={async () => {
-                setQualityCheckStatus("checking");
-                try {
-                  const sectionLabels: Record<string, string> = {
-                    "reason-referral": "Section 1 - Reason for Referral",
-                    "background": "Section 2 - Background Information",
-                    "participant-goals": "Section 3 - Participant Goals",
-                    "diagnoses": "Section 4 - Diagnoses",
-                    "ot-case-history": "Section 5 - Allied Health Case History",
-                    "methodology": "Section 6 - Methodology",
-                    "informal-supports": "Section 7 - Informal Supports",
-                    "home-environment": "Section 8 - Home Environment",
-                    "social-environment": "Section 9 - Social Environment",
-                    "typical-week": "Section 10 - Typical Week",
-                    "risk-safety": "Section 11 - Risk and Safety Profile",
-                    "section12_1": "Section 14.1 - Mobility",
-                    "section12_2": "Section 14.2 - Transfers",
-                    "section12_3": "Section 14.3 - Personal ADLs",
-                    "section12_4": "Section 14.4 - Domestic IADLs",
-                    "section12_5": "Section 14.5 - Executive IADLs",
-                    "section12_6": "Section 14.6 - Cognition",
-                    "section12_7": "Section 14.7 - Communication",
-                    "section12_8": "Section 14.8 - Social Functioning",
-                    "section12_9": "Section 14.9 - Sensory Profile",
-                    "assessments": "Section 15 - Standardised Assessments",
-                    "limitations-barriers": "Section 16 - Limitations and Barriers",
-                    "functional-impact": "Section 17 - Functional Impact Summary",
-                    "recommendations": "Section 18 - Recommendations",
-                  };
-                  const reportText = Object.entries(reportContent)
-                    .filter(([, text]) => text && text.trim())
-                    .map(([key, text]) => `=== ${sectionLabels[key] || key} ===\n${text}`)
-                    .join("\n\n");
-                  const { data, error } = await supabase.functions.invoke("review-report", {
-                    body: { reportText, participantName: client?.client_name || "" },
-                  });
-                  if (error) throw error;
-                  if (!data?.success) throw new Error(data?.error || "Quality check failed");
-                  const filteredIssues = (data.scorecard.issues || []).filter((issue: any) => {
-                    const key = issue.criterion + "::" + issue.section + "::" + (issue.flaggedText || "").substring(0, 50);
-                    return !dismissedIssueKeys.has(key);
-                  });
-                  setScorecard({ ...data.scorecard, issues: filteredIssues });
-                  setIssueStatuses({});
-                  setQualityCheckStatus("complete");
-                } catch (err: any) {
-                  console.error("Quality check error:", err);
-                  toast.error("Quality check failed: " + (err?.message || "Unknown error"));
-                  setQualityCheckStatus("complete");
-                }
+              onRecheck={runQualityCheck}
+              onClearAndRecheck={() => {
+                setScorecard(null);
+                setIssueStatuses({});
+                setScorecardVisible(false);
+                setQualityCheckStatus("idle");
+                // Immediately run a fresh check
+                setTimeout(() => runQualityCheck(), 100);
               }}
+              onFindInReport={() => {/* handled internally by ReportMode */}}
             />
           )}
         </main>
