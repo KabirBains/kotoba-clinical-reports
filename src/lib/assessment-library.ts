@@ -130,6 +130,15 @@ export const ASSESSMENT_LIBRARY: AssessmentDefinition[] = [
     classifications: [],
   },
   {
+    id: "dass-42",
+    name: "DASS-42 (Depression Anxiety Stress Scales)",
+    shortName: "DASS-42",
+    synopsis: "The Depression Anxiety Stress Scales (DASS-42; Lovibond & Lovibond, 1995) is a 42-item self-report measure assessing three negative emotional states: Depression (14 items), Anxiety (14 items), and Stress (14 items). Each item is rated 0–3 based on severity over the past week. Subscale scores are compared to normative severity cut-offs (Normal, Mild, Moderate, Severe, Extremely Severe). The DASS-42 is used in NDIS psychosocial disability assessments to quantify emotional distress and its functional impact.",
+    subscales: [],
+    scoringMethod: "sum",
+    classifications: [],
+  },
+  {
     id: "katz-adl",
     name: "Katz Index of Independence in ADLs",
     shortName: "Katz ADL",

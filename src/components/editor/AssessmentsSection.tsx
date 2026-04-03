@@ -15,6 +15,7 @@ import { ZaritScoring } from "./ZaritScoring";
 import { CANSScoring } from "./CANSScoring";
 import { LSP16Scoring } from "./LSP16Scoring";
 import { SensoryProfileScoring } from "./SensoryProfileScoring";
+import { DASS42Scoring } from "./DASS42Scoring";
 import { 
   ChevronDown, ChevronRight, Plus, Library, PenLine, 
   Trash2, GripVertical, Calendar, Sparkles 
@@ -154,6 +155,11 @@ function AssessmentCard({
             />
           ) : definition && definition.id === "sensory-profile" ? (
             <SensoryProfileScoring
+              scores={instance.scores}
+              onUpdateScores={(newScores) => onUpdate({ ...instance, scores: newScores })}
+            />
+          ) : definition && definition.id === "dass-42" ? (
+            <DASS42Scoring
               scores={instance.scores}
               onUpdateScores={(newScores) => onUpdate({ ...instance, scores: newScores })}
             />

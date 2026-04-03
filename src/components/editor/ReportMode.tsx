@@ -181,6 +181,60 @@ function WhodasDomainTable({ scores }: { scores: Record<string, string> }) {
     </div>
   );
 }
+
+/* ─── DASS-42 subscale table helper ─── */
+const DASS42_SUBSCALE_DEFS = [
+  { id: "depression", name: "Depression (D)", items: [3,5,10,13,16,17,21,24,26,31,34,37,38,42], max: 42, thresholds: [{max:9,label:"Normal",color:"#16a34a"},{max:13,label:"Mild",color:"#65a30d"},{max:20,label:"Moderate",color:"#d97706"},{max:27,label:"Severe",color:"#dc2626"},{max:999,label:"Extremely Severe",color:"#7f1d1d"}] },
+  { id: "anxiety", name: "Anxiety (A)", items: [2,4,7,9,15,19,20,23,25,28,30,36,40,41], max: 42, thresholds: [{max:7,label:"Normal",color:"#16a34a"},{max:9,label:"Mild",color:"#65a30d"},{max:14,label:"Moderate",color:"#d97706"},{max:19,label:"Severe",color:"#dc2626"},{max:999,label:"Extremely Severe",color:"#7f1d1d"}] },
+  { id: "stress", name: "Stress (S)", items: [1,6,8,11,12,14,18,22,27,29,32,33,35,39], max: 42, thresholds: [{max:14,label:"Normal",color:"#16a34a"},{max:18,label:"Mild",color:"#65a30d"},{max:25,label:"Moderate",color:"#d97706"},{max:33,label:"Severe",color:"#dc2626"},{max:999,label:"Extremely Severe",color:"#7f1d1d"}] },
+];
+
+function Dass42DomainTable({ scores }: { scores: Record<string, string> }) {
+  const rows = DASS42_SUBSCALE_DEFS.map(sub => {
+    let sum = 0; let answered = 0;
+    for (const n of sub.items) {
+      const v = scores[String(n)];
+      if (v !== undefined && v !== "") { sum += parseInt(v) || 0; answered++; }
+    }
+    let cls = { label: "Not assessed", color: "#a1a1aa" };
+    if (answered > 0) {
+      for (const t of sub.thresholds) { if (sum <= t.max) { cls = { label: t.label, color: t.color }; break; } }
+    }
+    return { name: sub.name, sum, max: sub.items.length * 3, answered, total: sub.items.length, cls };
+  });
+
+  return (
+    <div>
+      <h4 className="text-xs font-semibold text-muted-foreground mb-2">Subscale Results</h4>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="text-xs h-8">Subscale</TableHead>
+            <TableHead className="text-xs h-8 text-right">Score</TableHead>
+            <TableHead className="text-xs h-8 text-right">Max</TableHead>
+            <TableHead className="text-xs h-8 text-right">Classification</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((r) => (
+            <TableRow key={r.name}>
+              <TableCell className="text-xs py-1.5 font-medium">{r.name}</TableCell>
+              <TableCell className="text-xs py-1.5 text-right font-mono">
+                {r.answered > 0 ? r.sum : "--"}
+              </TableCell>
+              <TableCell className="text-xs py-1.5 text-right font-mono text-muted-foreground">
+                {r.max}
+              </TableCell>
+              <TableCell className="text-xs py-1.5 text-right font-semibold" style={{ color: r.cls.color }}>
+                {r.cls.label}
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
 import { FunctionalCapacityReport } from "./FunctionalCapacityTables";
 import {
   Table,
@@ -451,9 +505,12 @@ export function ReportMode(props: ReportModeProps) {
                     </h2>
                     {entries.map(([aId, entry], idx) => {
                       const isWhodas = aId.includes("whodas") || entry.name?.toLowerCase().includes("whodas");
-                      // Find matching assessment instance to get raw scores for WHODAS domain table
+                      const isDass42 = aId.includes("dass") || entry.name?.toLowerCase().includes("dass");
+                      // Find matching assessment instance
                       const matchingAssessment = isWhodas
                         ? props.assessments.find(a => a.definitionId === "whodas-2.0" || a.name?.toLowerCase().includes("whodas"))
+                        : isDass42
+                        ? props.assessments.find(a => a.definitionId === "dass-42" || a.name?.toLowerCase().includes("dass"))
                         : null;
 
                       return (
@@ -494,8 +551,13 @@ export function ReportMode(props: ReportModeProps) {
                           <WhodasDomainTable scores={matchingAssessment.scores} />
                         )}
 
-                        {/* Generic Results table (non-WHODAS) */}
-                        {!isWhodas && (entry.scoreRows?.length > 0 || entry.total || entry.classification) && (
+                        {/* DASS-42 Subscale Results Table */}
+                        {isDass42 && matchingAssessment?.scores && (
+                          <Dass42DomainTable scores={matchingAssessment.scores} />
+                        )}
+
+                        {/* Generic Results table (non-WHODAS, non-DASS) */}
+                        {!isWhodas && !isDass42 && (entry.scoreRows?.length > 0 || entry.total || entry.classification) && (
                           <div>
                             <h4 className="text-xs font-semibold text-muted-foreground mb-2">Results</h4>
                             <Table>
