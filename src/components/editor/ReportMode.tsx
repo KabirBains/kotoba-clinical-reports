@@ -210,13 +210,16 @@ interface ReportModeProps {
   // Quality check props
   qualityCheckStatus: "idle" | "checking" | "complete" | "correcting";
   scorecard: Scorecard | null;
-  acceptedIssues: string[];
+  issueStatuses: Record<string, IssueStatus>;
+  scorecardVisible: boolean;
   onQualityCheck: () => void;
   onAcceptIssue: (id: string) => void;
   onDismissIssue: (id: string) => void;
+  onAcknowledgeIssue: (id: string) => void;
   onAcceptAllIssues: () => void;
   onApplyCorrections: () => void;
-  onCloseScorecard: () => void;
+  onToggleScorecard: () => void;
+  onRecheck: () => void;
 }
 
 // Map app note keys → reportAssembler section keys
