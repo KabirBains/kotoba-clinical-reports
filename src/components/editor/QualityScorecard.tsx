@@ -1,7 +1,22 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { X, Check, CheckCheck, AlertTriangle, Filter, ChevronDown, ChevronUp, Eye, ShieldCheck } from "lucide-react";
+import {
+  X, Check, CheckCheck, AlertTriangle, Filter,
+  ChevronDown, ChevronUp, Eye, ShieldCheck,
+  Search, ChevronLeft, ChevronRight, RotateCcw,
+} from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 export interface QualityIssue {
   id: string;
@@ -43,6 +58,8 @@ interface QualityScorecardProps {
   onApplyCorrections: () => void;
   onClose: () => void;
   onRecheck: () => void;
+  onClearAndRecheck: () => void;
+  onFindInReport: (issue: QualityIssue) => void;
   isApplying: boolean;
   isRechecking: boolean;
 }
@@ -143,6 +160,8 @@ export function QualityScorecard({
   onApplyCorrections,
   onClose,
   onRecheck,
+  onClearAndRecheck,
+  onFindInReport,
   isApplying,
   isRechecking,
 }: QualityScorecardProps) {
@@ -170,6 +189,20 @@ export function QualityScorecard({
       return true;
     });
   }, [scorecard.issues, filterCategory, filterSeverity, filterTier]);
+
+  // Unresolved issues for prev/next navigation
+  const unresolvedIssues = useMemo(() =>
+    scorecard.issues.filter(i => !issueStatuses[i.id] || issueStatuses[i.id] === "unresolved"),
+    [scorecard.issues, issueStatuses]
+  );
+  const [navIndex, setNavIndex] = useState(0);
+
+  const navigateIssue = useCallback((dir: 1 | -1) => {
+    if (unresolvedIssues.length === 0) return;
+    const next = (navIndex + dir + unresolvedIssues.length) % unresolvedIssues.length;
+    setNavIndex(next);
+    onFindInReport(unresolvedIssues[next]);
+  }, [unresolvedIssues, navIndex, onFindInReport]);
 
   return (
     <div className="border border-border/50 rounded-lg bg-background shadow-sm" style={{ maxHeight: "80vh", display: "flex", flexDirection: "column" }}>
@@ -225,6 +258,25 @@ export function QualityScorecard({
             <div className="text-xs text-yellow-800 dark:text-yellow-200">
               <span className="font-medium">Missing sections:</span> {scorecard.missingSections.join(", ")}
             </div>
+          </div>
+        )}
+
+        {/* Issue navigation bar */}
+        {unresolvedIssues.length > 0 && (
+          <div className="flex items-center gap-2 bg-muted/30 rounded-md px-3 py-2">
+            <Search className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="text-xs text-muted-foreground flex-1">
+              Navigate unresolved issues ({unresolvedIssues.length} remaining)
+            </span>
+            <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => navigateIssue(-1)}>
+              <ChevronLeft className="h-3.5 w-3.5" />
+            </Button>
+            <span className="text-xs text-muted-foreground font-mono">
+              {unresolvedIssues.length > 0 ? navIndex + 1 : 0}/{unresolvedIssues.length}
+            </span>
+            <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => navigateIssue(1)}>
+              <ChevronRight className="h-3.5 w-3.5" />
+            </Button>
           </div>
         )}
 
@@ -355,6 +407,11 @@ export function QualityScorecard({
                     {/* Action buttons */}
                     {!isDone && (
                       <div className="flex gap-2 pt-1">
+                        {issue.flaggedText && (
+                          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => onFindInReport(issue)}>
+                            <Search className="h-3 w-3 mr-1" /> Find in Report
+                          </Button>
+                        )}
                         {issue.tier === "auto_correct" ? (
                           <>
                             <Button size="sm" className="h-7 text-xs bg-green-600 hover:bg-green-700 text-white" onClick={() => onAccept(issue.id)}>
@@ -415,15 +472,36 @@ export function QualityScorecard({
         </div>
         <div className="flex gap-2">
           {!meetsStandards && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={onRecheck}
-              disabled={!allAddressed || isRechecking}
-              title={!allAddressed ? "Address all issues before re-checking" : ""}
-            >
-              {isRechecking ? "Checking…" : "Re-check Quality"}
-            </Button>
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={onRecheck}
+                disabled={!allAddressed || isRechecking}
+                title={!allAddressed ? "Address all issues before re-checking" : ""}
+              >
+                {isRechecking ? "Checking…" : "Re-check Quality"}
+              </Button>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button size="sm" variant="ghost" className="text-xs text-muted-foreground">
+                    <RotateCcw className="h-3 w-3 mr-1" /> Clear & Re-check
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Clear quality check results?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This will clear your current quality check results and run a fresh analysis. Any unresolved issues will be lost.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={onClearAndRecheck}>Clear & Re-check</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </>
           )}
           <Button size="sm" variant="ghost" onClick={onClose}>Close</Button>
         </div>
