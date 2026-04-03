@@ -158,6 +158,11 @@ function AssessmentCard({
               scores={instance.scores}
               onUpdateScores={(newScores) => onUpdate({ ...instance, scores: newScores })}
             />
+          ) : definition && definition.id === "dass-42" ? (
+            <DASS42Scoring
+              scores={instance.scores}
+              onUpdateScores={(newScores) => onUpdate({ ...instance, scores: newScores })}
+            />
           ) : definition && definition.subscales.length > 0 ? (
             definition.subscales.map((subscale) => {
               const subscaleTotal = calculateSubscaleTotal(definition, subscale.id, instance.scores);
