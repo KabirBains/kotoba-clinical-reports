@@ -161,6 +161,60 @@ export default function ClientEditor() {
     setNotes((prev) => ({ ...prev, [sectionId]: value }));
   };
 
+  const SECTION_LABELS: Record<string, string> = {
+    "reason-referral": "Section 1 - Reason for Referral",
+    "background": "Section 2 - Background Information",
+    "participant-goals": "Section 3 - Participant Goals",
+    "diagnoses": "Section 4 - Diagnoses",
+    "ot-case-history": "Section 5 - Allied Health Case History",
+    "methodology": "Section 6 - Methodology",
+    "informal-supports": "Section 7 - Informal Supports",
+    "home-environment": "Section 8 - Home Environment",
+    "social-environment": "Section 9 - Social Environment",
+    "typical-week": "Section 10 - Typical Week",
+    "risk-safety": "Section 11 - Risk and Safety Profile",
+    "section12_1": "Section 14.1 - Mobility",
+    "section12_2": "Section 14.2 - Transfers",
+    "section12_3": "Section 14.3 - Personal ADLs",
+    "section12_4": "Section 14.4 - Domestic IADLs",
+    "section12_5": "Section 14.5 - Executive IADLs",
+    "section12_6": "Section 14.6 - Cognition",
+    "section12_7": "Section 14.7 - Communication",
+    "section12_8": "Section 14.8 - Social Functioning",
+    "section12_9": "Section 14.9 - Sensory Profile",
+    "assessments": "Section 15 - Standardised Assessments",
+    "limitations-barriers": "Section 16 - Limitations and Barriers",
+    "functional-impact": "Section 17 - Functional Impact Summary",
+    "recommendations": "Section 18 - Recommendations",
+  };
+
+  const runQualityCheck = useCallback(async () => {
+    setQualityCheckStatus("checking");
+    try {
+      const reportText = Object.entries(reportContent)
+        .filter(([, text]) => text && text.trim())
+        .map(([key, text]) => `=== ${SECTION_LABELS[key] || key} ===\n${text}`)
+        .join("\n\n");
+      const { data, error } = await supabase.functions.invoke("review-report", {
+        body: { reportText, participantName: client?.client_name || "" },
+      });
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || "Quality check failed");
+      const filteredIssues = (data.scorecard.issues || []).filter((issue: any) => {
+        const key = issue.criterion + "::" + issue.section + "::" + (issue.flaggedText || "").substring(0, 50);
+        return !dismissedIssueKeys.has(key);
+      });
+      setScorecard({ ...data.scorecard, issues: filteredIssues });
+      setIssueStatuses({});
+      setScorecardVisible(true);
+      setQualityCheckStatus("complete");
+    } catch (err: any) {
+      console.error("Quality check error:", err);
+      toast.error("Quality check failed: " + (err?.message || "Unknown error"));
+      setQualityCheckStatus("complete");
+    }
+  }, [reportContent, client?.client_name, dismissedIssueKeys]);
+
   const filledSections = Object.entries(notes).filter(
     ([key, v]) => (typeof v === 'string' && v.trim()) && !key.endsWith("__rating") && !key.startsWith("__")
   ).length;
