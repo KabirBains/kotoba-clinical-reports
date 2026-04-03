@@ -760,8 +760,36 @@ export function ReportMode(props: ReportModeProps) {
         </div>
       )}
 
-      {/* Download button — always visible */}
-      <DownloadReportButton reportData={reportData} />
+      {/* Action buttons */}
+      <div className="flex items-center justify-center gap-3 mt-6">
+        <Button
+          variant="outline"
+          disabled={!hasContent || props.qualityCheckStatus === "checking"}
+          onClick={props.onQualityCheck}
+          className="border-primary/50 text-primary hover:bg-primary/5"
+        >
+          {props.qualityCheckStatus === "checking" ? (
+            <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Checking quality…</>
+          ) : (
+            <><ShieldCheck className="h-4 w-4 mr-2" /> Check Report Quality</>
+          )}
+        </Button>
+        <DownloadReportButton reportData={reportData} />
+      </div>
+
+      {/* Quality scorecard modal */}
+      {props.qualityCheckStatus !== "idle" && props.scorecard && (
+        <QualityScorecard
+          scorecard={props.scorecard}
+          acceptedIssues={props.acceptedIssues}
+          onAccept={props.onAcceptIssue}
+          onDismiss={props.onDismissIssue}
+          onAcceptAll={props.onAcceptAllIssues}
+          onApplyCorrections={props.onApplyCorrections}
+          onClose={props.onCloseScorecard}
+          isApplying={props.qualityCheckStatus === "correcting"}
+        />
+      )}
     </div>
   );
 }
