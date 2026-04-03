@@ -1,10 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { TEMPLATE_SECTIONS } from "@/lib/constants";
-import { FileText } from "lucide-react";
+import { FileText, ShieldCheck, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import DownloadReportButton from "@/components/DownloadReportButton";
 import type { ReportData } from "@/ai/reportAssembler";
 import { type AssessmentInstance, getScoreForOption } from "@/lib/assessment-library";
 import { type RecommendationInstance, OUTCOME_OPTIONS } from "@/lib/recommendations-library";
+import { QualityScorecard, type Scorecard } from "./QualityScorecard";
 
 /* ─── Editable cell component ─── */
 function EditableCell({ value, onChange, style, redText }: {
@@ -205,6 +207,16 @@ interface ReportModeProps {
     ahpra_number: string | null;
     practice_name: string | null;
   } | null;
+  // Quality check props
+  qualityCheckStatus: "idle" | "checking" | "complete" | "correcting";
+  scorecard: Scorecard | null;
+  acceptedIssues: string[];
+  onQualityCheck: () => void;
+  onAcceptIssue: (id: string) => void;
+  onDismissIssue: (id: string) => void;
+  onAcceptAllIssues: () => void;
+  onApplyCorrections: () => void;
+  onCloseScorecard: () => void;
 }
 
 // Map app note keys → reportAssembler section keys
@@ -748,8 +760,36 @@ export function ReportMode(props: ReportModeProps) {
         </div>
       )}
 
-      {/* Download button — always visible */}
-      <DownloadReportButton reportData={reportData} />
+      {/* Action buttons */}
+      <div className="flex items-center justify-center gap-3 mt-6">
+        <Button
+          variant="outline"
+          disabled={!hasContent || props.qualityCheckStatus === "checking"}
+          onClick={props.onQualityCheck}
+          className="border-primary/50 text-primary hover:bg-primary/5"
+        >
+          {props.qualityCheckStatus === "checking" ? (
+            <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Checking quality…</>
+          ) : (
+            <><ShieldCheck className="h-4 w-4 mr-2" /> Check Report Quality</>
+          )}
+        </Button>
+        <DownloadReportButton reportData={reportData} />
+      </div>
+
+      {/* Quality scorecard modal */}
+      {props.qualityCheckStatus !== "idle" && props.scorecard && (
+        <QualityScorecard
+          scorecard={props.scorecard}
+          acceptedIssues={props.acceptedIssues}
+          onAccept={props.onAcceptIssue}
+          onDismiss={props.onDismissIssue}
+          onAcceptAll={props.onAcceptAllIssues}
+          onApplyCorrections={props.onApplyCorrections}
+          onClose={props.onCloseScorecard}
+          isApplying={props.qualityCheckStatus === "correcting"}
+        />
+      )}
     </div>
   );
 }
