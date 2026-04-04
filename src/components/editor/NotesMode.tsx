@@ -36,6 +36,13 @@ interface NotesModeProps {
   nilGoals: boolean;
   onToggleNilGoals: (val: boolean) => void;
   clientName?: string;
+  ndisNumber?: string;
+  clinicianProfile: {
+    clinician_name: string | null;
+    qualifications: string | null;
+    ahpra_number: string | null;
+    practice_name: string | null;
+  } | null;
 }
 
 function StructuredField({
