@@ -377,6 +377,12 @@ function buildReportData(props: ReportModeProps): ReportData {
       s34Justification: r.s34Justification || "",
       estimatedCost: r.estimatedCost || "",
     })),
+    collateralInterviews: (collateralInterviews || []).map(iv => ({
+      intervieweeName: iv.intervieweeName,
+      intervieweeRole: iv.intervieweeRole,
+      method: iv.method === "phone" ? "Phone" : iv.method === "in_person" ? "In person" : iv.method === "email" ? "Email" : iv.method === "telehealth" ? "Telehealth" : "",
+      date: iv.date,
+    })),
   };
 }
 
