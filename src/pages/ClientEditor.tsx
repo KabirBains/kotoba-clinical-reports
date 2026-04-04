@@ -379,15 +379,30 @@ export default function ClientEditor() {
                     return;
                   }
 
+                  // ── Build collateral context summary ──
+                  let collateralContext = "";
+                  if (collateralInterviews.length > 0) {
+                    const summaries = collateralInterviews.map(iv => {
+                      const respEntries = Object.entries(iv.responses).filter(([, v]) => v && v.trim());
+                      const responseSummary = respEntries.map(([k, v]) => `  - ${k}: ${v}`).join("\n");
+                      return `[${iv.templateId}] ${iv.intervieweeName || "Unnamed"} (${iv.intervieweeRole || iv.templateId}):\n${responseSummary}${iv.generalNotes ? `\n  General notes: ${iv.generalNotes}` : ""}`;
+                    }).join("\n\n");
+                    collateralContext = `\n\nCOLLATERAL INTERVIEW DATA:\nThe following collateral information was gathered from stakeholder interviews. Reference and corroborate relevant observations where they support clinical findings:\n\n${summaries}`;
+                  }
+
                   // ── Build queue items ──
                   const queueItems: QueueItem[] = [];
                   const newContent: Record<string, string> = { ...reportContent };
+
+                  // Sections that benefit from collateral context
+                  const COLLATERAL_SECTIONS = new Set(["background", "informal-supports", "home-environment", "social-environment", "typical-week", "risk-safety", "methodology"]);
 
                   // 1. Top-level text sections
                   for (const [sectionId, observations] of topLevelEntries) {
                     const templateGuidance = getTemplateGuidance(sectionId);
                     const rubric = getRubricForSection("text");
-                    const prompt = `Write a section of an NDIS Functional Capacity Assessment for ${clientName}.\n\nSECTION: ${sectionId}\n\n${templateGuidance ? templateGuidance + "\n\n" : ""}CLINICIAN OBSERVATIONS (transform these into formal clinical prose):\n${observations}\n\nDIAGNOSIS CONTEXT: ${diagnosis || "[Not provided]"}\n\n${rubric}\n\nWrite 2-3 paragraphs of formal NDIS report prose. Use observation → impact → support need structure. Person-first language, third-person active voice. No bullet points, no markdown. Output only the section text.`;
+                    const includeCollateral = COLLATERAL_SECTIONS.has(sectionId) && collateralContext;
+                    const prompt = `Write a section of an NDIS Functional Capacity Assessment for ${clientName}.\n\nSECTION: ${sectionId}\n\n${templateGuidance ? templateGuidance + "\n\n" : ""}CLINICIAN OBSERVATIONS (transform these into formal clinical prose):\n${observations}\n\nDIAGNOSIS CONTEXT: ${diagnosis || "[Not provided]"}${includeCollateral ? collateralContext : ""}\n\n${rubric}\n\nWrite 2-3 paragraphs of formal NDIS report prose. Use observation → impact → support need structure. Person-first language, third-person active voice. No bullet points, no markdown. Output only the section text.`;
                     queueItems.push({ key: sectionId, prompt, maxTokens: 2000, inputForHash: observations, label: `Section: ${sectionId}` });
                   }
 
