@@ -286,7 +286,7 @@ interface ReportModeProps {
 
 // Map app note keys → reportAssembler section keys
 function buildReportData(props: ReportModeProps): ReportData {
-  const { notes, reportContent, clientName, clientDiagnosis, ndisNumber, assessments, recommendations, clinicianProfile, diagnoses } = props;
+  const { notes, reportContent, clientName, clientDiagnosis, ndisNumber, assessments, recommendations, clinicianProfile, diagnoses, collateralInterviews } = props;
 
   // Use reportContent (AI-generated prose) if available, fallback to raw notes
   const s = (noteKey: string, reportKey?: string) => {
