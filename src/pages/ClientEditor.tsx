@@ -899,6 +899,11 @@ export default function ClientEditor() {
               diagnoses={diagnoses}
               onUpdateDiagnoses={setDiagnoses}
               collateralInterviews={collateralInterviews}
+              goals={goals}
+              onUpdateGoals={setGoals}
+              nilGoals={nilGoals}
+              onToggleNilGoals={setNilGoals}
+              clientName={client?.client_name}
             />
           ) : mode === "liaise" ? (
             <LiaiseMode
