@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { type CollateralInterview, LIAISE_TEMPLATES } from "./LiaiseMode";
 import { buildMethodologyText } from "./MethodologyAggregator";
+import { PARTICIPANT_KEYS, CLINICIAN_KEYS } from "./ParticipantReportDetails";
 import { cn } from "@/lib/utils";
 import { TEMPLATE_SECTIONS } from "@/lib/constants";
 import { FileText, ShieldCheck, Loader2 } from "lucide-react";
@@ -265,6 +266,7 @@ interface ReportModeProps {
   onUpdateGoals?: (goals: GoalInstance[]) => void;
   onUpdateRecommendation?: (index: number, updated: RecommendationInstance) => void;
   onUpdateReportContent?: (key: string, value: string) => void;
+  onUpdateNote?: (key: string, value: string) => void;
   clinicianProfile: {
     clinician_name: string | null;
     qualifications: string | null;
@@ -311,12 +313,21 @@ function buildReportData(props: ReportModeProps): ReportData {
 
   return {
     participant: {
-      fullName: clientName || "Participant",
-      dob: notes["participant-dob"] || "",
-      age: notes["participant-age"] || "",
-      ndisNumber: ndisNumber || "",
-      address: notes["participant-address"] || "",
-      primaryContact: notes["participant-contact"] || "",
+      fullName: notes[PARTICIPANT_KEYS.fullName] || clientName || "Participant",
+      dob: notes[PARTICIPANT_KEYS.dob] || notes["participant-dob"] || "",
+      age: (() => {
+        const dob = notes[PARTICIPANT_KEYS.dob];
+        if (!dob) return notes["participant-age"] || "";
+        const birth = new Date(dob);
+        const today = new Date();
+        let years = today.getFullYear() - birth.getFullYear();
+        const md = today.getMonth() - birth.getMonth();
+        if (md < 0 || (md === 0 && today.getDate() < birth.getDate())) years--;
+        return years >= 0 ? `${years} years` : "";
+      })(),
+      ndisNumber: notes[PARTICIPANT_KEYS.ndisNumber] || ndisNumber || "",
+      address: notes[PARTICIPANT_KEYS.address] || notes["participant-address"] || "",
+      primaryContact: notes[PARTICIPANT_KEYS.primaryContact] || notes["participant-contact"] || "",
       primaryDiagnosis: primaryDiagnosisText,
       secondaryDiagnoses: secondaryDiagnosesText,
     },
@@ -325,9 +336,9 @@ function buildReportData(props: ReportModeProps): ReportData {
       qualifications: clinicianProfile?.qualifications || "",
       ahpra: clinicianProfile?.ahpra_number || "",
       organisation: clinicianProfile?.practice_name || "",
-      phoneEmail: "",
-      dateOfAssessment: notes["assessment-date"] || "",
-      dateOfReport: today,
+      phoneEmail: notes[CLINICIAN_KEYS.phoneEmail] || "",
+      dateOfAssessment: notes[CLINICIAN_KEYS.dateOfAssessment] || notes["assessment-date"] || "",
+      dateOfReport: notes[CLINICIAN_KEYS.dateOfReport] || today,
       otServicesCommenced: notes["ot-services-commenced"] || "",
     },
     presentAtAssessment: notes["present-at-assessment"] || "",
@@ -456,6 +467,96 @@ export function ReportMode(props: ReportModeProps) {
       ) : (
         <div className="bg-card border border-border/50 rounded-lg shadow-sm p-8 space-y-8">
           {TEMPLATE_SECTIONS.map((section) => {
+            // Section 1 — Participant & Report Details: render editable front-matter tables
+            if (section.id === "participant-details") {
+              const p = reportData.participant;
+              const c = reportData.clinician;
+              const participantRows: [string, string, string][] = [
+                ["Full Name", p.fullName, PARTICIPANT_KEYS.fullName],
+                ["Date of Birth", p.dob, PARTICIPANT_KEYS.dob],
+                ["Age", p.age, ""],
+                ["NDIS Number", p.ndisNumber, PARTICIPANT_KEYS.ndisNumber],
+                ["Address", p.address, PARTICIPANT_KEYS.address],
+                ["Primary Contact / Guardian", p.primaryContact, PARTICIPANT_KEYS.primaryContact],
+              ];
+              const clinicianRows: [string, string, string][] = [
+                ["Report Author", c.name, ""],
+                ["Qualifications", c.qualifications, ""],
+                ["AHPRA Registration No.", c.ahpra, ""],
+                ["Organisation / Practice", c.organisation, ""],
+                ["Phone / Email", c.phoneEmail, CLINICIAN_KEYS.phoneEmail],
+                ["Date of Assessment", c.dateOfAssessment, CLINICIAN_KEYS.dateOfAssessment],
+                ["Date of Report", c.dateOfReport, CLINICIAN_KEYS.dateOfReport],
+                ["Report Type", "Functional Capacity Assessment (FCA)", ""],
+              ];
+
+              return (
+                <div key={section.id} className="space-y-6">
+                  <h2 className="text-base font-semibold text-foreground border-b border-border/30 pb-2">
+                    {section.number}. {section.title}
+                  </h2>
+
+                  {/* Participant Details */}
+                  <div>
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                      Participant Details
+                    </p>
+                    <Table>
+                      <TableBody>
+                        {participantRows.map(([label, val, noteKey], idx) => (
+                          <TableRow key={idx}>
+                            <TableCell className="text-xs py-1.5 w-[200px] bg-muted/30 text-muted-foreground font-semibold">
+                              {label}
+                            </TableCell>
+                            {noteKey ? (
+                              <EditableCell
+                                value={val}
+                                onChange={(v) => props.onUpdateNote?.(noteKey, v)}
+                                style={{ padding: "6px 12px", fontSize: "13px" }}
+                              />
+                            ) : (
+                              <TableCell className="text-xs py-1.5">
+                                {val || "—"}
+                              </TableCell>
+                            )}
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+
+                  {/* Clinician Details */}
+                  <div>
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                      Provider / Clinician Details
+                    </p>
+                    <Table>
+                      <TableBody>
+                        {clinicianRows.map(([label, val, noteKey], idx) => (
+                          <TableRow key={idx}>
+                            <TableCell className="text-xs py-1.5 w-[200px] bg-muted/30 text-muted-foreground font-semibold">
+                              {label}
+                            </TableCell>
+                            {noteKey ? (
+                              <EditableCell
+                                value={val}
+                                onChange={(v) => props.onUpdateNote?.(noteKey, v)}
+                                style={{ padding: "6px 12px", fontSize: "13px" }}
+                              />
+                            ) : (
+                              <TableCell className="text-xs py-1.5">
+                                {val || "—"}
+                              </TableCell>
+                            )}
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+              );
+            }
+
             // Section 14 — render AI-generated prose per domain, with raw table as collapsible fallback
             if (section.id === "functional-capacity") {
               const DOMAIN_MAP = [

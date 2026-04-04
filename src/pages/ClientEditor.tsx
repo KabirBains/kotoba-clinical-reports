@@ -904,6 +904,8 @@ export default function ClientEditor() {
               nilGoals={nilGoals}
               onToggleNilGoals={setNilGoals}
               clientName={client?.client_name}
+              ndisNumber={client?.ndis_number || ""}
+              clinicianProfile={profile || null}
             />
           ) : mode === "liaise" ? (
             <LiaiseMode
@@ -931,6 +933,7 @@ export default function ClientEditor() {
               onUpdateReportContent={(key, value) => {
                 setReportContent(prev => ({ ...prev, [key]: value }));
               }}
+              onUpdateNote={updateNote}
               clinicianProfile={profile || null}
               qualityCheckStatus={qualityCheckStatus}
               scorecard={scorecard}

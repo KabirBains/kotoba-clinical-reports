@@ -10,6 +10,7 @@ import { RecommendationsSection } from "@/components/editor/RecommendationsSecti
 import { DiagnosisPicker } from "@/components/editor/DiagnosisPicker";
 import { MethodologyAggregator } from "@/components/editor/MethodologyAggregator";
 import { ParticipantGoals, type GoalInstance } from "@/components/editor/ParticipantGoals";
+import { ParticipantReportDetails } from "@/components/editor/ParticipantReportDetails";
 import { ChevronDown, ChevronRight, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -35,6 +36,13 @@ interface NotesModeProps {
   nilGoals: boolean;
   onToggleNilGoals: (val: boolean) => void;
   clientName?: string;
+  ndisNumber?: string;
+  clinicianProfile: {
+    clinician_name: string | null;
+    qualifications: string | null;
+    ahpra_number: string | null;
+    practice_name: string | null;
+  } | null;
 }
 
 function StructuredField({
@@ -199,7 +207,7 @@ function SectionPanel({
   );
 }
 
-export function NotesMode({ notes, onUpdateNote, assessments, onUpdateAssessments, recommendations, onUpdateRecommendations, diagnoses, onUpdateDiagnoses, collateralInterviews, goals, onUpdateGoals, nilGoals, onToggleNilGoals, clientName }: NotesModeProps) {
+export function NotesMode({ notes, onUpdateNote, assessments, onUpdateAssessments, recommendations, onUpdateRecommendations, diagnoses, onUpdateDiagnoses, collateralInterviews, goals, onUpdateGoals, nilGoals, onToggleNilGoals, clientName, ndisNumber, clinicianProfile }: NotesModeProps) {
   return (
     <div className="max-w-4xl mx-auto py-6 px-4">
       <div className="bg-card border border-border/50 rounded-lg shadow-sm overflow-hidden">
@@ -251,8 +259,19 @@ export function NotesMode({ notes, onUpdateNote, assessments, onUpdateAssessment
               />
             )}
 
-            {/* Top-level sections (not functional-capacity, assessments, recommendations, diagnoses, methodology, or participant-goals) get a plain textarea */}
-            {section.id !== "functional-capacity" && section.id !== "assessments" && section.id !== "recommendations" && section.id !== "diagnoses" && section.id !== "methodology" && section.id !== "participant-goals" && (
+            {/* Section 1 — Participant & Report Details */}
+            {section.id === "participant-details" && (
+              <ParticipantReportDetails
+                notes={notes}
+                onUpdateNote={onUpdateNote}
+                clientName={clientName}
+                ndisNumber={ndisNumber}
+                clinicianProfile={clinicianProfile}
+              />
+            )}
+
+            {/* Top-level sections (not functional-capacity, assessments, recommendations, diagnoses, methodology, participant-goals, or participant-details) get a plain textarea */}
+            {section.id !== "functional-capacity" && section.id !== "assessments" && section.id !== "recommendations" && section.id !== "diagnoses" && section.id !== "methodology" && section.id !== "participant-goals" && section.id !== "participant-details" && (
               <SectionPanel
                 id={section.id}
                 number={section.number}
