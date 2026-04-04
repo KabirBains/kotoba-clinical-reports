@@ -146,7 +146,7 @@ export async function processQueue(
     onProgress?.(i + 1, total, item.label, "generating");
 
     try {
-      const result = await invokeWithRetry(item.prompt, item.maxTokens, item.label);
+      const result = await invokeWithRetry(item.prompt, item.maxTokens, item.label, item.extraBody);
       if (result.success) {
         markInputGenerated(item.key, item.inputForHash);
         console.log(`[QUEUE] SUCCESS: "${item.label}" (${result.text?.length || 0} chars)`);
