@@ -11,6 +11,7 @@ import { type GoalInstance } from "@/components/editor/ParticipantGoals";
 import { type QueueItem, processQueue } from "@/ai/generationQueue";
 import { getTemplateGuidance, getRubricForSection, FUNCTIONAL_DOMAIN_GUIDANCE, ASSESSMENT_INTERPRETATION_GUIDANCE, RECOMMENDATION_GUIDANCE } from "@/ai/promptGuidance";
 import { SYNOPSIS_LIBRARY } from "@/ai/reportEngine";
+import { buildMethodologyText } from "@/components/editor/MethodologyAggregator";
 
 import { KotobaLogo } from "@/components/KotobaLogo";
 import { NotesMode } from "@/components/editor/NotesMode";
@@ -387,7 +388,19 @@ export default function ClientEditor() {
                     return;
                   }
 
-                  // ── Build collateral context summary ──
+                  // ── Build collateral payload for edge function ──
+                  const collateralPayload = collateralInterviews.map(i => ({
+                    templateId: i.templateId,
+                    intervieweeName: i.intervieweeName,
+                    intervieweeRole: i.intervieweeRole,
+                    method: i.method,
+                    date: i.date,
+                    responses: i.responses || {},
+                    customQuestions: i.customQuestions || {},
+                    generalNotes: i.generalNotes || '',
+                  }));
+
+                  // ── Build collateral context summary (for prompt enrichment) ──
                   let collateralContext = "";
                   if (collateralInterviews.length > 0) {
                     const summaries = collateralInterviews.map(iv => {
@@ -399,36 +412,64 @@ export default function ClientEditor() {
                   }
 
                   // ── Build queue items ──
-                  const queueItems: QueueItem[] = [];
+                  // PHASE 1: Sections 1–5 + Section 6 (methodology/collateral)
+                  const phase1Items: QueueItem[] = [];
                   const newContent: Record<string, string> = { ...reportContent };
 
-                  // Sections that benefit from collateral context
-                  const COLLATERAL_SECTIONS = new Set(["background", "informal-supports", "home-environment", "social-environment", "typical-week", "risk-safety", "methodology"]);
+                  // Sections that benefit from collateral context in prompt
+                  const COLLATERAL_SECTIONS = new Set(["background", "informal-supports", "home-environment", "social-environment", "typical-week", "risk-safety"]);
 
-                  // 1. Top-level text sections
+                  // 1. Top-level text sections (excluding methodology — handled separately as section 6)
                   for (const [sectionId, observations] of topLevelEntries) {
+                    if (sectionId === "methodology") continue; // handled in phase as section6
                     const templateGuidance = getTemplateGuidance(sectionId);
                     const rubric = getRubricForSection("text");
                     const includeCollateral = COLLATERAL_SECTIONS.has(sectionId) && collateralContext;
                     const prompt = `Write a section of an NDIS Functional Capacity Assessment for ${clientName}.\n\nSECTION: ${sectionId}\n\n${templateGuidance ? templateGuidance + "\n\n" : ""}CLINICIAN OBSERVATIONS (transform these into formal clinical prose):\n${observations}\n\nDIAGNOSIS CONTEXT: ${diagnosis || "[Not provided]"}${includeCollateral ? collateralContext : ""}\n\n${rubric}\n\nWrite 2-3 paragraphs of formal NDIS report prose. Use observation → impact → support need structure. Person-first language, third-person active voice. No bullet points, no markdown. Output only the section text.`;
-                    queueItems.push({ key: sectionId, prompt, maxTokens: 2000, inputForHash: observations, label: `Section: ${sectionId}` });
+                    const extraBody: Record<string, any> = {};
+                    if (collateralPayload.length > 0) {
+                      extraBody.collateral_interviews = collateralPayload;
+                    }
+                    phase1Items.push({ key: sectionId, prompt, maxTokens: 2000, inputForHash: observations, label: `Section: ${sectionId}`, extraBody: Object.keys(extraBody).length > 0 ? extraBody : undefined });
                   }
 
-                  // 2. Section 14 functional domains
-                  for (const domain of domainEntries) {
-                    const rowLines = domain.rowData.map(r =>
-                      `- ${r.label} | Support level: ${r.rating || "Not specified"} | Observations: ${r.observation || "Nil documented"}`
-                    ).join("\n");
-                    const fieldKeys = domain.rowData.map(r => r.fieldId);
-                    const inputText = domain.rowData.map(r => `${r.fieldId}:${r.rating}:${r.observation}`).join("|");
-
-                    const domainRubric = getRubricForSection("domain");
-                    const prompt = `You are writing the '${domain.name}' subsection of Section 12 (Functional Capacity) of an NDIS Functional Capacity Assessment for ${clientName}.\n\n${FUNCTIONAL_DOMAIN_GUIDANCE}\n\nDOMAIN: ${domain.name}\n\nSTRUCTURED OBSERVATIONS:\n${rowLines}\n\nDIAGNOSIS CONTEXT: ${diagnosis || "[Not specified]"}\n\n${domainRubric}\n\nFor EACH row, write 1-2 sentences of formal NDIS clinical prose describing observed function, impact, and support need. Person-first language, third-person active voice, no bullet points.\n\nReturn valid JSON only — no markdown, no code fences. Keys must be from: ${JSON.stringify(fieldKeys)}\nEach value is a string of clinical prose for that row.\n\nExample: {"bed": "Mr X requires full physical assistance..."}`;
-                    queueItems.push({ key: domain.reportKey, prompt, maxTokens: 2000, inputForHash: inputText, label: `Domain: ${domain.name}` });
+                  // Section 6 — Methodology/Collateral (always generate if we have collateral or methodology notes)
+                  const methodologyNotes = notes["methodology"] || "";
+                  const methodologyInput = methodologyNotes || buildMethodologyText(assessments, collateralInterviews, diagnoses, notes);
+                  if (methodologyInput.trim() || collateralPayload.length > 0) {
+                    const templateGuidance = getTemplateGuidance("methodology");
+                    const rubric = getRubricForSection("text");
+                    const prompt = `Write the 'Methodology' section (Section 6) of an NDIS Functional Capacity Assessment for ${clientName}.\n\n${templateGuidance ? templateGuidance + "\n\n" : ""}CLINICIAN INPUT:\n${methodologyInput}\n\nDIAGNOSIS CONTEXT: ${diagnosis || "[Not provided]"}${collateralContext}\n\n${rubric}\n\nWrite 2-3 paragraphs covering assessment methodology, direct observations, collateral sources, and environmental assessment. Person-first language, no markdown. Output only the section text.`;
+                    phase1Items.push({
+                      key: "methodology",
+                      prompt,
+                      maxTokens: 2000,
+                      inputForHash: methodologyInput + JSON.stringify(collateralPayload),
+                      label: "Section: Methodology",
+                      extraBody: {
+                        section_name: "section6",
+                        collateral_interviews: collateralPayload,
+                      },
+                    });
                   }
 
-                  // 3. Assessments
-                  // Build score summaries first
+                  // ── PHASE 2: Domains, Assessments, Recommendations ──
+                  // (built after phase 1 completes so we can include section6 result)
+
+                  // Domain hint mapping
+                  const DOMAIN_HINT_MAP: Record<string, string> = {
+                    section12_1: "Mobility",
+                    section12_2: "Transfers",
+                    section12_3: "Personal ADLs",
+                    section12_4: "Domestic IADLs",
+                    section12_5: "Executive IADLs",
+                    section12_6: "Cognition",
+                    section12_7: "Communication",
+                    section12_8: "Social Functioning",
+                    section12_9: "Sensory Profile",
+                  };
+
+                  // buildScoreSummary — compute score rows, total, classification for each assessment
                   const WHODAS_DOMAINS_DEF = [
                     { id: "cognition", name: "Cognition", items: [1,2,3,4,5,6] },
                     { id: "mobility", name: "Mobility", items: [7,8,9,10,11] },
@@ -688,19 +729,96 @@ export default function ClientEditor() {
                     const synopsis = def?.synopsis || "";
                     const aName = typeof assessment.name === "string" ? assessment.name : "Assessment";
                     assessmentMeta.push({ assessment, scoreSummary, synopsis, aName });
+                  }
 
+                  // Count total items across both phases
+                  const phase2DomainCount = domainEntries.length;
+                  const phase2AssessmentCount = assessmentMeta.length;
+                  const phase2RecCount = recommendations.length;
+                  const totalItems = phase1Items.length + phase2DomainCount + phase2AssessmentCount + phase2RecCount;
+
+                  // ── Process Phase 1 ──
+                  setGenerateProgress({ current: 0, total: totalItems, label: "Starting report generation..." });
+                  let globalStep = 0;
+
+                  const phase1Results = await processQueue(phase1Items, (step, _total, label, status) => {
+                    globalStep = step;
+                    if (status === "generating") {
+                      const humanLabel = label.startsWith("Section:")
+                        ? `Generating ${label.replace("Section: ", "")}...`
+                        : `Generating ${label}...`;
+                      setGenerateProgress({ current: step, total: totalItems, label: humanLabel });
+                    } else {
+                      setGenerateProgress(prev => ({ ...prev, current: step }));
+                    }
+                  });
+
+                  // Map phase 1 results
+                  let successCount = 0;
+                  let storedSection6Text = "";
+
+                  for (const result of phase1Results) {
+                    if (result.skipped && result.skipReason === "unchanged") { successCount++; continue; }
+                    if (!result.success) continue;
+                    const topMatch = topLevelEntries.find(([id]) => id === result.key);
+                    if (topMatch || result.key === "methodology") {
+                      newContent[result.key] = result.text || "";
+                      successCount++;
+                      if (result.key === "methodology") {
+                        storedSection6Text = result.text || "";
+                      }
+                    }
+                  }
+
+                  // If section6 wasn't regenerated (skipped as unchanged), use existing content
+                  if (!storedSection6Text && newContent["methodology"]) {
+                    storedSection6Text = newContent["methodology"];
+                  }
+
+                  // ── Build Phase 2 queue items ──
+                  const phase2Items: QueueItem[] = [];
+
+                  // 2. Section 14 functional domains — with domain_hint and section6_collateral
+                  for (const domain of domainEntries) {
+                    const rowLines = domain.rowData.map(r =>
+                      `- ${r.label} | Support level: ${r.rating || "Not specified"} | Observations: ${r.observation || "Nil documented"}`
+                    ).join("\n");
+                    const fieldKeys = domain.rowData.map(r => r.fieldId);
+                    const inputText = domain.rowData.map(r => `${r.fieldId}:${r.rating}:${r.observation}`).join("|");
+
+                    const domainRubric = getRubricForSection("domain");
+                    const prompt = `You are writing the '${domain.name}' subsection of Section 12 (Functional Capacity) of an NDIS Functional Capacity Assessment for ${clientName}.\n\n${FUNCTIONAL_DOMAIN_GUIDANCE}\n\nDOMAIN: ${domain.name}\n\nSTRUCTURED OBSERVATIONS:\n${rowLines}\n\nDIAGNOSIS CONTEXT: ${diagnosis || "[Not specified]"}\n\n${domainRubric}\n\nFor EACH row, write 1-2 sentences of formal NDIS clinical prose describing observed function, impact, and support need. Person-first language, third-person active voice, no bullet points.\n\nReturn valid JSON only — no markdown, no code fences. Keys must be from: ${JSON.stringify(fieldKeys)}\nEach value is a string of clinical prose for that row.\n\nExample: {"bed": "Mr X requires full physical assistance..."}`;
+
+                    const extraBody: Record<string, any> = {
+                      section_name: domain.reportKey.replace("section12_", "section13_"),
+                      domain_hint: DOMAIN_HINT_MAP[domain.reportKey] || domain.name,
+                    };
+                    if (collateralPayload.length > 0) {
+                      extraBody.collateral_interviews = collateralPayload;
+                    }
+                    if (storedSection6Text) {
+                      extraBody.generated_sections = { section6_collateral: storedSection6Text };
+                    }
+
+                    phase2Items.push({ key: domain.reportKey, prompt, maxTokens: 2000, inputForHash: inputText, label: `Domain: ${domain.name}`, extraBody });
+                  }
+
+                  // 3. Assessments
+                  for (const meta of assessmentMeta) {
+                    const { assessment, scoreSummary, synopsis, aName } = meta;
+                    const sc = assessment.scores;
                     const scoresText = scoreSummary.rows.length > 0
                       ? scoreSummary.rows.map(r => `- ${r.label}: ${r.value}`).join("\n")
-                      : JSON.stringify(assessment.scores, null, 2);
+                      : JSON.stringify(sc, null, 2);
 
                     const assessRubric = getRubricForSection("assessment");
                     const prompt = `Write the interpretation for ${aName} in Section 15 (Standardised Assessments) of an NDIS Functional Capacity Assessment for ${clientName}.\n\n${ASSESSMENT_INTERPRETATION_GUIDANCE}\n\nASSESSMENT TOOL: ${aName}\nDATE ADMINISTERED: ${typeof assessment.dateAdministered === "string" ? assessment.dateAdministered : "Not recorded"}\n\nTOTAL SCORE: ${scoreSummary.total || "Not calculated"}\nCLASSIFICATION: ${scoreSummary.classification || "Not classified"}\n\nDOMAIN/SUBSCALE SCORES:\n${scoresText}\n\nCLINICIAN NOTES:\n${typeof assessment.interpretation === "string" && assessment.interpretation ? assessment.interpretation : "No clinician notes provided"}\n\n${assessRubric}\n\nWrite 2 paragraphs following the interpretation rules above. Do NOT include a synopsis — it is displayed separately. Person-first language, no markdown. Output only the interpretation text.`;
 
                     const inputHash = `${scoreSummary.total}|${scoreSummary.classification}|${assessment.interpretation || ""}`;
-                    queueItems.push({ key: `assessment_${assessment.id}`, prompt, maxTokens: 1500, inputForHash: inputHash, label: `Assessment: ${aName}` });
+                    phase2Items.push({ key: `assessment_${assessment.id}`, prompt, maxTokens: 1500, inputForHash: inputHash, label: `Assessment: ${aName}` });
                   }
 
-                  // 4. Recommendations
+                  // 4. Recommendations — include full generated_sections for later sections
                   const OUTCOME_LABELS: Record<string, string> = {
                     maintain_safety: "Maintain safety and wellbeing",
                     build_capacity: "Build capacity toward independence",
@@ -711,49 +829,59 @@ export default function ClientEditor() {
                     prevent_hospitalisation: "Reduce risk of hospitalisation or crisis",
                   };
 
+                  // Concatenate all domain texts for generated_sections
+                  const concatenatedDomainTexts = domainEntries.map(d => {
+                    const existing = newContent[d.reportKey];
+                    return existing ? `${d.name}: ${existing}` : "";
+                  }).filter(Boolean).join("\n\n");
+
+                  const concatenatedAssessmentTexts = newContent["assessments"] || "";
+
                   for (let ri = 0; ri < recommendations.length; ri++) {
                     const r = recommendations[ri];
                     const recRubric = getRubricForSection("recommendation");
                     const prompt = `${RECOMMENDATION_GUIDANCE}\n\nConvert this structured recommendation into formal NDIS clinical prose. Person-first language, no bullet points, no markdown.\n\nParticipant: ${clientName}\nPrimary Diagnosis: ${client?.primary_diagnosis || ""}\n\nRecommendation ${ri + 1}: ${r.supportName}\nCategory: ${r.ndisCategory}\n${r.isCapital || r.isConsumable ? `Estimated Cost: ${r.estimatedCost || "Not specified"}` : `Current Provision: ${r.currentHours || "Nil"}\nRecommended Provision: ${r.recommendedHours || "Not specified"}\nSupport Ratio: ${r.ratio || "Not specified"}`}\n\nTasks:\n${(r.tasks || []).map(t => `- ${t}`).join("\n")}\n\nJustification: ${r.justification || "Not provided"}\nOutcomes:\n${(r.outcomes || []).map(o => `- ${OUTCOME_LABELS[o] || o}`).join("\n")}\nConsequence without support: ${r.consequence || "Not specified"}\nS34 Justification: ${r.s34Justification || "Not provided"}\n\n${recRubric}\n\nWrite 1 cohesive paragraph following the recommendation reasoning chain above. Use 'is expected to' not 'will'. Output only the recommendation text.`;
 
                     const inputHash = `${r.supportName}|${r.justification || ""}|${r.consequence || ""}|${(r.tasks || []).join(",")}`;
-                    queueItems.push({ key: `rec_${r.id}`, prompt, maxTokens: 1500, inputForHash: inputHash, label: `Recommendation: ${r.supportName}` });
+
+                    const extraBody: Record<string, any> = {
+                      section_name: "section17",
+                    };
+                    if (collateralPayload.length > 0) {
+                      extraBody.collateral_interviews = collateralPayload;
+                    }
+                    if (storedSection6Text || concatenatedDomainTexts || concatenatedAssessmentTexts) {
+                      extraBody.generated_sections = {
+                        ...(storedSection6Text ? { section6_collateral: storedSection6Text } : {}),
+                        ...(concatenatedDomainTexts ? { section13_domains: concatenatedDomainTexts } : {}),
+                        ...(concatenatedAssessmentTexts ? { section14_assessments: concatenatedAssessmentTexts } : {}),
+                      };
+                    }
+
+                    phase2Items.push({ key: `rec_${r.id}`, prompt, maxTokens: 1500, inputForHash: inputHash, label: `Recommendation: ${r.supportName}`, extraBody });
                   }
 
-                  // ── Process queue sequentially with throttle ──
-                  setGenerateProgress({ current: 0, total: queueItems.length, label: "Starting report generation..." });
-                  const results = await processQueue(queueItems, (step, total, label, status) => {
+                  // ── Process Phase 2 ──
+                  const phase2Results = await processQueue(phase2Items, (step, _total, label, status) => {
+                    const currentStep = globalStep + step;
                     if (status === "generating") {
-                      // Build human-readable label
-                      const humanLabel = label.startsWith("Section:") 
-                        ? `Generating ${label.replace("Section: ", "")}...`
-                        : label.startsWith("Domain:") 
+                      const humanLabel = label.startsWith("Domain:")
                         ? `Generating ${label.replace("Domain: ", "")}...`
-                        : label.startsWith("Assessment:") 
+                        : label.startsWith("Assessment:")
                         ? `Generating ${label.replace("Assessment: ", "")} interpretation...`
-                        : label.startsWith("Recommendation:") 
+                        : label.startsWith("Recommendation:")
                         ? `Generating ${label.replace("Recommendation: ", "")} recommendation...`
                         : `Generating ${label}...`;
-                      setGenerateProgress({ current: step, total, label: humanLabel });
+                      setGenerateProgress({ current: currentStep, total: totalItems, label: humanLabel });
                     } else {
-                      setGenerateProgress(prev => ({ ...prev, current: step }));
+                      setGenerateProgress(prev => ({ ...prev, current: currentStep }));
                     }
                   });
 
-                  // ── Map results back ──
-                  let successCount = 0;
-
-                  for (const result of results) {
-                    if (result.skipped && result.skipReason === "unchanged") {
-                      // Keep existing content
-                      successCount++;
-                      continue;
-                    }
+                  // ── Map Phase 2 results ──
+                  for (const result of phase2Results) {
+                    if (result.skipped && result.skipReason === "unchanged") { successCount++; continue; }
                     if (!result.success) continue;
-
-                    // Top-level sections
-                    const topMatch = topLevelEntries.find(([id]) => id === result.key);
-                    if (topMatch) { newContent[result.key] = result.text || ""; successCount++; continue; }
 
                     // Domain sections — parse JSON response
                     const domainMatch = domainEntries.find(d => d.reportKey === result.key);
@@ -778,7 +906,6 @@ export default function ClientEditor() {
                       const assessId = result.key.replace("assessment_", "");
                       const meta = assessmentMeta.find(m => m.assessment.id === assessId);
                       if (meta) {
-                        // Build per-assessment result entry
                         const existing = newContent["assessments"] ? JSON.parse(newContent["assessments"]) : {};
                         existing[assessId] = {
                           name: meta.aName,
@@ -819,12 +946,15 @@ export default function ClientEditor() {
                     }
                   }
 
+                  const allResults = [...phase1Results, ...phase2Results];
+                  const totalQueueItems = phase1Items.length + phase2Items.length;
+
                   setReportContent(newContent);
                   setMode("report");
 
-                  const skippedCount = results.filter(r => r.skipped).length;
-                  const failedCount = results.filter(r => !r.success && !r.skipped).length;
-                  let msg = `Generated ${successCount}/${queueItems.length} sections.`;
+                  const skippedCount = allResults.filter(r => r.skipped).length;
+                  const failedCount = allResults.filter(r => !r.success && !r.skipped).length;
+                  let msg = `Generated ${successCount}/${totalQueueItems} sections.`;
                   if (skippedCount > 0) msg += ` ${skippedCount} skipped (unchanged).`;
                   if (failedCount > 0) msg += ` ${failedCount} failed.`;
                   setGenerateProgress(prev => ({ ...prev, current: prev.total, label: "Report generation complete!" }));

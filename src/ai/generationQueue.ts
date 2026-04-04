@@ -51,6 +51,7 @@ export interface QueueItem {
   maxTokens: number;
   inputForHash: string; // raw input text to hash for dirty-check
   label: string;        // human-readable label for logs/toasts
+  extraBody?: Record<string, any>; // additional fields to pass to the edge function
 }
 
 export interface QueueResult {
@@ -67,10 +68,10 @@ function sleep(ms: number): Promise<void> {
 }
 
 // ── Single invoke with 429 retry ────────────────────────────
-async function invokeWithRetry(prompt: string, maxTokens: number, label: string): Promise<{ success: boolean; text?: string; error?: string }> {
+async function invokeWithRetry(prompt: string, maxTokens: number, label: string, extraBody?: Record<string, any>): Promise<{ success: boolean; text?: string; error?: string }> {
   const doCall = async () => {
     const { data, error } = await supabase.functions.invoke("generate-report", {
-      body: { prompt, max_tokens: maxTokens },
+      body: { prompt, max_tokens: maxTokens, ...extraBody },
     });
     if (error) {
       const errMsg = error.message || "";
@@ -145,7 +146,7 @@ export async function processQueue(
     onProgress?.(i + 1, total, item.label, "generating");
 
     try {
-      const result = await invokeWithRetry(item.prompt, item.maxTokens, item.label);
+      const result = await invokeWithRetry(item.prompt, item.maxTokens, item.label, item.extraBody);
       if (result.success) {
         markInputGenerated(item.key, item.inputForHash);
         console.log(`[QUEUE] SUCCESS: "${item.label}" (${result.text?.length || 0} chars)`);
