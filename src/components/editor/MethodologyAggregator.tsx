@@ -249,32 +249,6 @@ export function MethodologyAggregator({
             <div className="space-y-2 pl-3">
               <div>
                 <label className="text-[10px] font-semibold text-muted-foreground block mb-1">
-                  Observation Dates, Settings & Duration
-                </label>
-                <textarea
-                  rows={2}
-                  value={notes["__methodology_observation__"] || ""}
-                  onChange={(e) => onUpdateNote("__methodology_observation__", e.target.value)}
-                  placeholder="e.g. Home visit 15/03/2026, 3.5 hours. Clinic follow-up 18/03/2026, 1.5 hours."
-                  className="w-full px-3 py-2 text-xs bg-muted/30 border border-border/50 rounded-md resize-y focus:outline-none focus:ring-1 focus:ring-accent/50 placeholder:text-muted-foreground/50"
-                  style={{ minHeight: 50 }}
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-semibold text-muted-foreground block mb-1">
-                  Environmental Assessment Details
-                </label>
-                <textarea
-                  rows={2}
-                  value={notes["__methodology_environment__"] || ""}
-                  onChange={(e) => onUpdateNote("__methodology_environment__", e.target.value)}
-                  placeholder="e.g. Full home environment assessment completed. Assessed bedroom, bathroom, kitchen, outdoor access."
-                  className="w-full px-3 py-2 text-xs bg-muted/30 border border-border/50 rounded-md resize-y focus:outline-none focus:ring-1 focus:ring-accent/50 placeholder:text-muted-foreground/50"
-                  style={{ minHeight: 50 }}
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-semibold text-muted-foreground block mb-1">
                   Additional Methodology Notes
                 </label>
                 <textarea
