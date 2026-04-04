@@ -7,6 +7,7 @@ import { TEMPLATE_SECTIONS } from "@/lib/constants";
 import { type AssessmentInstance, ASSESSMENT_LIBRARY, calculateTotal, getClassification, calculateSubscaleTotal } from "@/lib/assessment-library";
 import { type RecommendationInstance } from "@/lib/recommendations-library";
 import { type DiagnosisInstance } from "@/lib/diagnosis-library";
+import { type GoalInstance } from "@/components/editor/ParticipantGoals";
 import { type QueueItem, processQueue } from "@/ai/generationQueue";
 import { getTemplateGuidance, getRubricForSection, FUNCTIONAL_DOMAIN_GUIDANCE, ASSESSMENT_INTERPRETATION_GUIDANCE, RECOMMENDATION_GUIDANCE } from "@/ai/promptGuidance";
 import { SYNOPSIS_LIBRARY } from "@/ai/reportEngine";
@@ -32,6 +33,8 @@ export default function ClientEditor() {
   const [diagnoses, setDiagnoses] = useState<DiagnosisInstance[]>([]);
   const [recommendations, setRecommendations] = useState<RecommendationInstance[]>([]);
   const [collateralInterviews, setCollateralInterviews] = useState<CollateralInterview[]>([]);
+  const [goals, setGoals] = useState<GoalInstance[]>([{ id: crypto.randomUUID(), text: "" }]);
+  const [nilGoals, setNilGoals] = useState(false);
   const [reportContent, setReportContent] = useState<Record<string, string>>({});
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [generatingReport, setGeneratingReport] = useState(false);
@@ -101,6 +104,11 @@ export default function ClientEditor() {
       // Load diagnoses from notes JSON
       const savedDiagnoses = (savedNotes as any)?.["__diagnoses__"];
       if (Array.isArray(savedDiagnoses)) setDiagnoses(savedDiagnoses);
+      // Load goals from notes JSON
+      const savedGoals = (savedNotes as any)?.["__goals__"];
+      if (Array.isArray(savedGoals)) setGoals(savedGoals);
+      const savedNilGoals = (savedNotes as any)?.["__nilGoals__"];
+      if (typeof savedNilGoals === "boolean") setNilGoals(savedNilGoals);
       // Load persisted quality scorecard
       const savedScorecard = (report as any).quality_scorecard;
       if (savedScorecard && typeof savedScorecard === "object" && savedScorecard.score !== undefined) {
@@ -156,7 +164,7 @@ export default function ClientEditor() {
 
   const saveToCloud = useCallback(async () => {
     if (!report?.id) return;
-    const notesWithAssessments = { ...notes, __assessments__: assessments as any, __recommendations__: recommendations as any, __diagnoses__: diagnoses as any };
+    const notesWithAssessments = { ...notes, __assessments__: assessments as any, __recommendations__: recommendations as any, __diagnoses__: diagnoses as any, __goals__: goals as any, __nilGoals__: nilGoals as any };
     const updatePayload: Record<string, any> = {
       notes: notesWithAssessments,
       report_content: reportContent || null,
@@ -175,7 +183,7 @@ export default function ClientEditor() {
       setLastSaved(new Date());
       if (clientId) localStorage.setItem(`kotoba-notes-${clientId}`, JSON.stringify(notes));
     }
-  }, [report?.id, notes, assessments, recommendations, diagnoses, reportContent, clientId, scorecard, issueStatuses, dismissedIssueKeys]);
+  }, [report?.id, notes, assessments, recommendations, diagnoses, goals, nilGoals, reportContent, clientId, scorecard, issueStatuses, dismissedIssueKeys]);
 
   // Autosave every 30 seconds
   useEffect(() => {
@@ -891,6 +899,11 @@ export default function ClientEditor() {
               diagnoses={diagnoses}
               onUpdateDiagnoses={setDiagnoses}
               collateralInterviews={collateralInterviews}
+              goals={goals}
+              onUpdateGoals={setGoals}
+              nilGoals={nilGoals}
+              onToggleNilGoals={setNilGoals}
+              clientName={client?.client_name}
             />
           ) : mode === "liaise" ? (
             <LiaiseMode
@@ -909,6 +922,9 @@ export default function ClientEditor() {
               recommendations={recommendations}
               diagnoses={diagnoses}
               collateralInterviews={collateralInterviews}
+              goals={goals}
+              nilGoals={nilGoals}
+              onUpdateGoals={setGoals}
               onUpdateRecommendation={(idx, updated) => {
                 setRecommendations(prev => prev.map((r, i) => i === idx ? updated : r));
               }}

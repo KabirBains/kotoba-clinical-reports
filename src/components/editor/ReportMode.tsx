@@ -9,6 +9,7 @@ import DownloadReportButton from "@/components/DownloadReportButton";
 import type { ReportData } from "@/ai/reportAssembler";
 import { type AssessmentInstance, getScoreForOption } from "@/lib/assessment-library";
 import { type DiagnosisInstance } from "@/lib/diagnosis-library";
+import { type GoalInstance } from "./ParticipantGoals";
 import { type RecommendationInstance, OUTCOME_OPTIONS } from "@/lib/recommendations-library";
 import { QualityScorecard, QualitySummaryBar, type Scorecard, type IssueStatus, type QualityIssue } from "./QualityScorecard";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
@@ -259,6 +260,9 @@ interface ReportModeProps {
   recommendations: RecommendationInstance[];
   diagnoses: DiagnosisInstance[];
   collateralInterviews?: CollateralInterview[];
+  goals?: GoalInstance[];
+  nilGoals?: boolean;
+  onUpdateGoals?: (goals: GoalInstance[]) => void;
   onUpdateRecommendation?: (index: number, updated: RecommendationInstance) => void;
   onUpdateReportContent?: (key: string, value: string) => void;
   clinicianProfile: {
@@ -330,7 +334,14 @@ function buildReportData(props: ReportModeProps): ReportData {
     assessmentSetting: notes["assessment-setting"] || "",
     section1: s("reason-referral"),
     section2: s("background"),
-    section3: s("participant-goals"),
+    section3: (() => {
+      const goalsArr = props.goals || [];
+      const isNil = props.nilGoals;
+      if (isNil) return `${clientName || "The participant"} currently has no NDIS goals. This may be due to the participant being new to the NDIS, awaiting their first plan, or undergoing a plan reassessment.`;
+      const filled = goalsArr.filter(g => g.text.trim());
+      if (filled.length > 0) return filled.map((g, i) => `${i + 1}. "${g.text}"`).join("\n");
+      return s("participant-goals");
+    })(),
     section4: diagnoses && diagnoses.length > 0
       ? diagnoses.map(d => `${d.name} (ICD-10: ${d.icd10}${d.dsm5 ? `, DSM-5: ${d.dsm5}` : ""})\n${d.description}`).join("\n\n")
       : s("diagnoses"),
@@ -863,6 +874,75 @@ export function ReportMode(props: ReportModeProps) {
                     suppressContentEditableWarning
                     dangerouslySetInnerHTML={{ __html: rawContent }}
                   />
+                </div>
+              );
+            }
+
+            // Section 5 — Participant Goals: render structured goals table
+            if (section.id === "participant-goals") {
+              const goalsArr = props.goals || [];
+              const isNil = props.nilGoals;
+              const filledGoals = goalsArr.filter(g => g.text.trim());
+              const hasGoals = filledGoals.length > 0 || isNil;
+
+              if (!hasGoals && !reportContent["participant-goals"]) return null;
+
+              return (
+                <div key={section.id} className="space-y-4">
+                  <h2 className="text-base font-semibold text-foreground border-b border-border/30 pb-2">
+                    {section.number}. {section.title}
+                  </h2>
+
+                  {isNil ? (
+                    <p className="text-sm text-foreground/80 italic leading-relaxed">
+                      {props.clientName || "The participant"} currently has no NDIS goals. This may be due to the participant being new to the NDIS, awaiting their first plan, or undergoing a plan reassessment.
+                    </p>
+                  ) : filledGoals.length > 0 ? (
+                    <>
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                        NDIS Goals (Participant's Own Words)
+                      </p>
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="text-xs h-8 w-12 text-center">#</TableHead>
+                            <TableHead className="text-xs h-8">Goal</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {filledGoals.map((g, idx) => (
+                            <TableRow key={g.id}>
+                              <TableCell className="text-center py-1.5 font-mono text-xs font-bold">
+                                {idx + 1}
+                              </TableCell>
+                              <EditableCell
+                                value={`"${g.text}"`}
+                                onChange={(v) => {
+                                  const cleaned = v.replace(/^"|"$/g, "");
+                                  if (props.onUpdateGoals) {
+                                    const updated = [...goalsArr];
+                                    const realIdx = goalsArr.findIndex(og => og.id === g.id);
+                                    if (realIdx >= 0) {
+                                      updated[realIdx] = { ...updated[realIdx], text: cleaned };
+                                      props.onUpdateGoals(updated);
+                                    }
+                                  }
+                                }}
+                                style={{ padding: "8px 12px", fontStyle: "italic" }}
+                              />
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </>
+                  ) : reportContent["participant-goals"] ? (
+                    <div
+                      className="prose prose-sm max-w-none text-foreground/90"
+                      contentEditable
+                      suppressContentEditableWarning
+                      dangerouslySetInnerHTML={{ __html: reportContent["participant-goals"] }}
+                    />
+                  ) : null}
                 </div>
               );
             }
