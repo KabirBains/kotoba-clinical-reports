@@ -68,10 +68,10 @@ function sleep(ms: number): Promise<void> {
 }
 
 // ── Single invoke with 429 retry ────────────────────────────
-async function invokeWithRetry(prompt: string, maxTokens: number, label: string): Promise<{ success: boolean; text?: string; error?: string }> {
+async function invokeWithRetry(prompt: string, maxTokens: number, label: string, extraBody?: Record<string, any>): Promise<{ success: boolean; text?: string; error?: string }> {
   const doCall = async () => {
     const { data, error } = await supabase.functions.invoke("generate-report", {
-      body: { prompt, max_tokens: maxTokens },
+      body: { prompt, max_tokens: maxTokens, ...extraBody },
     });
     if (error) {
       const errMsg = error.message || "";
