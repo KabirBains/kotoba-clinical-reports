@@ -9,6 +9,7 @@ import { AssessmentsSection } from "@/components/editor/AssessmentsSection";
 import { RecommendationsSection } from "@/components/editor/RecommendationsSection";
 import { DiagnosisPicker } from "@/components/editor/DiagnosisPicker";
 import { MethodologyAggregator } from "@/components/editor/MethodologyAggregator";
+import { ParticipantGoals, type GoalInstance } from "@/components/editor/ParticipantGoals";
 import { ChevronDown, ChevronRight, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
