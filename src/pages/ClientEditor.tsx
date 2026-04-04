@@ -922,6 +922,9 @@ export default function ClientEditor() {
               recommendations={recommendations}
               diagnoses={diagnoses}
               collateralInterviews={collateralInterviews}
+              goals={goals}
+              nilGoals={nilGoals}
+              onUpdateGoals={setGoals}
               onUpdateRecommendation={(idx, updated) => {
                 setRecommendations(prev => prev.map((r, i) => i === idx ? updated : r));
               }}
