@@ -224,6 +224,14 @@ export interface ReportData {
     tasks: string;
     linkedSections: string;
   }>;
+
+  // Collateral interviews metadata (optional, for methodology table)
+  collateralInterviews?: Array<{
+    intervieweeName: string;
+    intervieweeRole: string;
+    method: string;
+    date: string;
+  }>;
 }
 
 // ── Main assembler function ──────────────────────────────────
