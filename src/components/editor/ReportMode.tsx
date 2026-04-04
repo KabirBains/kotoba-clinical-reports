@@ -953,6 +953,62 @@ export function ReportMode(props: ReportModeProps) {
               );
             }
 
+            // Methodology section — append collateral sources table if interviews exist
+            if (section.id === "methodology") {
+              const content = reportContent[section.id];
+              const interviews = props.collateralInterviews || [];
+              return (
+                <div key={section.id} className="space-y-4">
+                  <h2 className="text-base font-semibold text-foreground border-b border-border/30 pb-2">
+                    {section.number}. {section.title}
+                  </h2>
+                  {content && (
+                    <div
+                      className="prose prose-sm max-w-none text-foreground/90"
+                      contentEditable
+                      suppressContentEditableWarning
+                      dangerouslySetInnerHTML={{ __html: content }}
+                    />
+                  )}
+                  {interviews.length > 0 && (
+                    <div className="space-y-2">
+                      <h3 className="text-sm font-semibold text-foreground/80">Collateral Sources</h3>
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="text-xs h-8">Stakeholder Type</TableHead>
+                            <TableHead className="text-xs h-8">Interviewee</TableHead>
+                            <TableHead className="text-xs h-8 text-center">Method</TableHead>
+                            <TableHead className="text-xs h-8 text-center">Date</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {interviews.map((iv) => {
+                            const template = LIAISE_TEMPLATES[iv.templateId];
+                            const methodLabel = iv.method === "phone" ? "Phone" : iv.method === "in_person" ? "In person" : iv.method === "email" ? "Email" : iv.method === "telehealth" ? "Telehealth" : "—";
+                            return (
+                              <TableRow key={iv.id}>
+                                <TableCell className="text-xs py-1.5">
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-[3px] h-3.5 rounded-sm" style={{ backgroundColor: template?.color || "#6b7280" }} />
+                                    <span className="font-medium">{template?.name || iv.templateId}</span>
+                                  </div>
+                                </TableCell>
+                                <TableCell className="text-xs py-1.5">{iv.intervieweeName || "—"}</TableCell>
+                                <TableCell className="text-xs py-1.5 text-center">{methodLabel}</TableCell>
+                                <TableCell className="text-xs py-1.5 text-center font-mono">{iv.date || "—"}</TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                  {!content && interviews.length === 0 && null}
+                </div>
+              );
+            }
+
             const content = reportContent[section.id];
             if (!content) return null;
             return (
