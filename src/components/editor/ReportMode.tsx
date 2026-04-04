@@ -540,7 +540,7 @@ export function ReportMode(props: ReportModeProps) {
                             {noteKey ? (
                               <EditableCell
                                 value={val}
-                                onChange={(v) => props.onUpdateReportContent?.(noteKey, v)}
+                                onChange={(v) => props.onUpdateNote?.(noteKey, v)}
                                 style={{ padding: "6px 12px", fontSize: "13px" }}
                               />
                             ) : (
