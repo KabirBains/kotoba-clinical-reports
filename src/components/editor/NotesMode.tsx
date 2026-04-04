@@ -30,6 +30,11 @@ interface NotesModeProps {
   diagnoses: DiagnosisInstance[];
   onUpdateDiagnoses: (diagnoses: DiagnosisInstance[]) => void;
   collateralInterviews: CollateralInterview[];
+  goals: GoalInstance[];
+  onUpdateGoals: (goals: GoalInstance[]) => void;
+  nilGoals: boolean;
+  onToggleNilGoals: (val: boolean) => void;
+  clientName?: string;
 }
 
 function StructuredField({
