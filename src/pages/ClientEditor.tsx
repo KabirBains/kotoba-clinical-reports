@@ -291,7 +291,21 @@ export default function ClientEditor() {
                 onClick={() => setMode("notes")}
               >
                 <PenLine className="h-3.5 w-3.5 mr-1.5" />
-                Notes mode
+                Notes
+              </Button>
+              <Button
+                variant={mode === "liaise" ? "default" : "ghost"}
+                size="sm"
+                className="rounded-none relative"
+                onClick={() => setMode("liaise")}
+              >
+                <Handshake className="h-3.5 w-3.5 mr-1.5" />
+                Liaise
+                {collateralInterviews.length > 0 && (
+                  <span className="ml-1.5 inline-flex items-center justify-center h-4 min-w-[16px] rounded-full bg-primary text-primary-foreground text-[10px] font-bold px-1">
+                    {collateralInterviews.length}
+                  </span>
+                )}
               </Button>
               <Button
                 variant={mode === "report" ? "default" : "ghost"}
@@ -300,7 +314,7 @@ export default function ClientEditor() {
                 onClick={() => setMode("report")}
               >
                 <FileText className="h-3.5 w-3.5 mr-1.5" />
-                Report mode
+                Report
               </Button>
             </div>
 
