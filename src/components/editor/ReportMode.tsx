@@ -266,6 +266,7 @@ interface ReportModeProps {
   onUpdateGoals?: (goals: GoalInstance[]) => void;
   onUpdateRecommendation?: (index: number, updated: RecommendationInstance) => void;
   onUpdateReportContent?: (key: string, value: string) => void;
+  onUpdateNote?: (key: string, value: string) => void;
   clinicianProfile: {
     clinician_name: string | null;
     qualifications: string | null;
