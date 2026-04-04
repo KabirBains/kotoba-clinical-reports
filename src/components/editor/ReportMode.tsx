@@ -878,6 +878,75 @@ export function ReportMode(props: ReportModeProps) {
               );
             }
 
+            // Section 5 — Participant Goals: render structured goals table
+            if (section.id === "participant-goals") {
+              const goalsArr = props.goals || [];
+              const isNil = props.nilGoals;
+              const filledGoals = goalsArr.filter(g => g.text.trim());
+              const hasGoals = filledGoals.length > 0 || isNil;
+
+              if (!hasGoals && !reportContent["participant-goals"]) return null;
+
+              return (
+                <div key={section.id} className="space-y-4">
+                  <h2 className="text-base font-semibold text-foreground border-b border-border/30 pb-2">
+                    {section.number}. {section.title}
+                  </h2>
+
+                  {isNil ? (
+                    <p className="text-sm text-foreground/80 italic leading-relaxed">
+                      {props.clientName || "The participant"} currently has no NDIS goals. This may be due to the participant being new to the NDIS, awaiting their first plan, or undergoing a plan reassessment.
+                    </p>
+                  ) : filledGoals.length > 0 ? (
+                    <>
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                        NDIS Goals (Participant's Own Words)
+                      </p>
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="text-xs h-8 w-12 text-center">#</TableHead>
+                            <TableHead className="text-xs h-8">Goal</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {filledGoals.map((g, idx) => (
+                            <TableRow key={g.id}>
+                              <TableCell className="text-center py-1.5 font-mono text-xs font-bold">
+                                {idx + 1}
+                              </TableCell>
+                              <EditableCell
+                                value={`"${g.text}"`}
+                                onChange={(v) => {
+                                  const cleaned = v.replace(/^"|"$/g, "");
+                                  if (props.onUpdateGoals) {
+                                    const updated = [...goalsArr];
+                                    const realIdx = goalsArr.findIndex(og => og.id === g.id);
+                                    if (realIdx >= 0) {
+                                      updated[realIdx] = { ...updated[realIdx], text: cleaned };
+                                      props.onUpdateGoals(updated);
+                                    }
+                                  }
+                                }}
+                                style={{ padding: "8px 12px", fontStyle: "italic" }}
+                              />
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </>
+                  ) : reportContent["participant-goals"] ? (
+                    <div
+                      className="prose prose-sm max-w-none text-foreground/90"
+                      contentEditable
+                      suppressContentEditableWarning
+                      dangerouslySetInnerHTML={{ __html: reportContent["participant-goals"] }}
+                    />
+                  ) : null}
+                </div>
+              );
+            }
+
             // Section 6 — Diagnoses: render structured table from picker data
             if (section.id === "diagnoses") {
               const dxList = props.diagnoses || [];
