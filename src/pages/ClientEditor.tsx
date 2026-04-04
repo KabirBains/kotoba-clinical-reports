@@ -104,6 +104,11 @@ export default function ClientEditor() {
       // Load diagnoses from notes JSON
       const savedDiagnoses = (savedNotes as any)?.["__diagnoses__"];
       if (Array.isArray(savedDiagnoses)) setDiagnoses(savedDiagnoses);
+      // Load goals from notes JSON
+      const savedGoals = (savedNotes as any)?.["__goals__"];
+      if (Array.isArray(savedGoals)) setGoals(savedGoals);
+      const savedNilGoals = (savedNotes as any)?.["__nilGoals__"];
+      if (typeof savedNilGoals === "boolean") setNilGoals(savedNilGoals);
       // Load persisted quality scorecard
       const savedScorecard = (report as any).quality_scorecard;
       if (savedScorecard && typeof savedScorecard === "object" && savedScorecard.score !== undefined) {
