@@ -3,8 +3,10 @@ import { TEMPLATE_SECTIONS } from "@/lib/constants";
 import { getSubsectionConfig, type SubsectionField } from "@/lib/subsection-fields";
 import { type AssessmentInstance } from "@/lib/assessment-library";
 import { type RecommendationInstance } from "@/lib/recommendations-library";
+import { type DiagnosisInstance } from "@/lib/diagnosis-library";
 import { AssessmentsSection } from "@/components/editor/AssessmentsSection";
 import { RecommendationsSection } from "@/components/editor/RecommendationsSection";
+import { DiagnosisPicker } from "@/components/editor/DiagnosisPicker";
 import { ChevronDown, ChevronRight, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
