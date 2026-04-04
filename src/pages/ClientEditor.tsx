@@ -96,6 +96,9 @@ export default function ClientEditor() {
       // Load recommendations from notes JSON
       const savedRecs = (savedNotes as any)?.["__recommendations__"];
       if (Array.isArray(savedRecs)) setRecommendations(savedRecs);
+      // Load diagnoses from notes JSON
+      const savedDiagnoses = (savedNotes as any)?.["__diagnoses__"];
+      if (Array.isArray(savedDiagnoses)) setDiagnoses(savedDiagnoses);
       // Load persisted quality scorecard
       const savedScorecard = (report as any).quality_scorecard;
       if (savedScorecard && typeof savedScorecard === "object" && savedScorecard.score !== undefined) {
