@@ -26,7 +26,7 @@ export default function ClientEditor() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const [mode, setMode] = useState<"notes" | "report">("notes");
+  const [mode, setMode] = useState<"notes" | "report" | "liaise">("notes");
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [assessments, setAssessments] = useState<AssessmentInstance[]>([]);
   const [diagnoses, setDiagnoses] = useState<DiagnosisInstance[]>([]);
