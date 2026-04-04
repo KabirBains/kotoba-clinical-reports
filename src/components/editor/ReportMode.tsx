@@ -959,23 +959,84 @@ export function ReportMode(props: ReportModeProps) {
               );
             }
 
-            // Methodology section — append collateral sources table if interviews exist
+            // Methodology section — auto-populated structured tables
             if (section.id === "methodology") {
               const content = reportContent[section.id];
               const interviews = props.collateralInterviews || [];
+              const assessmentList = props.assessments || [];
+              const dxList = props.diagnoses || [];
+              const obs = props.notes["__methodology_observation__"]?.trim();
+              const env = props.notes["__methodology_environment__"]?.trim();
+              const add = props.notes["__methodology_additional__"]?.trim();
+
+              const hasAnything = content || interviews.length > 0 || assessmentList.length > 0 || dxList.length > 0 || obs || env || add;
+              if (!hasAnything) return null;
+
+              const METHODOLOGY_REGISTRY: Record<string, { category: string; rationale: string }> = {
+                "whodas-2.0": { category: "Global Disability", rationale: "Standardised cross-diagnostic measure of disability across all functional domains." },
+                "frat": { category: "Safety / Risk", rationale: "Falls risk screening to inform safe support planning." },
+                "lawton-iadl": { category: "Instrumental ADLs", rationale: "Quantifies capacity for complex daily living skills." },
+                "lsp-16": { category: "Psychosocial Functioning", rationale: "Clinician-rated measure of general functioning for persistent mental illness." },
+                "cans": { category: "Care Needs", rationale: "Classifies level and intensity of care needed." },
+                "sensory-profile": { category: "Sensory Processing", rationale: "Assesses sensory processing patterns impacting daily functioning." },
+                "zarit": { category: "Carer Assessment", rationale: "Quantifies carer burden and sustainability of informal supports." },
+                "dass-42": { category: "Mental Health", rationale: "Quantifies severity of depression, anxiety, and stress." },
+              };
+
               return (
                 <div key={section.id} className="space-y-4">
                   <h2 className="text-base font-semibold text-foreground border-b border-border/30 pb-2">
                     {section.number}. {section.title}
                   </h2>
+
+                  {/* AI-generated prose (if generated) */}
                   {content && (
                     <div
                       className="prose prose-sm max-w-none text-foreground/90"
                       contentEditable
                       suppressContentEditableWarning
-                      dangerouslySetInnerHTML={{ __html: content }}
+                      dangerouslySetInnerHTML={{ __html: highlightContent(content) }}
                     />
                   )}
+
+                  {/* Observation notes */}
+                  {(obs || env) && (
+                    <div className="space-y-1">
+                      <h3 className="text-sm font-semibold text-foreground/80">Clinical Observations</h3>
+                      {obs && <p className="text-sm text-foreground/80">{obs}</p>}
+                      {env && <p className="text-sm text-foreground/80">{env}</p>}
+                    </div>
+                  )}
+
+                  {/* Assessments table */}
+                  {assessmentList.length > 0 && (
+                    <div className="space-y-2">
+                      <h3 className="text-sm font-semibold text-foreground/80">Standardised Assessments Administered</h3>
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="text-xs h-8">Assessment Tool</TableHead>
+                            <TableHead className="text-xs h-8 text-center w-24">Category</TableHead>
+                            <TableHead className="text-xs h-8">Rationale for Selection</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {assessmentList.map((a) => {
+                            const reg = METHODOLOGY_REGISTRY[a.definitionId];
+                            return (
+                              <TableRow key={a.id}>
+                                <TableCell className="text-xs py-1.5 font-medium">{a.name}</TableCell>
+                                <TableCell className="text-xs py-1.5 text-center text-muted-foreground">{reg?.category || "—"}</TableCell>
+                                <TableCell className="text-xs py-1.5 text-muted-foreground">{reg?.rationale || "—"}</TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+
+                  {/* Collateral sources table */}
                   {interviews.length > 0 && (
                     <div className="space-y-2">
                       <h3 className="text-sm font-semibold text-foreground/80">Collateral Sources</h3>
@@ -1010,7 +1071,29 @@ export function ReportMode(props: ReportModeProps) {
                       </Table>
                     </div>
                   )}
-                  {!content && interviews.length === 0 && null}
+
+                  {/* Diagnoses considered */}
+                  {dxList.length > 0 && (
+                    <div className="space-y-2">
+                      <h3 className="text-sm font-semibold text-foreground/80">Diagnoses Considered</h3>
+                      <div className="flex flex-wrap gap-1.5">
+                        {dxList.map((d) => (
+                          <span key={d.id} className="text-xs px-2 py-1 rounded border border-border/50 bg-muted/30 flex items-center gap-1.5">
+                            <span className="font-mono text-[10px] font-semibold text-emerald-600">{d.icd10}</span>
+                            <span className="font-medium">{d.name}</span>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Additional notes */}
+                  {add && (
+                    <div className="space-y-1">
+                      <h3 className="text-sm font-semibold text-foreground/80">Additional Notes</h3>
+                      <p className="text-sm text-foreground/80">{add}</p>
+                    </div>
+                  )}
                 </div>
               );
             }
