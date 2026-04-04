@@ -700,9 +700,9 @@ export default function ClientEditor() {
                   setReportContent(newContent);
                   setMode("report");
 
-                  const skippedCount = results.filter(r => r.skipped).length;
-                  const failedCount = results.filter(r => !r.success && !r.skipped).length;
-                  let msg = `Generated ${successCount}/${queueItems.length} sections.`;
+                  const skippedCount = allResults.filter(r => r.skipped).length;
+                  const failedCount = allResults.filter(r => !r.success && !r.skipped).length;
+                  let msg = `Generated ${successCount}/${totalQueueItems} sections.`;
                   if (skippedCount > 0) msg += ` ${skippedCount} skipped (unchanged).`;
                   if (failedCount > 0) msg += ` ${failedCount} failed.`;
                   setGenerateProgress(prev => ({ ...prev, current: prev.total, label: "Report generation complete!" }));
