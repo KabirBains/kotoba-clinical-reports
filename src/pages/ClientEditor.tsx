@@ -14,9 +14,10 @@ import { SYNOPSIS_LIBRARY } from "@/ai/reportEngine";
 import { KotobaLogo } from "@/components/KotobaLogo";
 import { NotesMode } from "@/components/editor/NotesMode";
 import { ReportMode } from "@/components/editor/ReportMode";
+import { LiaiseMode, type CollateralInterview } from "@/components/editor/LiaiseMode";
 import { EditorSidebar } from "@/components/editor/EditorSidebar";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, FileText, PenLine, Clock } from "lucide-react";
+import { ArrowLeft, FileText, PenLine, Clock, Handshake } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 
@@ -25,11 +26,12 @@ export default function ClientEditor() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const [mode, setMode] = useState<"notes" | "report">("notes");
+  const [mode, setMode] = useState<"notes" | "report" | "liaise">("notes");
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [assessments, setAssessments] = useState<AssessmentInstance[]>([]);
   const [diagnoses, setDiagnoses] = useState<DiagnosisInstance[]>([]);
   const [recommendations, setRecommendations] = useState<RecommendationInstance[]>([]);
+  const [collateralInterviews, setCollateralInterviews] = useState<CollateralInterview[]>([]);
   const [reportContent, setReportContent] = useState<Record<string, string>>({});
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [generatingReport, setGeneratingReport] = useState(false);
@@ -115,6 +117,32 @@ export default function ClientEditor() {
       }
     }
   }, [report]);
+
+  // Load collateral interviews from Supabase
+  useEffect(() => {
+    if (!report?.id) return;
+    const loadInterviews = async () => {
+      const { data } = await supabase
+        .from("collateral_interviews")
+        .select("*")
+        .eq("report_id", report.id)
+        .order("created_at");
+      if (data) {
+        setCollateralInterviews(data.map((row: any) => ({
+          id: row.id,
+          templateId: row.template_id,
+          intervieweeName: row.interviewee_name || "",
+          intervieweeRole: row.interviewee_role || "",
+          date: row.interview_date || "",
+          method: row.interview_method || "",
+          responses: row.responses || {},
+          customQuestions: row.custom_questions || {},
+          generalNotes: row.general_notes || "",
+        })));
+      }
+    };
+    loadInterviews();
+  }, [report?.id]);
 
   // Also load from localStorage as backup
   useEffect(() => {
@@ -263,7 +291,21 @@ export default function ClientEditor() {
                 onClick={() => setMode("notes")}
               >
                 <PenLine className="h-3.5 w-3.5 mr-1.5" />
-                Notes mode
+                Notes
+              </Button>
+              <Button
+                variant={mode === "liaise" ? "default" : "ghost"}
+                size="sm"
+                className="rounded-none relative"
+                onClick={() => setMode("liaise")}
+              >
+                <Handshake className="h-3.5 w-3.5 mr-1.5" />
+                Liaise
+                {collateralInterviews.length > 0 && (
+                  <span className="ml-1.5 inline-flex items-center justify-center h-4 min-w-[16px] rounded-full bg-primary text-primary-foreground text-[10px] font-bold px-1">
+                    {collateralInterviews.length}
+                  </span>
+                )}
               </Button>
               <Button
                 variant={mode === "report" ? "default" : "ghost"}
@@ -272,7 +314,7 @@ export default function ClientEditor() {
                 onClick={() => setMode("report")}
               >
                 <FileText className="h-3.5 w-3.5 mr-1.5" />
-                Report mode
+                Report
               </Button>
             </div>
 
@@ -337,15 +379,30 @@ export default function ClientEditor() {
                     return;
                   }
 
+                  // ── Build collateral context summary ──
+                  let collateralContext = "";
+                  if (collateralInterviews.length > 0) {
+                    const summaries = collateralInterviews.map(iv => {
+                      const respEntries = Object.entries(iv.responses).filter(([, v]) => v && v.trim());
+                      const responseSummary = respEntries.map(([k, v]) => `  - ${k}: ${v}`).join("\n");
+                      return `[${iv.templateId}] ${iv.intervieweeName || "Unnamed"} (${iv.intervieweeRole || iv.templateId}):\n${responseSummary}${iv.generalNotes ? `\n  General notes: ${iv.generalNotes}` : ""}`;
+                    }).join("\n\n");
+                    collateralContext = `\n\nCOLLATERAL INTERVIEW DATA:\nThe following collateral information was gathered from stakeholder interviews. Reference and corroborate relevant observations where they support clinical findings:\n\n${summaries}`;
+                  }
+
                   // ── Build queue items ──
                   const queueItems: QueueItem[] = [];
                   const newContent: Record<string, string> = { ...reportContent };
+
+                  // Sections that benefit from collateral context
+                  const COLLATERAL_SECTIONS = new Set(["background", "informal-supports", "home-environment", "social-environment", "typical-week", "risk-safety", "methodology"]);
 
                   // 1. Top-level text sections
                   for (const [sectionId, observations] of topLevelEntries) {
                     const templateGuidance = getTemplateGuidance(sectionId);
                     const rubric = getRubricForSection("text");
-                    const prompt = `Write a section of an NDIS Functional Capacity Assessment for ${clientName}.\n\nSECTION: ${sectionId}\n\n${templateGuidance ? templateGuidance + "\n\n" : ""}CLINICIAN OBSERVATIONS (transform these into formal clinical prose):\n${observations}\n\nDIAGNOSIS CONTEXT: ${diagnosis || "[Not provided]"}\n\n${rubric}\n\nWrite 2-3 paragraphs of formal NDIS report prose. Use observation → impact → support need structure. Person-first language, third-person active voice. No bullet points, no markdown. Output only the section text.`;
+                    const includeCollateral = COLLATERAL_SECTIONS.has(sectionId) && collateralContext;
+                    const prompt = `Write a section of an NDIS Functional Capacity Assessment for ${clientName}.\n\nSECTION: ${sectionId}\n\n${templateGuidance ? templateGuidance + "\n\n" : ""}CLINICIAN OBSERVATIONS (transform these into formal clinical prose):\n${observations}\n\nDIAGNOSIS CONTEXT: ${diagnosis || "[Not provided]"}${includeCollateral ? collateralContext : ""}\n\n${rubric}\n\nWrite 2-3 paragraphs of formal NDIS report prose. Use observation → impact → support need structure. Person-first language, third-person active voice. No bullet points, no markdown. Output only the section text.`;
                     queueItems.push({ key: sectionId, prompt, maxTokens: 2000, inputForHash: observations, label: `Section: ${sectionId}` });
                   }
 
@@ -834,6 +891,12 @@ export default function ClientEditor() {
               diagnoses={diagnoses}
               onUpdateDiagnoses={setDiagnoses}
             />
+          ) : mode === "liaise" ? (
+            <LiaiseMode
+              reportId={report?.id || ""}
+              interviews={collateralInterviews}
+              onUpdateInterviews={setCollateralInterviews}
+            />
           ) : (
             <ReportMode
               reportContent={reportContent}
@@ -844,6 +907,7 @@ export default function ClientEditor() {
               assessments={assessments}
               recommendations={recommendations}
               diagnoses={diagnoses}
+              collateralInterviews={collateralInterviews}
               onUpdateRecommendation={(idx, updated) => {
                 setRecommendations(prev => prev.map((r, i) => i === idx ? updated : r));
               }}
@@ -913,10 +977,9 @@ export default function ClientEditor() {
                 setIssueStatuses({});
                 setScorecardVisible(false);
                 setQualityCheckStatus("idle");
-                // Immediately run a fresh check
                 setTimeout(() => runQualityCheck(), 100);
               }}
-              onFindInReport={() => {/* handled internally by ReportMode */}}
+              onFindInReport={() => {}}
             />
           )}
         </main>
