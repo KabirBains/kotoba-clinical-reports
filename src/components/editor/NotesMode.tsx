@@ -240,8 +240,19 @@ export function NotesMode({ notes, onUpdateNote, assessments, onUpdateAssessment
               />
             )}
 
-            {/* Top-level sections (not functional-capacity, assessments, recommendations, diagnoses, or methodology) get a plain textarea */}
-            {section.id !== "functional-capacity" && section.id !== "assessments" && section.id !== "recommendations" && section.id !== "diagnoses" && section.id !== "methodology" && (
+            {/* Participant Goals section — dynamic goals builder */}
+            {section.id === "participant-goals" && (
+              <ParticipantGoals
+                goals={goals}
+                onUpdateGoals={onUpdateGoals}
+                nilGoals={nilGoals}
+                onToggleNilGoals={onToggleNilGoals}
+                clientName={clientName}
+              />
+            )}
+
+            {/* Top-level sections (not functional-capacity, assessments, recommendations, diagnoses, methodology, or participant-goals) get a plain textarea */}
+            {section.id !== "functional-capacity" && section.id !== "assessments" && section.id !== "recommendations" && section.id !== "diagnoses" && section.id !== "methodology" && section.id !== "participant-goals" && (
               <SectionPanel
                 id={section.id}
                 number={section.number}
