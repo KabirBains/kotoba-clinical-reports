@@ -933,6 +933,7 @@ export default function ClientEditor() {
               onUpdateReportContent={(key, value) => {
                 setReportContent(prev => ({ ...prev, [key]: value }));
               }}
+              onUpdateNote={updateNote}
               clinicianProfile={profile || null}
               qualityCheckStatus={qualityCheckStatus}
               scorecard={scorecard}
