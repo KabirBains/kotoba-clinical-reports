@@ -190,7 +190,7 @@ function SectionPanel({
   );
 }
 
-export function NotesMode({ notes, onUpdateNote, assessments, onUpdateAssessments, recommendations, onUpdateRecommendations }: NotesModeProps) {
+export function NotesMode({ notes, onUpdateNote, assessments, onUpdateAssessments, recommendations, onUpdateRecommendations, diagnoses, onUpdateDiagnoses }: NotesModeProps) {
   return (
     <div className="max-w-4xl mx-auto py-6 px-4">
       <div className="bg-card border border-border/50 rounded-lg shadow-sm overflow-hidden">
@@ -212,8 +212,16 @@ export function NotesMode({ notes, onUpdateNote, assessments, onUpdateAssessment
               />
             )}
 
-            {/* Top-level sections (not functional-capacity, assessments, or recommendations) get a plain textarea */}
-            {section.id !== "functional-capacity" && section.id !== "assessments" && section.id !== "recommendations" && (
+            {/* Diagnoses section — replaced with DiagnosisPicker */}
+            {section.id === "diagnoses" && (
+              <DiagnosisPicker
+                diagnoses={diagnoses}
+                onUpdateDiagnoses={onUpdateDiagnoses}
+              />
+            )}
+
+            {/* Top-level sections (not functional-capacity, assessments, recommendations, or diagnoses) get a plain textarea */}
+            {section.id !== "functional-capacity" && section.id !== "assessments" && section.id !== "recommendations" && section.id !== "diagnoses" && (
               <SectionPanel
                 id={section.id}
                 number={section.number}
