@@ -50,6 +50,62 @@ export type Database = {
         }
         Relationships: []
       }
+      collateral_interviews: {
+        Row: {
+          created_at: string | null
+          custom_questions: Json | null
+          general_notes: string | null
+          id: string
+          interview_date: string | null
+          interview_method: string | null
+          interviewee_name: string | null
+          interviewee_role: string | null
+          report_id: string
+          responses: Json | null
+          template_id: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          custom_questions?: Json | null
+          general_notes?: string | null
+          id?: string
+          interview_date?: string | null
+          interview_method?: string | null
+          interviewee_name?: string | null
+          interviewee_role?: string | null
+          report_id: string
+          responses?: Json | null
+          template_id: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          custom_questions?: Json | null
+          general_notes?: string | null
+          id?: string
+          interview_date?: string | null
+          interview_method?: string | null
+          interviewee_name?: string | null
+          interviewee_role?: string | null
+          report_id?: string
+          responses?: Json | null
+          template_id?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "collateral_interviews_report_id_fkey"
+            columns: ["report_id"]
+            isOneToOne: false
+            referencedRelation: "reports"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           ahpra_number: string | null
