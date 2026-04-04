@@ -223,8 +223,19 @@ export function NotesMode({ notes, onUpdateNote, assessments, onUpdateAssessment
               />
             )}
 
-            {/* Top-level sections (not functional-capacity, assessments, recommendations, or diagnoses) get a plain textarea */}
-            {section.id !== "functional-capacity" && section.id !== "assessments" && section.id !== "recommendations" && section.id !== "diagnoses" && (
+            {/* Methodology section — auto-populated aggregator */}
+            {section.id === "methodology" && (
+              <MethodologyAggregator
+                assessments={assessments}
+                collateralInterviews={collateralInterviews}
+                diagnoses={diagnoses}
+                notes={notes}
+                onUpdateNote={onUpdateNote}
+              />
+            )}
+
+            {/* Top-level sections (not functional-capacity, assessments, recommendations, diagnoses, or methodology) get a plain textarea */}
+            {section.id !== "functional-capacity" && section.id !== "assessments" && section.id !== "recommendations" && section.id !== "diagnoses" && section.id !== "methodology" && (
               <SectionPanel
                 id={section.id}
                 number={section.number}
