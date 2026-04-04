@@ -4,9 +4,11 @@ import { getSubsectionConfig, type SubsectionField } from "@/lib/subsection-fiel
 import { type AssessmentInstance } from "@/lib/assessment-library";
 import { type RecommendationInstance } from "@/lib/recommendations-library";
 import { type DiagnosisInstance } from "@/lib/diagnosis-library";
+import { type CollateralInterview } from "@/components/editor/LiaiseMode";
 import { AssessmentsSection } from "@/components/editor/AssessmentsSection";
 import { RecommendationsSection } from "@/components/editor/RecommendationsSection";
 import { DiagnosisPicker } from "@/components/editor/DiagnosisPicker";
+import { MethodologyAggregator } from "@/components/editor/MethodologyAggregator";
 import { ChevronDown, ChevronRight, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -26,6 +28,7 @@ interface NotesModeProps {
   onUpdateRecommendations: (recommendations: RecommendationInstance[]) => void;
   diagnoses: DiagnosisInstance[];
   onUpdateDiagnoses: (diagnoses: DiagnosisInstance[]) => void;
+  collateralInterviews: CollateralInterview[];
 }
 
 function StructuredField({
@@ -190,7 +193,7 @@ function SectionPanel({
   );
 }
 
-export function NotesMode({ notes, onUpdateNote, assessments, onUpdateAssessments, recommendations, onUpdateRecommendations, diagnoses, onUpdateDiagnoses }: NotesModeProps) {
+export function NotesMode({ notes, onUpdateNote, assessments, onUpdateAssessments, recommendations, onUpdateRecommendations, diagnoses, onUpdateDiagnoses, collateralInterviews }: NotesModeProps) {
   return (
     <div className="max-w-4xl mx-auto py-6 px-4">
       <div className="bg-card border border-border/50 rounded-lg shadow-sm overflow-hidden">
@@ -220,8 +223,19 @@ export function NotesMode({ notes, onUpdateNote, assessments, onUpdateAssessment
               />
             )}
 
-            {/* Top-level sections (not functional-capacity, assessments, recommendations, or diagnoses) get a plain textarea */}
-            {section.id !== "functional-capacity" && section.id !== "assessments" && section.id !== "recommendations" && section.id !== "diagnoses" && (
+            {/* Methodology section — auto-populated aggregator */}
+            {section.id === "methodology" && (
+              <MethodologyAggregator
+                assessments={assessments}
+                collateralInterviews={collateralInterviews}
+                diagnoses={diagnoses}
+                notes={notes}
+                onUpdateNote={onUpdateNote}
+              />
+            )}
+
+            {/* Top-level sections (not functional-capacity, assessments, recommendations, diagnoses, or methodology) get a plain textarea */}
+            {section.id !== "functional-capacity" && section.id !== "assessments" && section.id !== "recommendations" && section.id !== "diagnoses" && section.id !== "methodology" && (
               <SectionPanel
                 id={section.id}
                 number={section.number}
