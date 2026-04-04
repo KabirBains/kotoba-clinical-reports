@@ -260,6 +260,9 @@ interface ReportModeProps {
   recommendations: RecommendationInstance[];
   diagnoses: DiagnosisInstance[];
   collateralInterviews?: CollateralInterview[];
+  goals?: GoalInstance[];
+  nilGoals?: boolean;
+  onUpdateGoals?: (goals: GoalInstance[]) => void;
   onUpdateRecommendation?: (index: number, updated: RecommendationInstance) => void;
   onUpdateReportContent?: (key: string, value: string) => void;
   clinicianProfile: {
