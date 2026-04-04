@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { cn } from "@/lib/utils";
 import { TEMPLATE_SECTIONS } from "@/lib/constants";
 import { FileText, ShieldCheck, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
