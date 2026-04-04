@@ -51,6 +51,7 @@ export interface QueueItem {
   maxTokens: number;
   inputForHash: string; // raw input text to hash for dirty-check
   label: string;        // human-readable label for logs/toasts
+  extraBody?: Record<string, any>; // additional fields to pass to the edge function
 }
 
 export interface QueueResult {
