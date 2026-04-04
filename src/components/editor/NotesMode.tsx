@@ -28,6 +28,7 @@ interface NotesModeProps {
   onUpdateRecommendations: (recommendations: RecommendationInstance[]) => void;
   diagnoses: DiagnosisInstance[];
   onUpdateDiagnoses: (diagnoses: DiagnosisInstance[]) => void;
+  collateralInterviews: CollateralInterview[];
 }
 
 function StructuredField({
