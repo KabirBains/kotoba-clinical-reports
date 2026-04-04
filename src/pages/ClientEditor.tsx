@@ -33,6 +33,8 @@ export default function ClientEditor() {
   const [diagnoses, setDiagnoses] = useState<DiagnosisInstance[]>([]);
   const [recommendations, setRecommendations] = useState<RecommendationInstance[]>([]);
   const [collateralInterviews, setCollateralInterviews] = useState<CollateralInterview[]>([]);
+  const [goals, setGoals] = useState<GoalInstance[]>([{ id: crypto.randomUUID(), text: "" }]);
+  const [nilGoals, setNilGoals] = useState(false);
   const [reportContent, setReportContent] = useState<Record<string, string>>({});
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [generatingReport, setGeneratingReport] = useState(false);
