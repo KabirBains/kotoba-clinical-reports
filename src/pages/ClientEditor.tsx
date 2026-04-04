@@ -14,9 +14,10 @@ import { SYNOPSIS_LIBRARY } from "@/ai/reportEngine";
 import { KotobaLogo } from "@/components/KotobaLogo";
 import { NotesMode } from "@/components/editor/NotesMode";
 import { ReportMode } from "@/components/editor/ReportMode";
+import { LiaiseMode, type CollateralInterview } from "@/components/editor/LiaiseMode";
 import { EditorSidebar } from "@/components/editor/EditorSidebar";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, FileText, PenLine, Clock } from "lucide-react";
+import { ArrowLeft, FileText, PenLine, Clock, Handshake } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 
