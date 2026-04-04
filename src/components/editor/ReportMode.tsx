@@ -257,6 +257,7 @@ interface ReportModeProps {
   assessments: AssessmentInstance[];
   recommendations: RecommendationInstance[];
   diagnoses: DiagnosisInstance[];
+  collateralInterviews?: CollateralInterview[];
   onUpdateRecommendation?: (index: number, updated: RecommendationInstance) => void;
   onUpdateReportContent?: (key: string, value: string) => void;
   clinicianProfile: {
