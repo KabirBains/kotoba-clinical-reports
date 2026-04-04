@@ -328,7 +328,9 @@ function buildReportData(props: ReportModeProps): ReportData {
     section1: s("reason-referral"),
     section2: s("background"),
     section3: s("participant-goals"),
-    section4: s("diagnoses"),
+    section4: diagnoses && diagnoses.length > 0
+      ? diagnoses.map(d => `${d.name} (ICD-10: ${d.icd10}${d.dsm5 ? `, DSM-5: ${d.dsm5}` : ""})\n${d.description}`).join("\n\n")
+      : s("diagnoses"),
     section5: s("ot-case-history"),
     section6: s("methodology"),
     section7: s("informal-supports"),
