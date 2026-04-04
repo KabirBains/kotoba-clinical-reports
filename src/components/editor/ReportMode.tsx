@@ -334,7 +334,14 @@ function buildReportData(props: ReportModeProps): ReportData {
     assessmentSetting: notes["assessment-setting"] || "",
     section1: s("reason-referral"),
     section2: s("background"),
-    section3: s("participant-goals"),
+    section3: (() => {
+      const goalsArr = props.goals || [];
+      const isNil = props.nilGoals;
+      if (isNil) return `${clientName || "The participant"} currently has no NDIS goals. This may be due to the participant being new to the NDIS, awaiting their first plan, or undergoing a plan reassessment.`;
+      const filled = goalsArr.filter(g => g.text.trim());
+      if (filled.length > 0) return filled.map((g, i) => `${i + 1}. "${g.text}"`).join("\n");
+      return s("participant-goals");
+    })(),
     section4: diagnoses && diagnoses.length > 0
       ? diagnoses.map(d => `${d.name} (ICD-10: ${d.icd10}${d.dsm5 ? `, DSM-5: ${d.dsm5}` : ""})\n${d.description}`).join("\n\n")
       : s("diagnoses"),
