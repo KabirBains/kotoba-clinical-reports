@@ -259,8 +259,19 @@ export function NotesMode({ notes, onUpdateNote, assessments, onUpdateAssessment
               />
             )}
 
-            {/* Top-level sections (not functional-capacity, assessments, recommendations, diagnoses, methodology, or participant-goals) get a plain textarea */}
-            {section.id !== "functional-capacity" && section.id !== "assessments" && section.id !== "recommendations" && section.id !== "diagnoses" && section.id !== "methodology" && section.id !== "participant-goals" && (
+            {/* Section 1 — Participant & Report Details */}
+            {section.id === "participant-details" && (
+              <ParticipantReportDetails
+                notes={notes}
+                onUpdateNote={onUpdateNote}
+                clientName={clientName}
+                ndisNumber={ndisNumber}
+                clinicianProfile={clinicianProfile}
+              />
+            )}
+
+            {/* Top-level sections (not functional-capacity, assessments, recommendations, diagnoses, methodology, participant-goals, or participant-details) get a plain textarea */}
+            {section.id !== "functional-capacity" && section.id !== "assessments" && section.id !== "recommendations" && section.id !== "diagnoses" && section.id !== "methodology" && section.id !== "participant-goals" && section.id !== "participant-details" && (
               <SectionPanel
                 id={section.id}
                 number={section.number}

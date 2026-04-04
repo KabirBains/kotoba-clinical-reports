@@ -904,6 +904,8 @@ export default function ClientEditor() {
               nilGoals={nilGoals}
               onToggleNilGoals={setNilGoals}
               clientName={client?.client_name}
+              ndisNumber={client?.ndis_number || ""}
+              clinicianProfile={profile || null}
             />
           ) : mode === "liaise" ? (
             <LiaiseMode
