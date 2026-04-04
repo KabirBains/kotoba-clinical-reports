@@ -6,6 +6,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { TEMPLATE_SECTIONS } from "@/lib/constants";
 import { type AssessmentInstance, ASSESSMENT_LIBRARY, calculateTotal, getClassification, calculateSubscaleTotal } from "@/lib/assessment-library";
 import { type RecommendationInstance } from "@/lib/recommendations-library";
+import { type DiagnosisInstance } from "@/lib/diagnosis-library";
 import { type QueueItem, processQueue } from "@/ai/generationQueue";
 import { getTemplateGuidance, getRubricForSection, FUNCTIONAL_DOMAIN_GUIDANCE, ASSESSMENT_INTERPRETATION_GUIDANCE, RECOMMENDATION_GUIDANCE } from "@/ai/promptGuidance";
 import { SYNOPSIS_LIBRARY } from "@/ai/reportEngine";
@@ -27,6 +28,7 @@ export default function ClientEditor() {
   const [mode, setMode] = useState<"notes" | "report">("notes");
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [assessments, setAssessments] = useState<AssessmentInstance[]>([]);
+  const [diagnoses, setDiagnoses] = useState<DiagnosisInstance[]>([]);
   const [recommendations, setRecommendations] = useState<RecommendationInstance[]>([]);
   const [reportContent, setReportContent] = useState<Record<string, string>>({});
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
@@ -94,6 +96,9 @@ export default function ClientEditor() {
       // Load recommendations from notes JSON
       const savedRecs = (savedNotes as any)?.["__recommendations__"];
       if (Array.isArray(savedRecs)) setRecommendations(savedRecs);
+      // Load diagnoses from notes JSON
+      const savedDiagnoses = (savedNotes as any)?.["__diagnoses__"];
+      if (Array.isArray(savedDiagnoses)) setDiagnoses(savedDiagnoses);
       // Load persisted quality scorecard
       const savedScorecard = (report as any).quality_scorecard;
       if (savedScorecard && typeof savedScorecard === "object" && savedScorecard.score !== undefined) {
@@ -123,7 +128,7 @@ export default function ClientEditor() {
 
   const saveToCloud = useCallback(async () => {
     if (!report?.id) return;
-    const notesWithAssessments = { ...notes, __assessments__: assessments as any, __recommendations__: recommendations as any };
+    const notesWithAssessments = { ...notes, __assessments__: assessments as any, __recommendations__: recommendations as any, __diagnoses__: diagnoses as any };
     const updatePayload: Record<string, any> = {
       notes: notesWithAssessments,
       report_content: reportContent || null,
@@ -142,7 +147,7 @@ export default function ClientEditor() {
       setLastSaved(new Date());
       if (clientId) localStorage.setItem(`kotoba-notes-${clientId}`, JSON.stringify(notes));
     }
-  }, [report?.id, notes, assessments, recommendations, reportContent, clientId, scorecard, issueStatuses, dismissedIssueKeys]);
+  }, [report?.id, notes, assessments, recommendations, diagnoses, reportContent, clientId, scorecard, issueStatuses, dismissedIssueKeys]);
 
   // Autosave every 30 seconds
   useEffect(() => {
@@ -826,6 +831,8 @@ export default function ClientEditor() {
               onUpdateAssessments={setAssessments}
               recommendations={recommendations}
               onUpdateRecommendations={setRecommendations}
+              diagnoses={diagnoses}
+              onUpdateDiagnoses={setDiagnoses}
             />
           ) : (
             <ReportMode
@@ -836,6 +843,7 @@ export default function ClientEditor() {
               ndisNumber={client?.ndis_number || ""}
               assessments={assessments}
               recommendations={recommendations}
+              diagnoses={diagnoses}
               onUpdateRecommendation={(idx, updated) => {
                 setRecommendations(prev => prev.map((r, i) => i === idx ? updated : r));
               }}

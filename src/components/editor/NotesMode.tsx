@@ -3,8 +3,10 @@ import { TEMPLATE_SECTIONS } from "@/lib/constants";
 import { getSubsectionConfig, type SubsectionField } from "@/lib/subsection-fields";
 import { type AssessmentInstance } from "@/lib/assessment-library";
 import { type RecommendationInstance } from "@/lib/recommendations-library";
+import { type DiagnosisInstance } from "@/lib/diagnosis-library";
 import { AssessmentsSection } from "@/components/editor/AssessmentsSection";
 import { RecommendationsSection } from "@/components/editor/RecommendationsSection";
+import { DiagnosisPicker } from "@/components/editor/DiagnosisPicker";
 import { ChevronDown, ChevronRight, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -22,6 +24,8 @@ interface NotesModeProps {
   onUpdateAssessments: (assessments: AssessmentInstance[]) => void;
   recommendations: RecommendationInstance[];
   onUpdateRecommendations: (recommendations: RecommendationInstance[]) => void;
+  diagnoses: DiagnosisInstance[];
+  onUpdateDiagnoses: (diagnoses: DiagnosisInstance[]) => void;
 }
 
 function StructuredField({
@@ -186,7 +190,7 @@ function SectionPanel({
   );
 }
 
-export function NotesMode({ notes, onUpdateNote, assessments, onUpdateAssessments, recommendations, onUpdateRecommendations }: NotesModeProps) {
+export function NotesMode({ notes, onUpdateNote, assessments, onUpdateAssessments, recommendations, onUpdateRecommendations, diagnoses, onUpdateDiagnoses }: NotesModeProps) {
   return (
     <div className="max-w-4xl mx-auto py-6 px-4">
       <div className="bg-card border border-border/50 rounded-lg shadow-sm overflow-hidden">
@@ -208,8 +212,16 @@ export function NotesMode({ notes, onUpdateNote, assessments, onUpdateAssessment
               />
             )}
 
-            {/* Top-level sections (not functional-capacity, assessments, or recommendations) get a plain textarea */}
-            {section.id !== "functional-capacity" && section.id !== "assessments" && section.id !== "recommendations" && (
+            {/* Diagnoses section — replaced with DiagnosisPicker */}
+            {section.id === "diagnoses" && (
+              <DiagnosisPicker
+                diagnoses={diagnoses}
+                onUpdateDiagnoses={onUpdateDiagnoses}
+              />
+            )}
+
+            {/* Top-level sections (not functional-capacity, assessments, recommendations, or diagnoses) get a plain textarea */}
+            {section.id !== "functional-capacity" && section.id !== "assessments" && section.id !== "recommendations" && section.id !== "diagnoses" && (
               <SectionPanel
                 id={section.id}
                 number={section.number}

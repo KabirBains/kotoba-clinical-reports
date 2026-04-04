@@ -1,10 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { cn } from "@/lib/utils";
 import { TEMPLATE_SECTIONS } from "@/lib/constants";
 import { FileText, ShieldCheck, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import DownloadReportButton from "@/components/DownloadReportButton";
 import type { ReportData } from "@/ai/reportAssembler";
 import { type AssessmentInstance, getScoreForOption } from "@/lib/assessment-library";
+import { type DiagnosisInstance } from "@/lib/diagnosis-library";
 import { type RecommendationInstance, OUTCOME_OPTIONS } from "@/lib/recommendations-library";
 import { QualityScorecard, QualitySummaryBar, type Scorecard, type IssueStatus, type QualityIssue } from "./QualityScorecard";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
@@ -253,6 +255,7 @@ interface ReportModeProps {
   ndisNumber: string;
   assessments: AssessmentInstance[];
   recommendations: RecommendationInstance[];
+  diagnoses: DiagnosisInstance[];
   onUpdateRecommendation?: (index: number, updated: RecommendationInstance) => void;
   onUpdateReportContent?: (key: string, value: string) => void;
   clinicianProfile: {
@@ -281,7 +284,7 @@ interface ReportModeProps {
 
 // Map app note keys → reportAssembler section keys
 function buildReportData(props: ReportModeProps): ReportData {
-  const { notes, reportContent, clientName, clientDiagnosis, ndisNumber, assessments, recommendations, clinicianProfile } = props;
+  const { notes, reportContent, clientName, clientDiagnosis, ndisNumber, assessments, recommendations, clinicianProfile, diagnoses } = props;
 
   // Use reportContent (AI-generated prose) if available, fallback to raw notes
   const s = (noteKey: string, reportKey?: string) => {
@@ -293,6 +296,12 @@ function buildReportData(props: ReportModeProps): ReportData {
 
   const today = new Date().toLocaleDateString("en-AU");
 
+  // Derive primary/secondary diagnoses from picker
+  const primaryDx = diagnoses?.find(d => d.isPrimary) || diagnoses?.[0];
+  const secondaryDxs = diagnoses?.filter(d => d.id !== primaryDx?.id) || [];
+  const primaryDiagnosisText = primaryDx?.name || clientDiagnosis || "";
+  const secondaryDiagnosesText = secondaryDxs.map(d => d.name).join("; ") || notes["secondary-diagnoses"] || "";
+
   return {
     participant: {
       fullName: clientName || "Participant",
@@ -301,8 +310,8 @@ function buildReportData(props: ReportModeProps): ReportData {
       ndisNumber: ndisNumber || "",
       address: notes["participant-address"] || "",
       primaryContact: notes["participant-contact"] || "",
-      primaryDiagnosis: clientDiagnosis || "",
-      secondaryDiagnoses: notes["secondary-diagnoses"] || "",
+      primaryDiagnosis: primaryDiagnosisText,
+      secondaryDiagnoses: secondaryDiagnosesText,
     },
     clinician: {
       name: clinicianProfile?.clinician_name || "",
@@ -319,7 +328,9 @@ function buildReportData(props: ReportModeProps): ReportData {
     section1: s("reason-referral"),
     section2: s("background"),
     section3: s("participant-goals"),
-    section4: s("diagnoses"),
+    section4: diagnoses && diagnoses.length > 0
+      ? diagnoses.map(d => `${d.name} (ICD-10: ${d.icd10}${d.dsm5 ? `, DSM-5: ${d.dsm5}` : ""})\n${d.description}`).join("\n\n")
+      : s("diagnoses"),
     section5: s("ot-case-history"),
     section6: s("methodology"),
     section7: s("informal-supports"),
@@ -843,6 +854,99 @@ export function ReportMode(props: ReportModeProps) {
                     suppressContentEditableWarning
                     dangerouslySetInnerHTML={{ __html: rawContent }}
                   />
+                </div>
+              );
+            }
+
+            // Section 6 — Diagnoses: render structured table from picker data
+            if (section.id === "diagnoses") {
+              const dxList = props.diagnoses || [];
+              if (dxList.length === 0 && !reportContent["diagnoses"]) return null;
+
+              const primaryDx = dxList.find(d => d.isPrimary) || dxList[0];
+              const secondaryDxs = dxList.filter(d => d.id !== primaryDx?.id);
+
+              return (
+                <div key={section.id} className="space-y-4">
+                  <h2 className="text-base font-semibold text-foreground border-b border-border/30 pb-2">
+                    {section.number}. {section.title}
+                  </h2>
+
+                  {dxList.length > 0 ? (
+                    <>
+                      {/* Diagnoses summary table */}
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="text-xs h-8">Diagnosis</TableHead>
+                            <TableHead className="text-xs h-8 text-center w-16">Type</TableHead>
+                            <TableHead className="text-xs h-8 text-center w-20">ICD-10</TableHead>
+                            <TableHead className="text-xs h-8 text-center w-20">DSM-5</TableHead>
+                            <TableHead className="text-xs h-8 text-center w-24">Category</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {[primaryDx, ...secondaryDxs].filter(Boolean).map((d) => (
+                            <TableRow key={d!.id}>
+                              <TableCell className="text-xs py-1.5">
+                                <div className="flex items-center gap-1.5">
+                                  <div
+                                    className="w-0.5 h-3.5 rounded-full flex-shrink-0"
+                                    style={{ backgroundColor: d!.id === primaryDx?.id ? "hsl(var(--foreground))" : "hsl(var(--muted-foreground) / 0.3)" }}
+                                  />
+                                  <span className={d!.id === primaryDx?.id ? "font-bold" : ""}>{d!.name}</span>
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-center py-1.5">
+                                <span className={cn(
+                                  "text-[9px] font-bold px-1.5 py-0.5 rounded uppercase",
+                                  d!.id === primaryDx?.id
+                                    ? "bg-foreground text-background"
+                                    : "bg-muted text-muted-foreground"
+                                )}>
+                                  {d!.id === primaryDx?.id ? "1°" : "2°"}
+                                </span>
+                              </TableCell>
+                              <TableCell className="text-center py-1.5 font-mono text-xs font-semibold text-emerald-600">
+                                {d!.icd10}
+                              </TableCell>
+                              <TableCell className="text-center py-1.5 font-mono text-xs text-violet-600">
+                                {d!.dsm5 || "—"}
+                              </TableCell>
+                              <TableCell className="text-center py-1.5 text-xs text-muted-foreground">
+                                {d!.category}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+
+                      {/* Diagnosis descriptions */}
+                      <div className="space-y-3 mt-4">
+                        {[primaryDx, ...secondaryDxs].filter(Boolean).map((d) => (
+                          <div key={d!.id} className="pl-3 border-l-2 border-border/30">
+                            <h4 className="text-sm font-semibold text-foreground/80 mb-1">
+                              {d!.name}
+                              {d!.id === primaryDx?.id && (
+                                <span className="ml-2 text-[9px] font-bold px-1.5 py-0.5 rounded bg-foreground text-background uppercase">Primary</span>
+                              )}
+                            </h4>
+                            <p className="text-sm text-foreground/80 leading-relaxed">{d!.description}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    /* Fallback to AI-generated prose if no structured diagnoses */
+                    reportContent["diagnoses"] && (
+                      <div
+                        className="prose prose-sm max-w-none text-foreground/90"
+                        contentEditable
+                        suppressContentEditableWarning
+                        dangerouslySetInnerHTML={{ __html: reportContent["diagnoses"] }}
+                      />
+                    )
+                  )}
                 </div>
               );
             }
