@@ -890,6 +890,7 @@ export default function ClientEditor() {
               onUpdateRecommendations={setRecommendations}
               diagnoses={diagnoses}
               onUpdateDiagnoses={setDiagnoses}
+              collateralInterviews={collateralInterviews}
             />
           ) : mode === "liaise" ? (
             <LiaiseMode
