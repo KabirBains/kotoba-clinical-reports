@@ -284,7 +284,7 @@ interface ReportModeProps {
 
 // Map app note keys → reportAssembler section keys
 function buildReportData(props: ReportModeProps): ReportData {
-  const { notes, reportContent, clientName, clientDiagnosis, ndisNumber, assessments, recommendations, clinicianProfile } = props;
+  const { notes, reportContent, clientName, clientDiagnosis, ndisNumber, assessments, recommendations, clinicianProfile, diagnoses } = props;
 
   // Use reportContent (AI-generated prose) if available, fallback to raw notes
   const s = (noteKey: string, reportKey?: string) => {
@@ -296,6 +296,12 @@ function buildReportData(props: ReportModeProps): ReportData {
 
   const today = new Date().toLocaleDateString("en-AU");
 
+  // Derive primary/secondary diagnoses from picker
+  const primaryDx = diagnoses?.find(d => d.isPrimary) || diagnoses?.[0];
+  const secondaryDxs = diagnoses?.filter(d => d.id !== primaryDx?.id) || [];
+  const primaryDiagnosisText = primaryDx?.name || clientDiagnosis || "";
+  const secondaryDiagnosesText = secondaryDxs.map(d => d.name).join("; ") || notes["secondary-diagnoses"] || "";
+
   return {
     participant: {
       fullName: clientName || "Participant",
@@ -304,8 +310,8 @@ function buildReportData(props: ReportModeProps): ReportData {
       ndisNumber: ndisNumber || "",
       address: notes["participant-address"] || "",
       primaryContact: notes["participant-contact"] || "",
-      primaryDiagnosis: clientDiagnosis || "",
-      secondaryDiagnoses: notes["secondary-diagnoses"] || "",
+      primaryDiagnosis: primaryDiagnosisText,
+      secondaryDiagnoses: secondaryDiagnosesText,
     },
     clinician: {
       name: clinicianProfile?.clinician_name || "",
