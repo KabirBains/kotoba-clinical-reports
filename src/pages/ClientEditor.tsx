@@ -876,6 +876,12 @@ export default function ClientEditor() {
               diagnoses={diagnoses}
               onUpdateDiagnoses={setDiagnoses}
             />
+          ) : mode === "liaise" ? (
+            <LiaiseMode
+              reportId={report?.id || ""}
+              interviews={collateralInterviews}
+              onUpdateInterviews={setCollateralInterviews}
+            />
           ) : (
             <ReportMode
               reportContent={reportContent}
@@ -886,6 +892,7 @@ export default function ClientEditor() {
               assessments={assessments}
               recommendations={recommendations}
               diagnoses={diagnoses}
+              collateralInterviews={collateralInterviews}
               onUpdateRecommendation={(idx, updated) => {
                 setRecommendations(prev => prev.map((r, i) => i === idx ? updated : r));
               }}
@@ -955,10 +962,9 @@ export default function ClientEditor() {
                 setIssueStatuses({});
                 setScorecardVisible(false);
                 setQualityCheckStatus("idle");
-                // Immediately run a fresh check
                 setTimeout(() => runQualityCheck(), 100);
               }}
-              onFindInReport={() => {/* handled internally by ReportMode */}}
+              onFindInReport={() => {}}
             />
           )}
         </main>
