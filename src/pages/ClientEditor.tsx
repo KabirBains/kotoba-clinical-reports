@@ -843,6 +843,7 @@ export default function ClientEditor() {
               ndisNumber={client?.ndis_number || ""}
               assessments={assessments}
               recommendations={recommendations}
+              diagnoses={diagnoses}
               onUpdateRecommendation={(idx, updated) => {
                 setRecommendations(prev => prev.map((r, i) => i === idx ? updated : r));
               }}
