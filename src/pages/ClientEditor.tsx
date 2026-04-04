@@ -118,6 +118,32 @@ export default function ClientEditor() {
     }
   }, [report]);
 
+  // Load collateral interviews from Supabase
+  useEffect(() => {
+    if (!report?.id) return;
+    const loadInterviews = async () => {
+      const { data } = await supabase
+        .from("collateral_interviews")
+        .select("*")
+        .eq("report_id", report.id)
+        .order("created_at");
+      if (data) {
+        setCollateralInterviews(data.map((row: any) => ({
+          id: row.id,
+          templateId: row.template_id,
+          intervieweeName: row.interviewee_name || "",
+          intervieweeRole: row.interviewee_role || "",
+          date: row.interview_date || "",
+          method: row.interview_method || "",
+          responses: row.responses || {},
+          customQuestions: row.custom_questions || {},
+          generalNotes: row.general_notes || "",
+        })));
+      }
+    };
+    loadInterviews();
+  }, [report?.id]);
+
   // Also load from localStorage as backup
   useEffect(() => {
     if (clientId) {
