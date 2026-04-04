@@ -831,6 +831,8 @@ export default function ClientEditor() {
               onUpdateAssessments={setAssessments}
               recommendations={recommendations}
               onUpdateRecommendations={setRecommendations}
+              diagnoses={diagnoses}
+              onUpdateDiagnoses={setDiagnoses}
             />
           ) : (
             <ReportMode
