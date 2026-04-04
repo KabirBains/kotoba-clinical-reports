@@ -335,7 +335,7 @@ function buildReportData(props: ReportModeProps): ReportData {
       ? diagnoses.map(d => `${d.name} (ICD-10: ${d.icd10}${d.dsm5 ? `, DSM-5: ${d.dsm5}` : ""})\n${d.description}`).join("\n\n")
       : s("diagnoses"),
     section5: s("ot-case-history"),
-    section6: s("methodology"),
+    section6: s("methodology") || buildMethodologyText(assessments, collateralInterviews || [], diagnoses || [], notes),
     section7: s("informal-supports"),
     section8: s("home-environment"),
     section9: s("social-environment"),
