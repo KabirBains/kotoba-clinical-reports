@@ -24,6 +24,8 @@ interface NotesModeProps {
   onUpdateAssessments: (assessments: AssessmentInstance[]) => void;
   recommendations: RecommendationInstance[];
   onUpdateRecommendations: (recommendations: RecommendationInstance[]) => void;
+  diagnoses: DiagnosisInstance[];
+  onUpdateDiagnoses: (diagnoses: DiagnosisInstance[]) => void;
 }
 
 function StructuredField({
