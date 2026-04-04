@@ -183,7 +183,7 @@ export default function ClientEditor() {
       setLastSaved(new Date());
       if (clientId) localStorage.setItem(`kotoba-notes-${clientId}`, JSON.stringify(notes));
     }
-  }, [report?.id, notes, assessments, recommendations, diagnoses, reportContent, clientId, scorecard, issueStatuses, dismissedIssueKeys]);
+  }, [report?.id, notes, assessments, recommendations, diagnoses, goals, nilGoals, reportContent, clientId, scorecard, issueStatuses, dismissedIssueKeys]);
 
   // Autosave every 30 seconds
   useEffect(() => {
