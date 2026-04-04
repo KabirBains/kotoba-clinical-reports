@@ -4,9 +4,11 @@ import { getSubsectionConfig, type SubsectionField } from "@/lib/subsection-fiel
 import { type AssessmentInstance } from "@/lib/assessment-library";
 import { type RecommendationInstance } from "@/lib/recommendations-library";
 import { type DiagnosisInstance } from "@/lib/diagnosis-library";
+import { type CollateralInterview } from "@/components/editor/LiaiseMode";
 import { AssessmentsSection } from "@/components/editor/AssessmentsSection";
 import { RecommendationsSection } from "@/components/editor/RecommendationsSection";
 import { DiagnosisPicker } from "@/components/editor/DiagnosisPicker";
+import { MethodologyAggregator } from "@/components/editor/MethodologyAggregator";
 import { ChevronDown, ChevronRight, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
