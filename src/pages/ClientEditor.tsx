@@ -469,6 +469,258 @@ export default function ClientEditor() {
                     section12_9: "Sensory Profile",
                   };
 
+                  // buildScoreSummary — compute score rows, total, classification for each assessment
+                  const WHODAS_DOMAINS_DEF = [
+                    { id: "cognition", name: "Cognition", items: [1,2,3,4,5,6] },
+                    { id: "mobility", name: "Mobility", items: [7,8,9,10,11] },
+                    { id: "selfcare", name: "Self-Care", items: [12,13,14] },
+                    { id: "getting_along", name: "Getting Along", items: [15,16,17,18,19,20] },
+                    { id: "life_household", name: "Life Activities (Household)", items: [21,22,23,24] },
+                    { id: "life_work", name: "Life Activities (Work/School)", items: [25,26,27,28] },
+                    { id: "participation", name: "Participation", items: [29,30,31,32,33,34,35,36] },
+                  ];
+                  const WHODAS_SCORE_MAP: Record<string, number> = { "None": 0, "Mild": 1, "Moderate": 2, "Severe": 3, "Extreme / Cannot do": 4 };
+
+                  function buildScoreSummary(assessment: AssessmentInstance): { rows: { label: string; value: string }[]; total: string; classification: string } {
+                    const def = ASSESSMENT_LIBRARY.find(d => d.id === assessment.definitionId);
+                    const rows: { label: string; value: string }[] = [];
+                    let total = "";
+                    let classification = "";
+                    const sc = assessment.scores;
+
+                    if (assessment.definitionId === "whodas-2.0") {
+                      let grandTotal = 0; let maxPossible = 0;
+                      for (const domain of WHODAS_DOMAINS_DEF) {
+                        let domainTotal = 0; let domainMax = 0;
+                        for (const itemNum of domain.items) {
+                          const val = sc[`whodas_${itemNum}`];
+                          if (val) { domainTotal += WHODAS_SCORE_MAP[val] ?? 0; domainMax += 4; }
+                        }
+                        if (domainMax > 0) {
+                          const pct = Math.round((domainTotal / domainMax) * 100);
+                          rows.push({ label: domain.name, value: `${pct}%` });
+                          grandTotal += domainTotal; maxPossible += domainMax;
+                        }
+                      }
+                      if (maxPossible > 0) {
+                        const overallPct = Math.round((grandTotal / maxPossible) * 100);
+                        total = `${grandTotal}/${maxPossible} (${overallPct}%)`;
+                        if (overallPct <= 4) classification = "No disability";
+                        else if (overallPct <= 24) classification = "Mild disability";
+                        else if (overallPct <= 49) classification = "Moderate disability";
+                        else if (overallPct <= 95) classification = "Severe disability";
+                        else classification = "Extreme disability";
+                      }
+                    } else if (assessment.definitionId === "lsp-16") {
+                      const LSP_SUBSCALES: Record<string, { name: string; max: number; items: number[] }> = {
+                        withdrawal: { name: "Withdrawal", max: 12, items: [1, 2, 3, 8] },
+                        selfcare: { name: "Self-Care", max: 15, items: [4, 5, 6, 9, 16] },
+                        compliance: { name: "Compliance", max: 9, items: [10, 11, 12] },
+                        antisocial: { name: "Anti-Social", max: 12, items: [7, 13, 14, 15] },
+                      };
+                      let sum = 0; let answered = 0;
+                      for (let i = 1; i <= 16; i++) {
+                        const val = sc[String(i)];
+                        if (val !== undefined && val !== "") { sum += parseInt(val); answered++; }
+                      }
+                      total = `${sum}/48`;
+                      if (sum <= 15) classification = "Low disability";
+                      else if (sum <= 31) classification = "Moderate disability";
+                      else classification = "High disability";
+                      for (const [, sub] of Object.entries(LSP_SUBSCALES)) {
+                        let subSum = 0;
+                        for (const n of sub.items) { const v = sc[String(n)]; if (v !== undefined && v !== "") subSum += parseInt(v); }
+                        rows.push({ label: sub.name, value: `${subSum}/${sub.max}` });
+                      }
+                    } else if (assessment.definitionId === "zarit") {
+                      let sum = 0; let answered = 0;
+                      for (let i = 1; i <= 22; i++) {
+                        const val = sc[String(i)];
+                        if (val !== undefined && val !== "") { sum += parseInt(val); answered++; }
+                      }
+                      total = `${sum}/88`;
+                      if (answered === 22) {
+                        if (sum <= 20) classification = "No to Mild Burden";
+                        else if (sum <= 40) classification = "Mild to Moderate Burden";
+                        else if (sum <= 60) classification = "Moderate to Severe Burden";
+                        else classification = "Severe Burden";
+                      } else { classification = `Incomplete (${answered}/22)`; }
+                    } else if (assessment.definitionId === "frat") {
+                      const FRAT_ITEMS = [
+                        { id: "recent_falls", name: "Recent Falls", options: [
+                          { text: "None in last 12 months", score: 2 }, { text: "One or more between 3 and 12 months ago", score: 4 },
+                          { text: "One or more in last 3 months", score: 6 }, { text: "One or more in last 3 months whilst inpatient/resident", score: 8 },
+                        ]},
+                        { id: "medications", name: "Medications", options: [
+                          { text: "Not taking any of these", score: 1 }, { text: "Taking one", score: 2 },
+                          { text: "Taking two", score: 3 }, { text: "Taking more than two", score: 4 },
+                        ]},
+                        { id: "psychological", name: "Psychological", options: [
+                          { text: "Does not appear to have any of these", score: 1 }, { text: "Appears mildly affected by one or more", score: 2 },
+                          { text: "Appears moderately affected by one or more", score: 3 }, { text: "Appears severely affected by one or more", score: 4 },
+                        ]},
+                        { id: "cognitive", name: "Cognitive Status", options: [
+                          { text: "AMTS 9 or 10/10 OR intact", score: 1 }, { text: "AMTS 7–8 — mildly impaired", score: 2 },
+                          { text: "AMTS 5–6 — moderately impaired", score: 3 }, { text: "AMTS 4 or less — severely impaired", score: 4 },
+                        ]},
+                      ];
+                      let fratTotal = 0; let fratAnswered = 0;
+                      for (const item of FRAT_ITEMS) {
+                        const idx = sc[`part1_${item.id}`];
+                        if (idx !== undefined && idx !== "") {
+                          const optIdx = parseInt(idx);
+                          const score = item.options[optIdx]?.score ?? 0;
+                          fratTotal += score; fratAnswered++;
+                          rows.push({ label: item.name, value: `${item.options[optIdx]?.text} (${score})` });
+                        }
+                      }
+                      const anyAutoHigh = sc["auto_functional_change"] === "true" || sc["auto_dizziness"] === "true";
+                      if (anyAutoHigh) { classification = "High risk (automatic trigger)"; total = `${fratTotal}/20 (auto HIGH)`; }
+                      else if (fratAnswered === 4) {
+                        total = `${fratTotal}/20`;
+                        if (fratTotal >= 16) classification = "High risk";
+                        else if (fratTotal >= 12) classification = "Medium risk";
+                        else classification = "Low risk";
+                      } else { total = `${fratTotal}/20 (${fratAnswered}/4 answered)`; classification = "Incomplete"; }
+                      let amtsTotal = 0; let amtsAnswered = 0;
+                      for (let i = 1; i <= 10; i++) { const v = sc[`amts_${i}`]; if (v !== undefined && v !== "") { amtsTotal += parseInt(v); amtsAnswered++; } }
+                      if (amtsAnswered > 0) rows.push({ label: "AMTS Score", value: `${amtsTotal}/10` });
+                    } else if (assessment.definitionId === "cans") {
+                      const CANS_GROUPS = [
+                        { id: "A", name: "Group A", items: [1,2,3,4,5,6,7,8,9,10] },
+                        { id: "B", name: "Group B", items: [11,12,13,14] },
+                        { id: "C", name: "Group C", items: [15,16,17,18,19,20,21,22,23,24,25] },
+                        { id: "D", name: "Group D", items: [26,27,28] },
+                      ];
+                      let totalYes = 0; let totalAnswered = 0; let highestGroup: string | null = null;
+                      for (const g of CANS_GROUPS) {
+                        let groupYes = 0; let groupAnswered = 0;
+                        for (const n of g.items) { const v = sc[String(n)]; if (v === "true") { groupYes++; groupAnswered++; } else if (v === "false") { groupAnswered++; } }
+                        totalYes += groupYes; totalAnswered += groupAnswered;
+                        if (groupYes > 0 && !highestGroup) highestGroup = g.id;
+                        rows.push({ label: g.name, value: `${groupYes} needs identified` });
+                      }
+                      const cansLevel = sc["__cans_level"] || null;
+                      const CANS_LEVELS: Record<string, string> = {
+                        "7": "Cannot be left alone — 24hr support", "6": "Can be left alone a few hours — 20–23hr support",
+                        "5": "Can be left alone part of day, not overnight — 12–19hr", "4.3": "Up to 11hr (Group A)",
+                        "4.2": "Up to 11hr (Group B)", "4.1": "Up to 11hr (Group C)",
+                        "3": "Needs support a few days a week", "2": "Needs support at least once a week",
+                        "1": "Needs intermittent support (less than weekly)", "0": "No support needed",
+                      };
+                      if (cansLevel) { total = `Level ${cansLevel}`; classification = CANS_LEVELS[cansLevel] || `Level ${cansLevel}`; }
+                      else if (highestGroup) { total = `${totalYes} needs identified`; classification = `Highest group: ${highestGroup} (level not set)`; }
+                      else if (totalAnswered === 28) { total = "0 needs identified"; classification = "No support needed (Level 0)"; }
+                    } else if (assessment.definitionId === "lawton-iadl") {
+                      const LAWTON_DOMAINS = [
+                        { id: "telephone", name: "Telephone", maleIncluded: true, options: [1,1,1,0] },
+                        { id: "shopping", name: "Shopping", maleIncluded: true, options: [1,0,0,0] },
+                        { id: "food_prep", name: "Food Preparation", maleIncluded: false, options: [1,0,0,0] },
+                        { id: "housekeeping", name: "Housekeeping", maleIncluded: false, options: [1,1,1,1,0] },
+                        { id: "laundry", name: "Laundry", maleIncluded: false, options: [1,1,0] },
+                        { id: "transport", name: "Transportation", maleIncluded: true, options: [1,1,1,0,0] },
+                        { id: "medications", name: "Medications", maleIncluded: true, options: [1,0,0] },
+                        { id: "finances", name: "Finances", maleIncluded: true, options: [1,1,0] },
+                      ];
+                      const gender = sc["__gender"] || "all";
+                      const activeDomains = gender === "male" ? LAWTON_DOMAINS.filter(d => d.maleIncluded) : LAWTON_DOMAINS;
+                      let sum = 0; let answered = 0;
+                      for (const domain of activeDomains) {
+                        const val = sc[domain.id];
+                        if (val !== undefined && val !== "") {
+                          const optIdx = parseInt(val);
+                          const score = domain.options[optIdx] ?? 0;
+                          sum += score; answered++;
+                          rows.push({ label: domain.name, value: score === 1 ? "Independent" : "Dependent" });
+                        }
+                      }
+                      total = `${sum}/${activeDomains.length}`;
+                      if (sum === activeDomains.length) classification = "High function — independent";
+                      else if (sum >= 5) classification = "Moderate function — some assistance needed";
+                      else classification = "Low function — significant assistance needed";
+                    } else if (assessment.definitionId === "sensory-profile") {
+                      const SP_QUADRANTS: Record<string, { name: string; items: number[] }> = {
+                        registration: { name: "Low Registration", items: [3,6,12,15,21,23,36,37,39,41,44,45,52,55,59] },
+                        seeking: { name: "Sensation Seeking", items: [2,4,8,10,14,17,19,28,30,32,40,42,47,50,58] },
+                        sensitivity: { name: "Sensory Sensitivity", items: [7,9,13,16,20,22,25,27,31,33,34,48,51,54,60] },
+                        avoiding: { name: "Sensation Avoiding", items: [1,5,11,18,24,26,29,35,38,43,46,49,53,56,57] },
+                      };
+                      const SP_NORMS: Record<string, Record<string, Record<string, [number, number]>>> = {
+                        "18-64": {
+                          registration: { muchLess: [15,18], less: [19,23], similar: [24,35], more: [36,44], muchMore: [45,75] },
+                          seeking: { muchLess: [15,35], less: [36,42], similar: [43,56], more: [57,62], muchMore: [63,75] },
+                          sensitivity: { muchLess: [15,18], less: [19,25], similar: [26,41], more: [42,48], muchMore: [49,75] },
+                          avoiding: { muchLess: [15,19], less: [20,26], similar: [27,41], more: [42,49], muchMore: [50,75] },
+                        },
+                        "11-17": {
+                          registration: { muchLess: [15,18], less: [19,26], similar: [27,40], more: [41,51], muchMore: [52,75] },
+                          seeking: { muchLess: [15,27], less: [28,41], similar: [42,58], more: [59,65], muchMore: [66,75] },
+                          sensitivity: { muchLess: [15,19], less: [20,25], similar: [26,40], more: [41,48], muchMore: [49,75] },
+                          avoiding: { muchLess: [15,18], less: [19,25], similar: [26,40], more: [41,48], muchMore: [49,75] },
+                        },
+                        "65+": {
+                          registration: { muchLess: [15,19], less: [20,26], similar: [27,40], more: [41,51], muchMore: [52,75] },
+                          seeking: { muchLess: [15,28], less: [29,39], similar: [40,52], more: [53,63], muchMore: [64,75] },
+                          sensitivity: { muchLess: [15,18], less: [19,25], similar: [26,41], more: [42,48], muchMore: [49,75] },
+                          avoiding: { muchLess: [15,18], less: [19,25], similar: [26,42], more: [43,49], muchMore: [50,75] },
+                        },
+                      };
+                      const CLASS_LABELS: Record<string, string> = {
+                        muchLess: "Much Less Than Most People", less: "Less Than Most People",
+                        similar: "Similar To Most People", more: "More Than Most People", muchMore: "Much More Than Most People",
+                      };
+                      const ageGroup = sc["__age_group"] || "18-64";
+                      let totalAnswered = 0;
+                      for (const [key, q] of Object.entries(SP_QUADRANTS)) {
+                        const answered = q.items.filter(n => { const v = sc[String(n)]; return v !== undefined && v !== ""; }).length;
+                        const sum = q.items.reduce((acc, n) => { const v = sc[String(n)]; return acc + (v !== undefined && v !== "" ? parseInt(v) : 0); }, 0);
+                        totalAnswered += answered;
+                        let classLabel = "Incomplete";
+                        if (answered === q.items.length) {
+                          const norms = SP_NORMS[ageGroup]?.[key];
+                          if (norms) { for (const [clKey, range] of Object.entries(norms)) { if (sum >= range[0] && sum <= range[1]) { classLabel = CLASS_LABELS[clKey] || clKey; break; } } }
+                        }
+                        rows.push({ label: q.name, value: `${sum}/75 — ${classLabel}` });
+                      }
+                      total = `${totalAnswered}/60 items scored`;
+                      classification = "See quadrant breakdown";
+                    } else if (assessment.definitionId === "dass-42") {
+                      const DASS_SUBSCALES = [
+                        { id: "depression", name: "Depression", short: "D", items: [3,5,10,13,16,17,21,24,26,31,34,37,38,42], thresholds: [{max:9,label:"Normal"},{max:13,label:"Mild"},{max:20,label:"Moderate"},{max:27,label:"Severe"},{max:999,label:"Extremely Severe"}] },
+                        { id: "anxiety", name: "Anxiety", short: "A", items: [2,4,7,9,15,19,20,23,25,28,30,36,40,41], thresholds: [{max:7,label:"Normal"},{max:9,label:"Mild"},{max:14,label:"Moderate"},{max:19,label:"Severe"},{max:999,label:"Extremely Severe"}] },
+                        { id: "stress", name: "Stress", short: "S", items: [1,6,8,11,12,14,18,22,27,29,32,33,35,39], thresholds: [{max:14,label:"Normal"},{max:18,label:"Mild"},{max:25,label:"Moderate"},{max:33,label:"Severe"},{max:999,label:"Extremely Severe"}] },
+                      ];
+                      let grandTotal = 0; let grandAnswered = 0;
+                      for (const sub of DASS_SUBSCALES) {
+                        let subSum = 0; let subAnswered = 0;
+                        for (const n of sub.items) { const v = sc[String(n)]; if (v !== undefined && v !== "") { subSum += parseInt(v); subAnswered++; } }
+                        grandTotal += subSum; grandAnswered += subAnswered;
+                        let cls = "Incomplete";
+                        if (subAnswered === sub.items.length) { for (const t of sub.thresholds) { if (subSum <= t.max) { cls = t.label; break; } } }
+                        rows.push({ label: `${sub.name} (${sub.short})`, value: `${subSum}/${sub.items.length * 3} — ${cls}` });
+                      }
+                      total = `${grandTotal}/126`;
+                      classification = grandAnswered === 42 ? "See subscale breakdown" : `Incomplete (${grandAnswered}/42)`;
+                    } else if (def) {
+                      const t = calculateTotal(def, assessment.scores);
+                      classification = getClassification(def, t);
+                      total = String(t);
+                      if (def.subscales.length > 0) {
+                        for (const sub of def.subscales) {
+                          rows.push({ label: sub.label, value: String(calculateSubscaleTotal(def, sub.id, assessment.scores)) });
+                        }
+                      }
+                    }
+
+                    if (assessment.isCustom && assessment.customItems) {
+                      for (const item of assessment.customItems) {
+                        if (item.value) rows.push({ label: item.label, value: item.value });
+                      }
+                    }
+
+                    return { rows, total, classification };
+                  }
+
                   // Pre-compute assessment data for queue items
                   const assessmentMeta: { assessment: AssessmentInstance; scoreSummary: ReturnType<typeof buildScoreSummary>; synopsis: string; aName: string }[] = [];
                   for (const assessment of scoredAssessments) {
