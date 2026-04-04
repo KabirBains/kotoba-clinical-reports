@@ -254,6 +254,7 @@ interface ReportModeProps {
   ndisNumber: string;
   assessments: AssessmentInstance[];
   recommendations: RecommendationInstance[];
+  diagnoses: DiagnosisInstance[];
   onUpdateRecommendation?: (index: number, updated: RecommendationInstance) => void;
   onUpdateReportContent?: (key: string, value: string) => void;
   clinicianProfile: {
