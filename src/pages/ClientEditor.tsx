@@ -11,6 +11,7 @@ import { type GoalInstance } from "@/components/editor/ParticipantGoals";
 import { type QueueItem, processQueue } from "@/ai/generationQueue";
 import { getTemplateGuidance, getRubricForSection, FUNCTIONAL_DOMAIN_GUIDANCE, ASSESSMENT_INTERPRETATION_GUIDANCE, RECOMMENDATION_GUIDANCE } from "@/ai/promptGuidance";
 import { SYNOPSIS_LIBRARY } from "@/ai/reportEngine";
+import { buildMethodologyText } from "@/components/editor/MethodologyAggregator";
 
 import { KotobaLogo } from "@/components/KotobaLogo";
 import { NotesMode } from "@/components/editor/NotesMode";
