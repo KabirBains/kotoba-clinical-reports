@@ -312,12 +312,21 @@ function buildReportData(props: ReportModeProps): ReportData {
 
   return {
     participant: {
-      fullName: clientName || "Participant",
-      dob: notes["participant-dob"] || "",
-      age: notes["participant-age"] || "",
-      ndisNumber: ndisNumber || "",
-      address: notes["participant-address"] || "",
-      primaryContact: notes["participant-contact"] || "",
+      fullName: notes[PARTICIPANT_KEYS.fullName] || clientName || "Participant",
+      dob: notes[PARTICIPANT_KEYS.dob] || notes["participant-dob"] || "",
+      age: (() => {
+        const dob = notes[PARTICIPANT_KEYS.dob];
+        if (!dob) return notes["participant-age"] || "";
+        const birth = new Date(dob);
+        const today = new Date();
+        let years = today.getFullYear() - birth.getFullYear();
+        const md = today.getMonth() - birth.getMonth();
+        if (md < 0 || (md === 0 && today.getDate() < birth.getDate())) years--;
+        return years >= 0 ? `${years} years` : "";
+      })(),
+      ndisNumber: notes[PARTICIPANT_KEYS.ndisNumber] || ndisNumber || "",
+      address: notes[PARTICIPANT_KEYS.address] || notes["participant-address"] || "",
+      primaryContact: notes[PARTICIPANT_KEYS.primaryContact] || notes["participant-contact"] || "",
       primaryDiagnosis: primaryDiagnosisText,
       secondaryDiagnoses: secondaryDiagnosesText,
     },
@@ -326,9 +335,9 @@ function buildReportData(props: ReportModeProps): ReportData {
       qualifications: clinicianProfile?.qualifications || "",
       ahpra: clinicianProfile?.ahpra_number || "",
       organisation: clinicianProfile?.practice_name || "",
-      phoneEmail: "",
-      dateOfAssessment: notes["assessment-date"] || "",
-      dateOfReport: today,
+      phoneEmail: notes[CLINICIAN_KEYS.phoneEmail] || "",
+      dateOfAssessment: notes[CLINICIAN_KEYS.dateOfAssessment] || notes["assessment-date"] || "",
+      dateOfReport: notes[CLINICIAN_KEYS.dateOfReport] || today,
       otServicesCommenced: notes["ot-services-commenced"] || "",
     },
     presentAtAssessment: notes["present-at-assessment"] || "",
