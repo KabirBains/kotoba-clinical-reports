@@ -338,6 +338,12 @@ export default function ClientEditor() {
                   const clientName = client?.client_name || "the participant";
                   const diagnosis = client?.primary_diagnosis || "";
 
+                  // Extract participant names from structured details
+                  const participantFullName = notes["__participant__fullName"] || clientName;
+                  const participantFirstName = participantFullName.split(/\s+/)[0] || participantFullName;
+                  const nameFields = { participant_name: participantFullName, participant_first_name: participantFirstName };
+                  const allNameWarnings: string[] = [];
+
                   // ── Collect top-level section notes ──
                   const topLevelEntries = Object.entries(notes).filter(
                     ([key, val]) =>
@@ -426,7 +432,7 @@ export default function ClientEditor() {
                     const rubric = getRubricForSection("text");
                     const includeCollateral = COLLATERAL_SECTIONS.has(sectionId) && collateralContext;
                     const prompt = `Write a section of an NDIS Functional Capacity Assessment for ${clientName}.\n\nSECTION: ${sectionId}\n\n${templateGuidance ? templateGuidance + "\n\n" : ""}CLINICIAN OBSERVATIONS (transform these into formal clinical prose):\n${observations}\n\nDIAGNOSIS CONTEXT: ${diagnosis || "[Not provided]"}${includeCollateral ? collateralContext : ""}\n\n${rubric}\n\nWrite 2-3 paragraphs of formal NDIS report prose. Use observation → impact → support need structure. Person-first language, third-person active voice. No bullet points, no markdown. Output only the section text.`;
-                    const extraBody: Record<string, any> = {};
+                    const extraBody: Record<string, any> = { ...nameFields };
                     if (collateralPayload.length > 0) {
                       extraBody.collateral_interviews = collateralPayload;
                     }
@@ -447,6 +453,7 @@ export default function ClientEditor() {
                       inputForHash: methodologyInput + JSON.stringify(collateralPayload),
                       label: "Section: Methodology",
                       extraBody: {
+                        ...nameFields,
                         section_name: "section6",
                         collateral_interviews: collateralPayload,
                       },
@@ -794,6 +801,7 @@ export default function ClientEditor() {
                     const prompt = `You are writing the '${domain.name}' subsection of Section 12 (Functional Capacity) of an NDIS Functional Capacity Assessment for ${clientName}.\n\n${FUNCTIONAL_DOMAIN_GUIDANCE}\n\nDOMAIN: ${domain.name}\n\nSTRUCTURED OBSERVATIONS:\n${rowLines}\n\nDIAGNOSIS CONTEXT: ${diagnosis || "[Not specified]"}\n\n${domainRubric}\n\nFor EACH row, write 1-2 sentences of formal NDIS clinical prose describing observed function, impact, and support need. Person-first language, third-person active voice, no bullet points.\n\nReturn valid JSON only — no markdown, no code fences. Keys must be from: ${JSON.stringify(fieldKeys)}\nEach value is a string of clinical prose for that row.\n\nExample: {"bed": "Mr X requires full physical assistance..."}`;
 
                     const extraBody: Record<string, any> = {
+                      ...nameFields,
                       section_name: domain.reportKey.replace("section12_", "section13_"),
                       domain_hint: DOMAIN_HINT_MAP[domain.reportKey] || domain.name,
                     };
@@ -819,7 +827,7 @@ export default function ClientEditor() {
                     const prompt = `Write the interpretation for ${aName} in Section 15 (Standardised Assessments) of an NDIS Functional Capacity Assessment for ${clientName}.\n\n${ASSESSMENT_INTERPRETATION_GUIDANCE}\n\nASSESSMENT TOOL: ${aName}\nDATE ADMINISTERED: ${typeof assessment.dateAdministered === "string" ? assessment.dateAdministered : "Not recorded"}\n\nTOTAL SCORE: ${scoreSummary.total || "Not calculated"}\nCLASSIFICATION: ${scoreSummary.classification || "Not classified"}\n\nDOMAIN/SUBSCALE SCORES:\n${scoresText}\n\nCLINICIAN NOTES:\n${typeof assessment.interpretation === "string" && assessment.interpretation ? assessment.interpretation : "No clinician notes provided"}\n\n${assessRubric}\n\nWrite 2 paragraphs following the interpretation rules above. Do NOT include a synopsis — it is displayed separately. Person-first language, no markdown. Output only the interpretation text.`;
 
                     const inputHash = `${scoreSummary.total}|${scoreSummary.classification}|${assessment.interpretation || ""}`;
-                    phase2Items.push({ key: `assessment_${assessment.id}`, prompt, maxTokens: 1500, inputForHash: inputHash, label: `Assessment: ${aName}` });
+                    phase2Items.push({ key: `assessment_${assessment.id}`, prompt, maxTokens: 1500, inputForHash: inputHash, label: `Assessment: ${aName}`, extraBody: { ...nameFields } });
                   }
 
                   // 4. Recommendations — include full generated_sections for later sections
@@ -849,6 +857,7 @@ export default function ClientEditor() {
                     const inputHash = `${r.supportName}|${r.justification || ""}|${r.consequence || ""}|${(r.tasks || []).join(",")}`;
 
                     const extraBody: Record<string, any> = {
+                      ...nameFields,
                       section_name: "section17",
                     };
                     if (collateralPayload.length > 0) {
@@ -953,6 +962,13 @@ export default function ClientEditor() {
                   const allResults = [...phase1Results, ...phase2Results];
                   const totalQueueItems = phase1Items.length + phase2Items.length;
 
+                  // Collect name warnings from all results
+                  for (const result of allResults) {
+                    if (result.name_warnings && result.name_warnings.length > 0) {
+                      allNameWarnings.push(...result.name_warnings);
+                    }
+                  }
+
                   setReportContent(newContent);
                   setMode("report");
 
@@ -963,6 +979,12 @@ export default function ClientEditor() {
                   if (failedCount > 0) msg += ` ${failedCount} failed.`;
                   setGenerateProgress(prev => ({ ...prev, current: prev.total, label: "Report generation complete!" }));
                   toast.success(msg);
+
+                  // Show name warnings if any
+                  const uniqueWarnings = [...new Set(allNameWarnings)];
+                  if (uniqueWarnings.length > 0) {
+                    toast.warning("Name warnings: " + uniqueWarnings.join(" • "), { duration: 10000 });
+                  }
                 } catch (err: any) {
                   console.error("Generation error:", err);
                   toast.error("Failed to generate: " + (err?.message || "Unknown error"));

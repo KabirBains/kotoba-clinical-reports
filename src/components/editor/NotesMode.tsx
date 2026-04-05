@@ -218,6 +218,8 @@ export function NotesMode({ notes, onUpdateNote, assessments, onUpdateAssessment
               <AssessmentsSection
                 assessments={assessments}
                 onUpdateAssessments={onUpdateAssessments}
+                participantName={notes["__participant__fullName"] || clientName}
+                participantFirstName={(notes["__participant__fullName"] || clientName || "").split(/\s+/)[0]}
               />
             )}
 

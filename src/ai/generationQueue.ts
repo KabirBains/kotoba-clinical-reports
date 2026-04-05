@@ -58,6 +58,7 @@ export interface QueueResult {
   key: string;
   success: boolean;
   text?: string;
+  name_warnings?: string[];
   skipped?: boolean;
   skipReason?: string;
   error?: string;
@@ -68,14 +69,13 @@ function sleep(ms: number): Promise<void> {
 }
 
 // ── Single invoke with 429 retry ────────────────────────────
-async function invokeWithRetry(prompt: string, maxTokens: number, label: string, extraBody?: Record<string, any>): Promise<{ success: boolean; text?: string; error?: string }> {
+async function invokeWithRetry(prompt: string, maxTokens: number, label: string, extraBody?: Record<string, any>): Promise<{ success: boolean; text?: string; name_warnings?: string[]; error?: string }> {
   const doCall = async () => {
     const { data, error } = await supabase.functions.invoke("generate-report", {
       body: { prompt, max_tokens: maxTokens, ...extraBody },
     });
     if (error) {
       const errMsg = error.message || "";
-      // Check if it's a 429 from the edge function response
       if (errMsg.includes("429") || errMsg.includes("rate") || errMsg.includes("Rate")) {
         return { is429: true, data: null, error: errMsg };
       }
@@ -93,14 +93,14 @@ async function invokeWithRetry(prompt: string, maxTokens: number, label: string,
 
   // First attempt
   const r1 = await doCall();
-  if (!r1.error) return { success: true, text: r1.data?.text };
+  if (!r1.error) return { success: true, text: r1.data?.text, name_warnings: r1.data?.name_warnings };
 
   if (r1.is429) {
     console.log(`[QUEUE] 429 rate limit for "${label}" — waiting ${RETRY_429_DELAY}ms before retry`);
     await sleep(RETRY_429_DELAY);
     console.log(`[QUEUE] Retrying "${label}" after 429 backoff`);
     const r2 = await doCall();
-    if (!r2.error) return { success: true, text: r2.data?.text };
+    if (!r2.error) return { success: true, text: r2.data?.text, name_warnings: r2.data?.name_warnings };
     console.error(`[QUEUE] Retry failed for "${label}":`, r2.error);
     return { success: false, error: r2.error || "Retry failed after 429" };
   }
@@ -150,7 +150,7 @@ export async function processQueue(
       if (result.success) {
         markInputGenerated(item.key, item.inputForHash);
         console.log(`[QUEUE] SUCCESS: "${item.label}" (${result.text?.length || 0} chars)`);
-        results.push({ key: item.key, success: true, text: result.text });
+        results.push({ key: item.key, success: true, text: result.text, name_warnings: result.name_warnings });
       } else {
         console.error(`[QUEUE] FAILED: "${item.label}" — ${result.error}`);
         results.push({ key: item.key, success: false, error: result.error });

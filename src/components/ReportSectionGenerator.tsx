@@ -10,6 +10,8 @@ interface ReportSectionGeneratorProps {
   sectionId: string;
   sectionName: string;
   clientName: string;
+  participantName?: string;
+  participantFirstName?: string;
   clinicianInput: Record<string, any>;
   onApprove: (approvedText: string) => void;
   reportData?: Record<string, any>;
@@ -19,12 +21,15 @@ export default function ReportSectionGenerator({
   sectionId,
   sectionName,
   clientName,
+  participantName,
+  participantFirstName,
   clinicianInput,
   onApprove,
   reportData,
 }: ReportSectionGeneratorProps) {
   const [editableText, setEditableText] = useState("");
   const [flags, setFlags] = useState<string[]>([]);
+  const [nameWarnings, setNameWarnings] = useState<string[]>([]);
   const [corrections, setCorrections] = useState<string[]>([]);
   const [status, setStatus] = useState<"idle" | "generating" | "checking" | "ready" | "approved" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
@@ -34,6 +39,7 @@ export default function ReportSectionGenerator({
     setStatus("generating");
     setErrorMsg("");
     setFlags([]);
+    setNameWarnings([]);
     setCorrections([]);
 
     try {
@@ -42,7 +48,15 @@ export default function ReportSectionGenerator({
         inputWithContext.report_context = assembleReportContext(reportData);
       }
 
-      const prose = await generateSection(sectionId, clientName, inputWithContext);
+      const extraBody: Record<string, any> = {};
+      if (participantName) extraBody.participant_name = participantName;
+      if (participantFirstName) extraBody.participant_first_name = participantFirstName;
+
+      const result = await generateSection(sectionId, clientName, inputWithContext, Object.keys(extraBody).length > 0 ? extraBody : undefined);
+      const prose = result.text;
+      if (result.name_warnings && result.name_warnings.length > 0) {
+        setNameWarnings(result.name_warnings);
+      }
 
       setStatus("checking");
       const rubricResult = await qualityCheck(
@@ -158,7 +172,19 @@ export default function ReportSectionGenerator({
           </Alert>
         )}
 
-        {/* Corrections banner */}
+        {/* Name warnings banner */}
+        {(status === "ready" || status === "approved") && nameWarnings.length > 0 && (
+          <div className="p-2 px-3 bg-destructive/10 border border-destructive/30 rounded-md mb-2.5 text-xs text-destructive flex items-start gap-2">
+            <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+            <div>
+              <strong>Name warnings:</strong>
+              {nameWarnings.map((w, i) => (
+                <div key={i} className="mt-1">{w}</div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {status === "ready" && corrections.length > 0 && (
           <div className="p-2 px-3 bg-primary/10 rounded-md mb-2.5 text-xs text-primary flex items-start gap-2">
             <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />

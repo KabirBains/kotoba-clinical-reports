@@ -357,11 +357,11 @@ FLAG: suspected fabrication, missing hours, incorrect categories, missing conseq
 
 // ── 6. API CALLING FUNCTIONS ─────────────────────────────────
 
-async function callClaude(userMessage: string, maxTokens: number = 2000): Promise<string> {
+async function callClaude(userMessage: string, maxTokens: number = 2000, extraBody?: Record<string, any>): Promise<{ text: string; name_warnings?: string[] }> {
   const { supabase } = await import("@/integrations/supabase/client");
 
   const { data, error } = await supabase.functions.invoke("generate-report", {
-    body: { prompt: userMessage, max_tokens: maxTokens },
+    body: { prompt: userMessage, max_tokens: maxTokens, ...extraBody },
   });
 
   if (error) {
@@ -372,7 +372,7 @@ async function callClaude(userMessage: string, maxTokens: number = 2000): Promis
     throw new Error(data?.error || "Generation failed");
   }
 
-  return data.text;
+  return { text: data.text, name_warnings: data.name_warnings };
 }
 
 
@@ -381,8 +381,9 @@ async function callClaude(userMessage: string, maxTokens: number = 2000): Promis
 export async function generateSection(
   sectionId: string,
   clientName: string,
-  clinicianInput: Record<string, any>
-): Promise<string> {
+  clinicianInput: Record<string, any>,
+  extraBody?: Record<string, any>
+): Promise<{ text: string; name_warnings?: string[] }> {
   const promptBuilder = SECTION_PROMPTS[sectionId] || INTERPRETATION_PROMPTS[sectionId];
 
   if (!promptBuilder) {
@@ -390,8 +391,7 @@ export async function generateSection(
   }
 
   const prompt = promptBuilder({ client_name: clientName, ...clinicianInput });
-  const generatedText = await callClaude(prompt);
-  return generatedText;
+  return await callClaude(prompt, 2000, extraBody);
 }
 
 export async function qualityCheck(
@@ -413,7 +413,7 @@ export async function qualityCheck(
   const response = await callClaude(prompt, 3000);
 
   try {
-    const clean = response.replace(/```json\s*|```\s*/g, "").trim();
+    const clean = response.text.replace(/```json\s*|```\s*/g, "").trim();
     return JSON.parse(clean);
   } catch {
     return {

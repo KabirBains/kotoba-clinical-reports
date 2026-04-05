@@ -33,6 +33,8 @@ import { toast } from "sonner";
 interface AssessmentsSectionProps {
   assessments: AssessmentInstance[];
   onUpdateAssessments: (assessments: AssessmentInstance[]) => void;
+  participantName?: string;
+  participantFirstName?: string;
 }
 
 function AssessmentCard({
@@ -41,12 +43,16 @@ function AssessmentCard({
   definition,
   onUpdate,
   onRemove,
+  participantName,
+  participantFirstName,
 }: {
   instance: AssessmentInstance;
   index: number;
   definition: AssessmentDefinition | null;
   onUpdate: (updated: AssessmentInstance) => void;
   onRemove: () => void;
+  participantName?: string;
+  participantFirstName?: string;
 }) {
   const [open, setOpen] = useState(true);
   const [generating, setGenerating] = useState(false);
@@ -286,7 +292,12 @@ function AssessmentCard({
                       : JSON.stringify(instance.scores, null, 2);
                     const prompt = `Write an interpretation for ${instance.name} assessment results.\n\nDo NOT include a synopsis or describe what the tool measures — that is displayed separately.\n\nASSESSMENT TOOL: ${instance.name}\nTOTAL SCORE: ${totalScore || "Not calculated"}\nCLASSIFICATION: ${cls || "Not classified"}\n\nDOMAIN/SUBSCALE SCORES:\n${scoresText}\n\nCLINICIAN NOTES:\n${instance.interpretation || "None provided"}\n\nWrite 2 paragraphs:\n1. State the scores and classification. Identify the 2-3 highest domains or subscales and describe their functional implications.\n2. Cross-reference any clinician notes provided.\n\nPerson-first language, no markdown, continuous prose only.`;
                     const { data, error } = await supabase.functions.invoke("generate-report", {
-                      body: { prompt, maxTokens: 1200 },
+                      body: {
+                        prompt,
+                        maxTokens: 1200,
+                        ...(participantName ? { participant_name: participantName } : {}),
+                        ...(participantFirstName ? { participant_first_name: participantFirstName } : {}),
+                      },
                     });
                     if (error || !data?.text) {
                       toast.error("Failed to generate interpretation");
@@ -311,7 +322,7 @@ function AssessmentCard({
   );
 }
 
-export function AssessmentsSection({ assessments, onUpdateAssessments }: AssessmentsSectionProps) {
+export function AssessmentsSection({ assessments, onUpdateAssessments, participantName, participantFirstName }: AssessmentsSectionProps) {
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [customOpen, setCustomOpen] = useState(false);
   const [customName, setCustomName] = useState("");
@@ -398,6 +409,8 @@ export function AssessmentsSection({ assessments, onUpdateAssessments }: Assessm
                 definition={def}
                 onUpdate={(updated) => updateAssessment(index, updated)}
                 onRemove={() => removeAssessment(index)}
+                participantName={participantName}
+                participantFirstName={participantFirstName}
               />
             );
           })}
