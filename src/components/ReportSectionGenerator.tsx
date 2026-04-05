@@ -10,6 +10,8 @@ interface ReportSectionGeneratorProps {
   sectionId: string;
   sectionName: string;
   clientName: string;
+  participantName?: string;
+  participantFirstName?: string;
   clinicianInput: Record<string, any>;
   onApprove: (approvedText: string) => void;
   reportData?: Record<string, any>;
@@ -19,12 +21,15 @@ export default function ReportSectionGenerator({
   sectionId,
   sectionName,
   clientName,
+  participantName,
+  participantFirstName,
   clinicianInput,
   onApprove,
   reportData,
 }: ReportSectionGeneratorProps) {
   const [editableText, setEditableText] = useState("");
   const [flags, setFlags] = useState<string[]>([]);
+  const [nameWarnings, setNameWarnings] = useState<string[]>([]);
   const [corrections, setCorrections] = useState<string[]>([]);
   const [status, setStatus] = useState<"idle" | "generating" | "checking" | "ready" | "approved" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
