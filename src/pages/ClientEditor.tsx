@@ -523,14 +523,18 @@ export default function ClientEditor() {
                         const val = sc[String(i)];
                         if (val !== undefined && val !== "") { sum += parseInt(val); answered++; }
                       }
-                      total = `${sum}/48`;
-                      if (sum <= 15) classification = "Low disability";
-                      else if (sum <= 31) classification = "Moderate disability";
-                      else classification = "High disability";
+                      const pct = answered > 0 ? (sum / 48) * 100 : 0;
+                      total = `${sum}/48 (${pct.toFixed(1)}%)`;
+                      if (pct === 0) classification = "No disability";
+                      else if (pct <= 25) classification = "Mild disability";
+                      else if (pct <= 50) classification = "Moderate disability";
+                      else if (pct <= 75) classification = "Severe disability";
+                      else classification = "Extreme disability";
                       for (const [, sub] of Object.entries(LSP_SUBSCALES)) {
                         let subSum = 0;
                         for (const n of sub.items) { const v = sc[String(n)]; if (v !== undefined && v !== "") subSum += parseInt(v); }
-                        rows.push({ label: sub.name, value: `${subSum}/${sub.max}` });
+                        const subPct = (subSum / sub.max * 100).toFixed(1);
+                        rows.push({ label: sub.name, value: `${subSum}/${sub.max} (${subPct}%)` });
                       }
                     } else if (assessment.definitionId === "zarit") {
                       let sum = 0; let answered = 0;
