@@ -409,6 +409,8 @@ export function AssessmentsSection({ assessments, onUpdateAssessments, participa
                 definition={def}
                 onUpdate={(updated) => updateAssessment(index, updated)}
                 onRemove={() => removeAssessment(index)}
+                participantName={participantName}
+                participantFirstName={participantFirstName}
               />
             );
           })}
