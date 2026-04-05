@@ -962,6 +962,13 @@ export default function ClientEditor() {
                   const allResults = [...phase1Results, ...phase2Results];
                   const totalQueueItems = phase1Items.length + phase2Items.length;
 
+                  // Collect name warnings from all results
+                  for (const result of allResults) {
+                    if (result.name_warnings && result.name_warnings.length > 0) {
+                      allNameWarnings.push(...result.name_warnings);
+                    }
+                  }
+
                   setReportContent(newContent);
                   setMode("report");
 
@@ -972,6 +979,12 @@ export default function ClientEditor() {
                   if (failedCount > 0) msg += ` ${failedCount} failed.`;
                   setGenerateProgress(prev => ({ ...prev, current: prev.total, label: "Report generation complete!" }));
                   toast.success(msg);
+
+                  // Show name warnings if any
+                  const uniqueWarnings = [...new Set(allNameWarnings)];
+                  if (uniqueWarnings.length > 0) {
+                    toast.warning("Name warnings: " + uniqueWarnings.join(" • "), { duration: 10000 });
+                  }
                 } catch (err: any) {
                   console.error("Generation error:", err);
                   toast.error("Failed to generate: " + (err?.message || "Unknown error"));
