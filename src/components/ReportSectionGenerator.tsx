@@ -39,6 +39,7 @@ export default function ReportSectionGenerator({
     setStatus("generating");
     setErrorMsg("");
     setFlags([]);
+    setNameWarnings([]);
     setCorrections([]);
 
     try {
@@ -47,7 +48,15 @@ export default function ReportSectionGenerator({
         inputWithContext.report_context = assembleReportContext(reportData);
       }
 
-      const prose = await generateSection(sectionId, clientName, inputWithContext);
+      const extraBody: Record<string, any> = {};
+      if (participantName) extraBody.participant_name = participantName;
+      if (participantFirstName) extraBody.participant_first_name = participantFirstName;
+
+      const result = await generateSection(sectionId, clientName, inputWithContext, Object.keys(extraBody).length > 0 ? extraBody : undefined);
+      const prose = result.text;
+      if (result.name_warnings && result.name_warnings.length > 0) {
+        setNameWarnings(result.name_warnings);
+      }
 
       setStatus("checking");
       const rubricResult = await qualityCheck(
