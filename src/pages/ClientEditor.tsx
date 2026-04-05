@@ -338,6 +338,12 @@ export default function ClientEditor() {
                   const clientName = client?.client_name || "the participant";
                   const diagnosis = client?.primary_diagnosis || "";
 
+                  // Extract participant names from structured details
+                  const participantFullName = notes["__participant__fullName"] || clientName;
+                  const participantFirstName = participantFullName.split(/\s+/)[0] || participantFullName;
+                  const nameFields = { participant_name: participantFullName, participant_first_name: participantFirstName };
+                  const allNameWarnings: string[] = [];
+
                   // ── Collect top-level section notes ──
                   const topLevelEntries = Object.entries(notes).filter(
                     ([key, val]) =>
