@@ -453,6 +453,7 @@ export default function ClientEditor() {
                       inputForHash: methodologyInput + JSON.stringify(collateralPayload),
                       label: "Section: Methodology",
                       extraBody: {
+                        ...nameFields,
                         section_name: "section6",
                         collateral_interviews: collateralPayload,
                       },
