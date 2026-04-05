@@ -111,10 +111,45 @@ Return ONLY the sections that had corrections applied. Output the complete corre
 
     let correctedSections;
     try {
-      const cleaned = rawText.trim().replace(/^```json?\s*/i, "").replace(/```\s*$/, "");
-      correctedSections = JSON.parse(cleaned);
+      let cleaned = rawText.trim().replace(/^```json?\s*/i, "").replace(/```\s*$/, "").trim();
+      // Find JSON boundaries
+      const jsonStart = cleaned.indexOf("{");
+      const jsonEnd = cleaned.lastIndexOf("}");
+      if (jsonStart !== -1 && jsonEnd > jsonStart) {
+        cleaned = cleaned.substring(jsonStart, jsonEnd + 1);
+      }
+      try {
+        correctedSections = JSON.parse(cleaned);
+      } catch {
+        // Fix common issues: trailing commas, control chars
+        cleaned = cleaned
+          .replace(/,\s*}/g, "}")
+          .replace(/,\s*]/g, "]")
+          .replace(/[\x00-\x1F\x7F]/g, " ");
+        correctedSections = JSON.parse(cleaned);
+      }
     } catch (parseErr) {
       console.error("Failed to parse corrections JSON:", parseErr, rawText.slice(0, 500));
+      // If AI refused or returned non-JSON, try to apply simple text replacements directly
+      const fallback: Record<string, string> = {};
+      for (const key of sectionKeys) {
+        const entry = bySection[key];
+        let text = entry.sectionText;
+        for (const fix of entry.fixes) {
+          if (fix.flaggedText && fix.suggestedFix && text.includes(fix.flaggedText)) {
+            text = text.replace(fix.flaggedText, fix.suggestedFix);
+          }
+        }
+        if (text !== entry.sectionText) {
+          fallback[key] = text;
+        }
+      }
+      if (Object.keys(fallback).length > 0) {
+        return new Response(
+          JSON.stringify({ success: true, correctedSections: fallback }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
       return new Response(
         JSON.stringify({ success: false, error: "Failed to parse corrected text from AI response" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
