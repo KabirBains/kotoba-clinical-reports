@@ -34,13 +34,21 @@ export interface QualityIssue {
 }
 
 export interface Scorecard {
-  score: number;
-  grade: string;
+  score: number | null;
+  grade: string | null;
   summary: string;
+  totalIssues?: number;
+  autoCorrectableCount?: number;
+  clinicianReviewCount?: number;
   categories: {
-    clinical: { passed: number; total: number };
-    editorial: { passed: number; total: number };
-    cross_section: { passed: number; total: number };
+    clinical: { passed: number; total: number; failed?: number };
+    editorial: { passed: number; total: number; failed?: number };
+    cross_section: { passed: number; total: number; failed?: number };
+  } | null;
+  categoryCounts?: {
+    clinical?: { passed: number; failed: number; total: number };
+    editorial?: { passed: number; failed: number; total: number };
+    cross_section?: { passed: number; failed: number; total: number };
   };
   missingSections: string[];
   issues: QualityIssue[];
@@ -64,13 +72,6 @@ interface QualityScorecardProps {
   isRechecking: boolean;
 }
 
-function gradeColor(grade: string): string {
-  if (grade.startsWith("A")) return "hsl(142 76% 36%)";
-  if (grade.startsWith("B")) return "hsl(217 91% 60%)";
-  if (grade.startsWith("C")) return "hsl(32 95% 44%)";
-  return "hsl(0 72% 51%)";
-}
-
 function severityBorder(severity: string): string {
   if (severity === "high") return "#dc2626";
   if (severity === "medium") return "#d97706";
@@ -90,23 +91,8 @@ function severityDot(severity: string): string {
   return "bg-muted-foreground/40";
 }
 
-function CategoryCard({ label, passed, total }: { label: string; passed: number; total: number }) {
-  const pct = total > 0 ? (passed / total) * 100 : 0;
-  return (
-    <div className="flex-1 border border-border/50 rounded-lg p-3 space-y-2">
-      <div className="text-xs font-medium text-muted-foreground">{label}</div>
-      <div className="text-sm font-semibold text-foreground">{passed}/{total} passed</div>
-      <div className="w-full h-1.5 rounded-full bg-muted overflow-hidden">
-        <div
-          className="h-full rounded-full transition-all duration-300"
-          style={{
-            width: `${pct}%`,
-            backgroundColor: pct >= 90 ? "hsl(142 76% 36%)" : pct >= 70 ? "hsl(217 91% 60%)" : "hsl(32 95% 44%)",
-          }}
-        />
-      </div>
-    </div>
-  );
+function isNoIssuesSummary(summary: string): boolean {
+  return summary?.toLowerCase().includes("no issues") || false;
 }
 
 /* ── Persistent summary bar (always visible when scorecard exists) ── */
@@ -124,7 +110,7 @@ export function QualitySummaryBar({
   const unresolvedCount = scorecard.issues.filter(
     i => !issueStatuses[i.id] || issueStatuses[i.id] === "unresolved"
   ).length;
-  const meetsStandards = scorecard.score >= 90;
+  const noIssues = isNoIssuesSummary(scorecard.summary) || scorecard.issues.length === 0;
 
   return (
     <button
@@ -132,17 +118,16 @@ export function QualitySummaryBar({
       className="w-full flex items-center justify-between px-4 py-2 border border-border/50 rounded-lg bg-card hover:bg-muted/30 transition-colors cursor-pointer"
     >
       <div className="flex items-center gap-3">
-        <ShieldCheck className="h-4 w-4" style={{ color: gradeColor(scorecard.grade) }} />
+        <ShieldCheck className={`h-4 w-4 ${noIssues ? "text-green-600" : "text-amber-600"}`} />
         <span className="text-sm font-medium text-foreground">
-          Quality Score: <span style={{ color: gradeColor(scorecard.grade) }}>{scorecard.score} {scorecard.grade}</span>
+          {noIssues ? (
+            <span className="text-green-600 dark:text-green-400">No issues found</span>
+          ) : (
+            <>
+              <span className="text-amber-600 dark:text-amber-400">{unresolvedCount} issue{unresolvedCount !== 1 ? "s" : ""} remaining</span>
+            </>
+          )}
         </span>
-        {meetsStandards ? (
-          <span className="text-xs text-green-600 dark:text-green-400">✓ Meets quality standards</span>
-        ) : (
-          <span className="text-xs text-muted-foreground">
-            — {unresolvedCount} issue{unresolvedCount !== 1 ? "s" : ""} remaining
-          </span>
-        )}
       </div>
       {isExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
     </button>
@@ -173,9 +158,12 @@ export function QualityScorecard({
   const dismissedCount = scorecard.issues.filter(i => issueStatuses[i.id] === "dismissed").length;
   const acknowledgedCount = scorecard.issues.filter(i => issueStatuses[i.id] === "acknowledged").length;
   const addressedCount = acceptedCount + dismissedCount + acknowledgedCount;
-  const totalIssues = scorecard.issues.length;
+  const totalIssues = scorecard.totalIssues ?? scorecard.issues.length;
   const allAddressed = totalIssues === 0 || addressedCount === totalIssues;
-  const meetsStandards = scorecard.score >= 90;
+  const noIssues = isNoIssuesSummary(scorecard.summary) || scorecard.issues.length === 0;
+
+  const autoFixable = scorecard.autoCorrectableCount ?? scorecard.issues.filter(i => i.tier === "auto_correct").length;
+  const clinicianReview = scorecard.clinicianReviewCount ?? scorecard.issues.filter(i => i.tier === "clinician_review").length;
 
   const pendingAutoCorrect = scorecard.issues.filter(
     i => i.tier === "auto_correct" && (!issueStatuses[i.id] || issueStatuses[i.id] === "unresolved")
@@ -190,7 +178,6 @@ export function QualityScorecard({
     });
   }, [scorecard.issues, filterCategory, filterSeverity, filterTier]);
 
-  // Unresolved issues for prev/next navigation
   const unresolvedIssues = useMemo(() =>
     scorecard.issues.filter(i => !issueStatuses[i.id] || issueStatuses[i.id] === "unresolved"),
     [scorecard.issues, issueStatuses]
@@ -204,51 +191,45 @@ export function QualityScorecard({
     onFindInReport(unresolvedIssues[next]);
   }, [unresolvedIssues, navIndex, onFindInReport]);
 
+  // Get category data from either new categoryCounts or legacy categories
+  const catData = scorecard.categoryCounts || scorecard.categories;
+
   return (
     <div className="border border-border/50 rounded-lg bg-background shadow-sm" style={{ maxHeight: "80vh", display: "flex", flexDirection: "column" }}>
       {/* Header */}
       <div className="p-6 border-b border-border/50 space-y-4 shrink-0">
-        {/* Overall score + summary counts */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="text-center">
-              <div className="text-[32px] font-bold leading-none" style={{ color: gradeColor(scorecard.grade) }}>
-                {scorecard.score}
-              </div>
-              <div className="text-lg font-semibold mt-1" style={{ color: gradeColor(scorecard.grade) }}>
-                {scorecard.grade}
-              </div>
+        {/* Summary banner */}
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex-1">
+            <h2 className="text-base font-semibold text-foreground mb-2">Report Quality Check</h2>
+            <div className={`flex items-start gap-2 rounded-md p-3 ${
+              noIssues
+                ? "bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800/40"
+                : "bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/40"
+            }`}>
+              {noIssues ? (
+                <Check className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
+              ) : (
+                <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+              )}
+              <span className={`text-sm ${noIssues ? "text-green-800 dark:text-green-200" : "text-amber-800 dark:text-amber-200"}`}>
+                {scorecard.summary}
+              </span>
             </div>
-            <div className="border-l border-border/50 pl-4">
-              <h2 className="text-base font-semibold text-foreground">Report Quality Check</h2>
-              <p className="text-sm text-muted-foreground mt-0.5">{scorecard.summary}</p>
-              <div className="flex gap-3 mt-1.5 text-xs text-muted-foreground">
-                {acceptedCount > 0 && <span className="text-green-600 dark:text-green-400">{acceptedCount} auto-fixable</span>}
-                {acknowledgedCount > 0 && <span className="text-blue-600 dark:text-blue-400">{acknowledgedCount} reviewed</span>}
+
+            {/* Simple counts */}
+            {!noIssues && (
+              <div className="flex gap-4 mt-3 text-xs text-muted-foreground">
+                <span>{totalIssues} total issue{totalIssues !== 1 ? "s" : ""}</span>
+                <span className="text-green-600 dark:text-green-400">{autoFixable} auto-correctable</span>
+                <span className="text-amber-600 dark:text-amber-400">{clinicianReview} need review</span>
                 {dismissedCount > 0 && <span>{dismissedCount} dismissed</span>}
               </div>
-            </div>
+            )}
           </div>
           <Button variant="ghost" size="icon" onClick={onClose}>
             <X className="h-4 w-4" />
           </Button>
-        </div>
-
-        {/* Success state */}
-        {meetsStandards && (
-          <div className="flex items-center gap-2 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800/40 rounded-md p-3">
-            <Check className="h-4 w-4 text-green-600 shrink-0" />
-            <span className="text-xs text-green-800 dark:text-green-200 font-medium">
-              Report meets quality standards — ready for download.
-            </span>
-          </div>
-        )}
-
-        {/* Category cards */}
-        <div className="flex gap-3">
-          <CategoryCard label="Clinical & Structural" passed={scorecard.categories.clinical.passed} total={scorecard.categories.clinical.total} />
-          <CategoryCard label="Editorial & Coherence" passed={scorecard.categories.editorial.passed} total={scorecard.categories.editorial.total} />
-          <CategoryCard label="Cross-Section Consistency" passed={scorecard.categories.cross_section.passed} total={scorecard.categories.cross_section.total} />
         </div>
 
         {/* Missing sections warning */}
@@ -282,7 +263,6 @@ export function QualityScorecard({
 
         {/* Progress + filters row */}
         <div className="space-y-2">
-          {/* Resolution progress */}
           {totalIssues > 0 && (
             <div className="flex items-center gap-2">
               <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
@@ -348,7 +328,6 @@ export function QualityScorecard({
                   style={{ borderLeftWidth: "3px", borderLeftColor: statusBorder(status, issue.severity) }}
                 >
                   <div className="p-3 space-y-2">
-                    {/* Issue header */}
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-center gap-2">
                         {isDone && status === "accepted" && <Check className="h-3.5 w-3.5 text-green-600 shrink-0" />}
@@ -368,7 +347,6 @@ export function QualityScorecard({
                       {issue.description}
                     </p>
 
-                    {/* Flagged text */}
                     {issue.flaggedText && (
                       <div className="text-xs p-2 rounded" style={{ backgroundColor: "hsl(48 96% 89% / 0.5)", border: "1px solid hsl(48 96% 70% / 0.3)" }}>
                         <span className="font-medium text-muted-foreground">Flagged: </span>
@@ -376,7 +354,6 @@ export function QualityScorecard({
                       </div>
                     )}
 
-                    {/* Cross-reference block */}
                     {issue.category === "cross_section" && (issue.crossRefSource || issue.crossRefTarget) && (
                       <div className="grid grid-cols-2 gap-2">
                         {issue.crossRefSource && (
@@ -394,7 +371,6 @@ export function QualityScorecard({
                       </div>
                     )}
 
-                    {/* Auto-correct suggestion + actions */}
                     {issue.tier === "auto_correct" && issue.suggestedFix && !isDone && (
                       <div className="space-y-2">
                         <div className="text-xs p-2 rounded" style={{ backgroundColor: "hsl(142 76% 36% / 0.06)", borderLeft: "3px solid hsl(142 76% 36% / 0.4)" }}>
@@ -404,7 +380,6 @@ export function QualityScorecard({
                       </div>
                     )}
 
-                    {/* Action buttons */}
                     {!isDone && (
                       <div className="flex gap-2 pt-1">
                         {issue.flaggedText && (
@@ -434,7 +409,6 @@ export function QualityScorecard({
                       </div>
                     )}
 
-                    {/* Status labels for resolved items */}
                     {isDone && (
                       <div className="text-xs pt-1">
                         {status === "accepted" && <span className="text-green-600 dark:text-green-400 flex items-center gap-1"><Check className="h-3 w-3" /> Fix accepted</span>}
@@ -471,38 +445,34 @@ export function QualityScorecard({
           )}
         </div>
         <div className="flex gap-2">
-          {!meetsStandards && (
-            <>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={onRecheck}
-                disabled={!allAddressed || isRechecking}
-                title={!allAddressed ? "Address all issues before re-checking" : ""}
-              >
-                {isRechecking ? "Checking…" : "Re-check Quality"}
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={onRecheck}
+            disabled={!allAddressed || isRechecking}
+            title={!allAddressed ? "Address all issues before re-checking" : ""}
+          >
+            {isRechecking ? "Checking…" : "Re-check Quality"}
+          </Button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button size="sm" variant="ghost" className="text-xs text-muted-foreground">
+                <RotateCcw className="h-3 w-3 mr-1" /> Clear & Re-check
               </Button>
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <Button size="sm" variant="ghost" className="text-xs text-muted-foreground">
-                    <RotateCcw className="h-3 w-3 mr-1" /> Clear & Re-check
-                  </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Clear quality check results?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      This will clear your current quality check results and run a fresh analysis. Any unresolved issues will be lost.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={onClearAndRecheck}>Clear & Re-check</AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
-            </>
-          )}
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Clear quality check results?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This will clear your current quality check results and run a fresh analysis. Any unresolved issues will be lost.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={onClearAndRecheck}>Clear & Re-check</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
           <Button size="sm" variant="ghost" onClick={onClose}>Close</Button>
         </div>
       </div>

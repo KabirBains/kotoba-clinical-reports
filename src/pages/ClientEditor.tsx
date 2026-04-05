@@ -112,7 +112,7 @@ export default function ClientEditor() {
       if (typeof savedNilGoals === "boolean") setNilGoals(savedNilGoals);
       // Load persisted quality scorecard
       const savedScorecard = (report as any).quality_scorecard;
-      if (savedScorecard && typeof savedScorecard === "object" && savedScorecard.score !== undefined) {
+      if (savedScorecard && typeof savedScorecard === "object" && (savedScorecard.summary || savedScorecard.issues)) {
         setScorecard(savedScorecard);
         setQualityCheckStatus("complete");
       }
