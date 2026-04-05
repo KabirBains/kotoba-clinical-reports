@@ -33,6 +33,8 @@ import { toast } from "sonner";
 interface AssessmentsSectionProps {
   assessments: AssessmentInstance[];
   onUpdateAssessments: (assessments: AssessmentInstance[]) => void;
+  participantName?: string;
+  participantFirstName?: string;
 }
 
 function AssessmentCard({
