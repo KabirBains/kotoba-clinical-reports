@@ -413,7 +413,7 @@ export async function qualityCheck(
   const response = await callClaude(prompt, 3000);
 
   try {
-    const clean = response.replace(/```json\s*|```\s*/g, "").trim();
+    const clean = response.text.replace(/```json\s*|```\s*/g, "").trim();
     return JSON.parse(clean);
   } catch {
     return {
