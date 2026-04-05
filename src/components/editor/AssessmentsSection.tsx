@@ -43,12 +43,16 @@ function AssessmentCard({
   definition,
   onUpdate,
   onRemove,
+  participantName,
+  participantFirstName,
 }: {
   instance: AssessmentInstance;
   index: number;
   definition: AssessmentDefinition | null;
   onUpdate: (updated: AssessmentInstance) => void;
   onRemove: () => void;
+  participantName?: string;
+  participantFirstName?: string;
 }) {
   const [open, setOpen] = useState(true);
   const [generating, setGenerating] = useState(false);
