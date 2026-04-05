@@ -172,7 +172,19 @@ export default function ReportSectionGenerator({
           </Alert>
         )}
 
-        {/* Corrections banner */}
+        {/* Name warnings banner */}
+        {(status === "ready" || status === "approved") && nameWarnings.length > 0 && (
+          <div className="p-2 px-3 bg-destructive/10 border border-destructive/30 rounded-md mb-2.5 text-xs text-destructive flex items-start gap-2">
+            <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+            <div>
+              <strong>Name warnings:</strong>
+              {nameWarnings.map((w, i) => (
+                <div key={i} className="mt-1">{w}</div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {status === "ready" && corrections.length > 0 && (
           <div className="p-2 px-3 bg-primary/10 rounded-md mb-2.5 text-xs text-primary flex items-start gap-2">
             <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
