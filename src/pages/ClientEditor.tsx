@@ -432,7 +432,7 @@ export default function ClientEditor() {
                     const rubric = getRubricForSection("text");
                     const includeCollateral = COLLATERAL_SECTIONS.has(sectionId) && collateralContext;
                     const prompt = `Write a section of an NDIS Functional Capacity Assessment for ${clientName}.\n\nSECTION: ${sectionId}\n\n${templateGuidance ? templateGuidance + "\n\n" : ""}CLINICIAN OBSERVATIONS (transform these into formal clinical prose):\n${observations}\n\nDIAGNOSIS CONTEXT: ${diagnosis || "[Not provided]"}${includeCollateral ? collateralContext : ""}\n\n${rubric}\n\nWrite 2-3 paragraphs of formal NDIS report prose. Use observation → impact → support need structure. Person-first language, third-person active voice. No bullet points, no markdown. Output only the section text.`;
-                    const extraBody: Record<string, any> = {};
+                    const extraBody: Record<string, any> = { ...nameFields };
                     if (collateralPayload.length > 0) {
                       extraBody.collateral_interviews = collateralPayload;
                     }
