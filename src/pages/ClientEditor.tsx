@@ -1097,13 +1097,68 @@ export default function ClientEditor() {
               onApplyCorrections={async () => {
                 setQualityCheckStatus("correcting");
                 try {
+                  // Find the reportContent key that best matches an issue's section reference
+                  const findSectionText = (sectionRef: string): { key: string; text: string } => {
+                    // Direct match first
+                    if (reportContent[sectionRef]) return { key: sectionRef, text: reportContent[sectionRef] };
+                    const ref = sectionRef.toLowerCase();
+                    // Search all reportContent keys for a match
+                    for (const [key, text] of Object.entries(reportContent)) {
+                      if (!text) continue;
+                      // Match by key pattern (e.g. "section13_3" matches "14.3" or "Personal ADLs")
+                      const keyLower = key.toLowerCase();
+                      if (ref.includes(keyLower) || keyLower.includes(ref)) return { key, text };
+                    }
+                    // Fuzzy match: search by domain name or section number in the ref
+                    const domainMap: Record<string, string> = {
+                      "mobility": "section13_1", "transfers": "section13_2",
+                      "personal adls": "section13_3", "self-care": "section13_3", "self care": "section13_3",
+                      "domestic iadls": "section13_4", "domestic": "section13_4",
+                      "executive iadls": "section13_5", "executive": "section13_5",
+                      "cognition": "section13_6", "communication": "section13_7",
+                      "social functioning": "section13_8", "social": "section13_8",
+                      "sensory": "section13_9", "sensory profile": "section13_9",
+                    };
+                    for (const [name, mappedKey] of Object.entries(domainMap)) {
+                      if (ref.includes(name) && reportContent[mappedKey]) return { key: mappedKey, text: reportContent[mappedKey] };
+                    }
+                    // Match section numbers like "14.3" → "section13_3", "Section 12" → "section12"
+                    const numMatch = ref.match(/(\d+)\.?(\d*)/);
+                    if (numMatch) {
+                      const candidates = Object.keys(reportContent).filter(k => {
+                        const km = k.match(/section(\d+)_?(\d*)/);
+                        if (!km) return false;
+                        if (numMatch[2]) return km[1] === String(Number(numMatch[1]) - 1) && km[2] === numMatch[2];
+                        return km[1] === numMatch[1] || km[1] === String(Number(numMatch[1]) - 1);
+                      });
+                      if (candidates.length > 0 && reportContent[candidates[0]]) return { key: candidates[0], text: reportContent[candidates[0]] };
+                    }
+                    // Fallback: search all content for the flagged text
+                    return { key: sectionRef, text: "" };
+                  };
+
                   const acceptedFixes = scorecard.issues
                     .filter((issue: any) => issue.tier === "auto_correct" && issueStatuses[issue.id] === "accepted")
-                    .map((issue: any) => ({
-                      section: issue.section, sectionText: reportContent[issue.section] || "",
-                      criterion: issue.criterion, flaggedText: issue.flaggedText,
-                      suggestedFix: issue.suggestedFix, description: issue.description,
-                    }));
+                    .map((issue: any) => {
+                      const { key, text } = findSectionText(issue.section);
+                      // If we still have no text, search all sections for the flagged text
+                      let sectionText = text;
+                      let sectionKey = key;
+                      if (!sectionText && issue.flaggedText) {
+                        for (const [k, v] of Object.entries(reportContent)) {
+                          if (v && typeof v === "string" && v.includes(issue.flaggedText)) {
+                            sectionText = v;
+                            sectionKey = k;
+                            break;
+                          }
+                        }
+                      }
+                      return {
+                        section: sectionKey, sectionText,
+                        criterion: issue.criterion, flaggedText: issue.flaggedText,
+                        suggestedFix: issue.suggestedFix, description: issue.description,
+                      };
+                    });
                   const { data, error } = await supabase.functions.invoke("correct-report", {
                     body: { corrections: acceptedFixes },
                   });
