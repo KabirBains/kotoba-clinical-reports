@@ -801,6 +801,7 @@ export default function ClientEditor() {
                     const prompt = `You are writing the '${domain.name}' subsection of Section 12 (Functional Capacity) of an NDIS Functional Capacity Assessment for ${clientName}.\n\n${FUNCTIONAL_DOMAIN_GUIDANCE}\n\nDOMAIN: ${domain.name}\n\nSTRUCTURED OBSERVATIONS:\n${rowLines}\n\nDIAGNOSIS CONTEXT: ${diagnosis || "[Not specified]"}\n\n${domainRubric}\n\nFor EACH row, write 1-2 sentences of formal NDIS clinical prose describing observed function, impact, and support need. Person-first language, third-person active voice, no bullet points.\n\nReturn valid JSON only — no markdown, no code fences. Keys must be from: ${JSON.stringify(fieldKeys)}\nEach value is a string of clinical prose for that row.\n\nExample: {"bed": "Mr X requires full physical assistance..."}`;
 
                     const extraBody: Record<string, any> = {
+                      ...nameFields,
                       section_name: domain.reportKey.replace("section12_", "section13_"),
                       domain_hint: DOMAIN_HINT_MAP[domain.reportKey] || domain.name,
                     };
@@ -826,7 +827,7 @@ export default function ClientEditor() {
                     const prompt = `Write the interpretation for ${aName} in Section 15 (Standardised Assessments) of an NDIS Functional Capacity Assessment for ${clientName}.\n\n${ASSESSMENT_INTERPRETATION_GUIDANCE}\n\nASSESSMENT TOOL: ${aName}\nDATE ADMINISTERED: ${typeof assessment.dateAdministered === "string" ? assessment.dateAdministered : "Not recorded"}\n\nTOTAL SCORE: ${scoreSummary.total || "Not calculated"}\nCLASSIFICATION: ${scoreSummary.classification || "Not classified"}\n\nDOMAIN/SUBSCALE SCORES:\n${scoresText}\n\nCLINICIAN NOTES:\n${typeof assessment.interpretation === "string" && assessment.interpretation ? assessment.interpretation : "No clinician notes provided"}\n\n${assessRubric}\n\nWrite 2 paragraphs following the interpretation rules above. Do NOT include a synopsis — it is displayed separately. Person-first language, no markdown. Output only the interpretation text.`;
 
                     const inputHash = `${scoreSummary.total}|${scoreSummary.classification}|${assessment.interpretation || ""}`;
-                    phase2Items.push({ key: `assessment_${assessment.id}`, prompt, maxTokens: 1500, inputForHash: inputHash, label: `Assessment: ${aName}` });
+                    phase2Items.push({ key: `assessment_${assessment.id}`, prompt, maxTokens: 1500, inputForHash: inputHash, label: `Assessment: ${aName}`, extraBody: { ...nameFields } });
                   }
 
                   // 4. Recommendations — include full generated_sections for later sections
@@ -856,6 +857,7 @@ export default function ClientEditor() {
                     const inputHash = `${r.supportName}|${r.justification || ""}|${r.consequence || ""}|${(r.tasks || []).join(",")}`;
 
                     const extraBody: Record<string, any> = {
+                      ...nameFields,
                       section_name: "section17",
                     };
                     if (collateralPayload.length > 0) {
