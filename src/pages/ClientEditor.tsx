@@ -1116,6 +1116,43 @@ export default function ClientEditor() {
           </div>
         </div>
       )}
+
+      {/* Thread map summary */}
+      {threadsWoven > 0 && !generatingReport && mode === "report" && (
+        <div className="bg-card border-b border-border/30">
+          <div className="max-w-7xl mx-auto px-4 py-2">
+            <Collapsible>
+              <CollapsibleTrigger className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors w-full">
+                <Link2 className="h-3.5 w-3.5 text-primary" />
+                <span className="font-medium">{threadsIdentified} narrative threads identified, {threadsWoven} sections connected</span>
+                <span className="text-xs ml-auto">Click to expand</span>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="mt-2 space-y-1.5">
+                {threadMap.map((thread: any) => (
+                  <div key={thread.id} className="text-xs text-muted-foreground pl-5 border-l-2 border-primary/20 py-1">
+                    <span className="font-medium text-foreground">📍 {thread.source_section}</span>
+                    <span className="mx-1">→</span>
+                    <span>{(thread.target_sections || []).join(", ")}</span>
+                    <div className="text-muted-foreground/70 mt-0.5 italic">"{thread.source_observation}"</div>
+                  </div>
+                ))}
+              </CollapsibleContent>
+            </Collapsible>
+          </div>
+        </div>
+      )}
+
+      {/* Thread warnings */}
+      {threadWarnings.length > 0 && !generatingReport && mode === "report" && (
+        <div className="bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-800">
+          <div className="max-w-7xl mx-auto px-4 py-2">
+            {threadWarnings.map((w, i) => (
+              <p key={i} className="text-xs text-amber-700 dark:text-amber-300">{w}</p>
+            ))}
+            <button className="text-xs text-amber-500 hover:text-amber-700 mt-1" onClick={() => setThreadWarnings([])}>Dismiss</button>
+          </div>
+        </div>
+      )}
       {mode === "notes" && (
         <div className="bg-card border-b border-border/30">
           <div className="max-w-4xl mx-auto px-4 py-2 flex items-center gap-3">
