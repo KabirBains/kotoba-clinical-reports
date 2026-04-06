@@ -759,6 +759,11 @@ export default function ClientEditor() {
                         ? `Generating ${label.replace("Section: ", "")}...`
                         : `Generating ${label}...`;
                       setGenerateProgress({ current: step, total: totalItems, label: humanLabel });
+                    } else if (status === "refining") {
+                      const humanLabel = label.startsWith("Section:")
+                        ? `Refining ${label.replace("Section: ", "")}...`
+                        : `Refining ${label}...`;
+                      setGenerateProgress(prev => ({ ...prev, label: humanLabel }));
                     } else {
                       setGenerateProgress(prev => ({ ...prev, current: step }));
                     }
@@ -886,6 +891,15 @@ export default function ClientEditor() {
                         ? `Generating ${label.replace("Recommendation: ", "")} recommendation...`
                         : `Generating ${label}...`;
                       setGenerateProgress({ current: currentStep, total: totalItems, label: humanLabel });
+                    } else if (status === "refining") {
+                      const humanLabel = label.startsWith("Domain:")
+                        ? `Refining ${label.replace("Domain: ", "")}...`
+                        : label.startsWith("Assessment:")
+                        ? `Refining ${label.replace("Assessment: ", "")}...`
+                        : label.startsWith("Recommendation:")
+                        ? `Refining ${label.replace("Recommendation: ", "")}...`
+                        : `Refining ${label}...`;
+                      setGenerateProgress(prev => ({ ...prev, label: humanLabel }));
                     } else {
                       setGenerateProgress(prev => ({ ...prev, current: currentStep }));
                     }
