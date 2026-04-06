@@ -47,6 +47,12 @@ export default function ClientEditor() {
   const [issueStatuses, setIssueStatuses] = useState<Record<string, "unresolved" | "accepted" | "dismissed" | "acknowledged">>({});
   const [dismissedIssueKeys, setDismissedIssueKeys] = useState<Set<string>>(new Set());
   const [scorecardVisible, setScorecardVisible] = useState(false);
+  const [narrativeThreadingEnabled, setNarrativeThreadingEnabled] = useState(true);
+  const [threadMap, setThreadMap] = useState<any[]>([]);
+  const [threadsIdentified, setThreadsIdentified] = useState(0);
+  const [threadsWoven, setThreadsWoven] = useState(0);
+  const [threadWarnings, setThreadWarnings] = useState<string[]>([]);
+  const [isThreading, setIsThreading] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setInterval>>();
   const mainRef = useRef<HTMLElement>(null);
 
