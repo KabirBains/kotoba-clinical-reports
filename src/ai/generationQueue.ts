@@ -188,18 +188,71 @@ export async function processQueue(
     try {
       const result = await invokeWithRetry(item.prompt, item.maxTokens, item.label, item.extraBody);
       if (result.success && result.text) {
-        // 5. Refine the generated text
-        onProgress?.(i + 1, total, item.label, "refining");
         const sectionName = item.extraBody?.section_name || item.key;
-        const refineResult = await refineText(
-          result.text,
-          sectionName,
-          item.extraBody?.participant_name,
-          item.extraBody?.participant_first_name
-        );
+        const isDomainJson = item.key.startsWith("section12_");
 
-        const finalText = refineResult?.refined_text || result.text;
-        const refined = !!refineResult?.refined_text;
+        let finalText = result.text;
+        let refined = false;
+        let refineWarnings: string[] | undefined;
+
+        if (isDomainJson) {
+          // Domain sections return JSON with per-field keys.
+          // Refine each field value individually to preserve structure.
+          onProgress?.(i + 1, total, item.label, "refining");
+          try {
+            const rawText = result.text.trim().replace(/^```json?\s*/i, "").replace(/```\s*$/, "");
+            const parsed = JSON.parse(rawText) as Record<string, string>;
+            const refinedObj: Record<string, string> = {};
+            let anyRefined = false;
+            const allWarnings: string[] = [];
+
+            for (const [fieldKey, fieldText] of Object.entries(parsed)) {
+              if (!fieldText || fieldText.length < 20) {
+                refinedObj[fieldKey] = fieldText;
+                continue;
+              }
+              const fieldRefine = await refineText(
+                fieldText,
+                `${sectionName}_${fieldKey}`,
+                item.extraBody?.participant_name,
+                item.extraBody?.participant_first_name
+              );
+              if (fieldRefine?.refined_text) {
+                refinedObj[fieldKey] = fieldRefine.refined_text;
+                anyRefined = true;
+                if (fieldRefine.warnings?.length) allWarnings.push(...fieldRefine.warnings);
+              } else {
+                refinedObj[fieldKey] = fieldText;
+              }
+            }
+
+            finalText = JSON.stringify(refinedObj);
+            refined = anyRefined;
+            refineWarnings = allWarnings.length > 0 ? allWarnings : undefined;
+          } catch (parseErr) {
+            console.warn(`[QUEUE] Domain JSON parse failed for refine, skipping per-field refinement`, parseErr);
+            // Fall back: refine as plain text (original behaviour)
+            const refineResult = await refineText(
+              result.text, sectionName,
+              item.extraBody?.participant_name,
+              item.extraBody?.participant_first_name
+            );
+            finalText = refineResult?.refined_text || result.text;
+            refined = !!refineResult?.refined_text;
+            refineWarnings = refineResult?.warnings;
+          }
+        } else {
+          // Non-domain sections: refine as a single block of text
+          onProgress?.(i + 1, total, item.label, "refining");
+          const refineResult = await refineText(
+            result.text, sectionName,
+            item.extraBody?.participant_name,
+            item.extraBody?.participant_first_name
+          );
+          finalText = refineResult?.refined_text || result.text;
+          refined = !!refineResult?.refined_text;
+          refineWarnings = refineResult?.warnings;
+        }
 
         markInputGenerated(item.key, item.inputForHash);
         console.log(`[QUEUE] SUCCESS: "${item.label}" (${finalText.length} chars, refined: ${refined})`);
@@ -209,7 +262,7 @@ export async function processQueue(
           text: finalText,
           name_warnings: result.name_warnings,
           refined,
-          refineWarnings: refineResult?.warnings,
+          refineWarnings,
         });
       } else if (result.success) {
         markInputGenerated(item.key, item.inputForHash);
