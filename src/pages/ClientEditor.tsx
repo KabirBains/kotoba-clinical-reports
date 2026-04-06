@@ -19,8 +19,10 @@ import { ReportMode } from "@/components/editor/ReportMode";
 import { LiaiseMode, type CollateralInterview } from "@/components/editor/LiaiseMode";
 import { EditorSidebar } from "@/components/editor/EditorSidebar";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, FileText, PenLine, Clock, Handshake } from "lucide-react";
+import { ArrowLeft, FileText, PenLine, Clock, Handshake, Link2 } from "lucide-react";
 import { toast } from "sonner";
+import { Switch } from "@/components/ui/switch";
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { format } from "date-fns";
 
 export default function ClientEditor() {
@@ -45,6 +47,12 @@ export default function ClientEditor() {
   const [issueStatuses, setIssueStatuses] = useState<Record<string, "unresolved" | "accepted" | "dismissed" | "acknowledged">>({});
   const [dismissedIssueKeys, setDismissedIssueKeys] = useState<Set<string>>(new Set());
   const [scorecardVisible, setScorecardVisible] = useState(false);
+  const [narrativeThreadingEnabled, setNarrativeThreadingEnabled] = useState(true);
+  const [threadMap, setThreadMap] = useState<any[]>([]);
+  const [threadsIdentified, setThreadsIdentified] = useState(0);
+  const [threadsWoven, setThreadsWoven] = useState(0);
+  const [threadWarnings, setThreadWarnings] = useState<string[]>([]);
+  const [isThreading, setIsThreading] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setInterval>>();
   const mainRef = useRef<HTMLElement>(null);
 
@@ -326,6 +334,17 @@ export default function ClientEditor() {
                 Report
               </Button>
             </div>
+
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5" title="Links observations across domains for a cohesive clinical story">
+                <Link2 className="h-3.5 w-3.5 text-muted-foreground" />
+                <span className="text-xs text-muted-foreground hidden sm:inline">Thread</span>
+                <Switch
+                  checked={narrativeThreadingEnabled}
+                  onCheckedChange={setNarrativeThreadingEnabled}
+                  className="scale-75"
+                />
+              </div>
 
             <Button
               size="sm"
@@ -995,6 +1014,54 @@ export default function ClientEditor() {
                     }
                   }
 
+                  // ── NARRATIVE THREADING STEP ──
+                  if (narrativeThreadingEnabled) {
+                    setIsThreading(true);
+                    setGenerateProgress(prev => ({ ...prev, label: "Weaving narrative connections..." }));
+
+                    try {
+                      const diagnosesText = diagnoses.map(d => d.name).join(", ") || diagnosis;
+                      const { data: threadData, error: threadError } = await supabase.functions.invoke("thread-narrative", {
+                        method: "POST",
+                        body: {
+                          generated_sections: newContent,
+                          participant_name: participantFullName,
+                          participant_first_name: participantFirstName,
+                          diagnoses_context: diagnosesText,
+                          max_passes: 3,
+                        },
+                      });
+
+                      if (threadError) {
+                        console.warn("Threading failed:", threadError);
+                      } else if (threadData?.success && threadData?.threaded_sections) {
+                        // Replace newContent with threaded versions
+                        for (const [key, text] of Object.entries(threadData.threaded_sections)) {
+                          if (typeof text === "string" && text.trim()) {
+                            newContent[key] = text;
+                          }
+                        }
+                        setThreadMap(threadData.thread_map || []);
+                        setThreadsIdentified(threadData.threads_identified || 0);
+                        setThreadsWoven(threadData.threads_woven || 0);
+
+                        if (threadData.warnings?.length > 0) {
+                          setThreadWarnings(threadData.warnings);
+                        }
+
+                        if (threadData.threads_woven > 0) {
+                          toast.success(`${threadData.threads_woven} narrative threads woven across ${threadData.threads_identified} connections`);
+                        }
+                      } else {
+                        console.warn("Threading returned no data:", threadData);
+                      }
+                    } catch (err) {
+                      console.warn("Threading error (non-fatal):", err);
+                    } finally {
+                      setIsThreading(false);
+                    }
+                  }
+
                   setReportContent(newContent);
                   setMode("report");
 
@@ -1022,6 +1089,7 @@ export default function ClientEditor() {
             >
               {generatingReport ? "Generating…" : "Generate full report"}
             </Button>
+            </div>
           </div>
         </div>
       </header>
@@ -1045,6 +1113,43 @@ export default function ClientEditor() {
                 }}
               />
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Thread map summary */}
+      {threadsWoven > 0 && !generatingReport && mode === "report" && (
+        <div className="bg-card border-b border-border/30">
+          <div className="max-w-7xl mx-auto px-4 py-2">
+            <Collapsible>
+              <CollapsibleTrigger className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors w-full">
+                <Link2 className="h-3.5 w-3.5 text-primary" />
+                <span className="font-medium">{threadsIdentified} narrative threads identified, {threadsWoven} sections connected</span>
+                <span className="text-xs ml-auto">Click to expand</span>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="mt-2 space-y-1.5">
+                {threadMap.map((thread: any) => (
+                  <div key={thread.id} className="text-xs text-muted-foreground pl-5 border-l-2 border-primary/20 py-1">
+                    <span className="font-medium text-foreground">📍 {thread.source_section}</span>
+                    <span className="mx-1">→</span>
+                    <span>{(thread.target_sections || []).join(", ")}</span>
+                    <div className="text-muted-foreground/70 mt-0.5 italic">"{thread.source_observation}"</div>
+                  </div>
+                ))}
+              </CollapsibleContent>
+            </Collapsible>
+          </div>
+        </div>
+      )}
+
+      {/* Thread warnings */}
+      {threadWarnings.length > 0 && !generatingReport && mode === "report" && (
+        <div className="bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-800">
+          <div className="max-w-7xl mx-auto px-4 py-2">
+            {threadWarnings.map((w, i) => (
+              <p key={i} className="text-xs text-amber-700 dark:text-amber-300">{w}</p>
+            ))}
+            <button className="text-xs text-amber-500 hover:text-amber-700 mt-1" onClick={() => setThreadWarnings([])}>Dismiss</button>
           </div>
         </div>
       )}
