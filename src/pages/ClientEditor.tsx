@@ -923,11 +923,17 @@ export default function ClientEditor() {
                       try {
                         const rawText = result.text.trim().replace(/^```json?\s*/i, "").replace(/```\s*$/, "");
                         parsed = JSON.parse(rawText);
-                      } catch { parsed = { _fullText: result.text }; }
+                      } catch {
+                        parsed = {};
+                      }
 
                       const structured: Record<string, { text: string; rating: string; label: string }> = {};
                       for (const row of domainMatch.rowData) {
-                        structured[row.fieldId] = { text: parsed[row.fieldId] || parsed._fullText || "", rating: row.rating, label: row.label };
+                        structured[row.fieldId] = {
+                          text: typeof parsed[row.fieldId] === "string" ? parsed[row.fieldId] : "",
+                          rating: row.rating,
+                          label: row.label,
+                        };
                       }
                       newContent[result.key] = JSON.stringify(structured);
                       successCount++;
