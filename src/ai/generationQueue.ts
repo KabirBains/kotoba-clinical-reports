@@ -84,6 +84,7 @@ async function refineText(
       participant_first_name: participantFirstName,
     });
     const { data, error } = await supabase.functions.invoke("refine-report", {
+      method: "POST",
       body: {
         generated_text: generatedText,
         section_name: sectionName,
