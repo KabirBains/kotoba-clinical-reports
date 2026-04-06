@@ -1014,6 +1014,54 @@ export default function ClientEditor() {
                     }
                   }
 
+                  // ── NARRATIVE THREADING STEP ──
+                  if (narrativeThreadingEnabled) {
+                    setIsThreading(true);
+                    setGenerateProgress(prev => ({ ...prev, label: "Weaving narrative connections..." }));
+
+                    try {
+                      const diagnosesText = diagnoses.map(d => d.name).join(", ") || diagnosis;
+                      const { data: threadData, error: threadError } = await supabase.functions.invoke("thread-narrative", {
+                        method: "POST",
+                        body: {
+                          generated_sections: newContent,
+                          participant_name: participantFullName,
+                          participant_first_name: participantFirstName,
+                          diagnoses_context: diagnosesText,
+                          max_passes: 3,
+                        },
+                      });
+
+                      if (threadError) {
+                        console.warn("Threading failed:", threadError);
+                      } else if (threadData?.success && threadData?.threaded_sections) {
+                        // Replace newContent with threaded versions
+                        for (const [key, text] of Object.entries(threadData.threaded_sections)) {
+                          if (typeof text === "string" && text.trim()) {
+                            newContent[key] = text;
+                          }
+                        }
+                        setThreadMap(threadData.thread_map || []);
+                        setThreadsIdentified(threadData.threads_identified || 0);
+                        setThreadsWoven(threadData.threads_woven || 0);
+
+                        if (threadData.warnings?.length > 0) {
+                          setThreadWarnings(threadData.warnings);
+                        }
+
+                        if (threadData.threads_woven > 0) {
+                          toast.success(`${threadData.threads_woven} narrative threads woven across ${threadData.threads_identified} connections`);
+                        }
+                      } else {
+                        console.warn("Threading returned no data:", threadData);
+                      }
+                    } catch (err) {
+                      console.warn("Threading error (non-fatal):", err);
+                    } finally {
+                      setIsThreading(false);
+                    }
+                  }
+
                   setReportContent(newContent);
                   setMode("report");
 
