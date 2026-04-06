@@ -335,6 +335,17 @@ export default function ClientEditor() {
               </Button>
             </div>
 
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5" title="Links observations across domains for a cohesive clinical story">
+                <Link2 className="h-3.5 w-3.5 text-muted-foreground" />
+                <span className="text-xs text-muted-foreground hidden sm:inline">Thread</span>
+                <Switch
+                  checked={narrativeThreadingEnabled}
+                  onCheckedChange={setNarrativeThreadingEnabled}
+                  className="scale-75"
+                />
+              </div>
+
             <Button
               size="sm"
               className="bg-accent text-accent-foreground hover:bg-accent/90"
