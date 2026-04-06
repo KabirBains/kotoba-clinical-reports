@@ -1041,6 +1041,7 @@ export default function ClientEditor() {
             >
               {generatingReport ? "Generating…" : "Generate full report"}
             </Button>
+            </div>
           </div>
         </div>
       </header>
