@@ -19,8 +19,10 @@ import { ReportMode } from "@/components/editor/ReportMode";
 import { LiaiseMode, type CollateralInterview } from "@/components/editor/LiaiseMode";
 import { EditorSidebar } from "@/components/editor/EditorSidebar";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, FileText, PenLine, Clock, Handshake } from "lucide-react";
+import { ArrowLeft, FileText, PenLine, Clock, Handshake, Link2 } from "lucide-react";
 import { toast } from "sonner";
+import { Switch } from "@/components/ui/switch";
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { format } from "date-fns";
 
 export default function ClientEditor() {
