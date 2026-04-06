@@ -78,6 +78,11 @@ async function refineText(
   participantFirstName?: string
 ): Promise<{ refined_text: string; warnings?: string[] } | null> {
   try {
+    console.log(`REFINE: calling refine-report for "${sectionName}"...`, {
+      generated_text_length: generatedText.length,
+      participant_name: participantName,
+      participant_first_name: participantFirstName,
+    });
     const { data, error } = await supabase.functions.invoke("refine-report", {
       body: {
         generated_text: generatedText,
@@ -86,13 +91,18 @@ async function refineText(
         ...(participantFirstName ? { participant_first_name: participantFirstName } : {}),
       },
     });
-    if (error || !data?.refined_text) {
-      console.warn(`[QUEUE] Refine failed, using original text`);
+    console.log(`REFINE: response received for "${sectionName}"`, { data, error });
+    if (error) {
+      console.error(`REFINE: refine-report failed for "${sectionName}":`, error);
+      return null;
+    }
+    if (!data?.refined_text) {
+      console.error(`REFINE: refine-report returned no refined_text for "${sectionName}":`, data);
       return null;
     }
     return { refined_text: data.refined_text, warnings: data.warnings };
   } catch (err) {
-    console.warn(`[QUEUE] Refine error, using original text:`, err);
+    console.error(`REFINE: refine-report exception for "${sectionName}":`, err);
     return null;
   }
 }
