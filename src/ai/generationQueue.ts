@@ -59,6 +59,8 @@ export interface QueueResult {
   success: boolean;
   text?: string;
   name_warnings?: string[];
+  refined?: boolean;
+  refineWarnings?: string[];
   skipped?: boolean;
   skipReason?: string;
   error?: string;
@@ -66,6 +68,33 @@ export interface QueueResult {
 
 function sleep(ms: number): Promise<void> {
   return new Promise(r => setTimeout(r, ms));
+}
+
+// ── Refine a generated section ──────────────────────────────
+async function refineText(
+  generatedText: string,
+  sectionName: string,
+  participantName?: string,
+  participantFirstName?: string
+): Promise<{ refined_text: string; warnings?: string[] } | null> {
+  try {
+    const { data, error } = await supabase.functions.invoke("refine-report", {
+      body: {
+        generated_text: generatedText,
+        section_name: sectionName,
+        ...(participantName ? { participant_name: participantName } : {}),
+        ...(participantFirstName ? { participant_first_name: participantFirstName } : {}),
+      },
+    });
+    if (error || !data?.refined_text) {
+      console.warn(`[QUEUE] Refine failed, using original text`);
+      return null;
+    }
+    return { refined_text: data.refined_text, warnings: data.warnings };
+  } catch (err) {
+    console.warn(`[QUEUE] Refine error, using original text:`, err);
+    return null;
+  }
 }
 
 // ── Single invoke with 429 retry ────────────────────────────
@@ -147,9 +176,32 @@ export async function processQueue(
 
     try {
       const result = await invokeWithRetry(item.prompt, item.maxTokens, item.label, item.extraBody);
-      if (result.success) {
+      if (result.success && result.text) {
+        // 5. Refine the generated text
+        onProgress?.(i + 1, total, item.label, "refining");
+        const sectionName = item.extraBody?.section_name || item.key;
+        const refineResult = await refineText(
+          result.text,
+          sectionName,
+          item.extraBody?.participant_name,
+          item.extraBody?.participant_first_name
+        );
+
+        const finalText = refineResult?.refined_text || result.text;
+        const refined = !!refineResult?.refined_text;
+
         markInputGenerated(item.key, item.inputForHash);
-        console.log(`[QUEUE] SUCCESS: "${item.label}" (${result.text?.length || 0} chars)`);
+        console.log(`[QUEUE] SUCCESS: "${item.label}" (${finalText.length} chars, refined: ${refined})`);
+        results.push({
+          key: item.key,
+          success: true,
+          text: finalText,
+          name_warnings: result.name_warnings,
+          refined,
+          refineWarnings: refineResult?.warnings,
+        });
+      } else if (result.success) {
+        markInputGenerated(item.key, item.inputForHash);
         results.push({ key: item.key, success: true, text: result.text, name_warnings: result.name_warnings });
       } else {
         console.error(`[QUEUE] FAILED: "${item.label}" — ${result.error}`);
@@ -165,3 +217,6 @@ export async function processQueue(
 
   return results;
 }
+
+// Export refineText for use in individual section generators
+export { refineText };
