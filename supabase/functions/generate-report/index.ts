@@ -226,7 +226,28 @@ For Communication domains with Receptive and Expressive sub-areas:
 - Expressive content discusses ONLY producing speech, expressing needs, verbal output.
 - NEVER combine both into one block.
 
-FAILURE TO SEPARATE SUB-AREAS IS A CRITICAL ERROR. The frontend uses <<SUB_AREA: [Name]>> delimiters to split your output into separate sections.
+CRITICAL OUTPUT FORMAT — DELIMITER LITERAL ONLY:
+The frontend post-processor uses the regex /<<SUB_AREA:\\s*([^>]+)>>/g to split your output. ANY other heading format will fail parsing and will display as a single unbroken block of prose to the clinician. You MUST emit the literal delimiter — not markdown bold, not markdown headings, not any other formatting.
+
+WRONG (markdown bold — DO NOT EMIT):
+**Ambulation and Balance**
+Support level: Assistance Required
+
+WRONG (markdown heading — DO NOT EMIT):
+## Ambulation and Balance
+Support level: Assistance Required
+
+WRONG (plain heading — DO NOT EMIT):
+Ambulation and Balance:
+Support level: Assistance Required
+
+RIGHT (the literal delimiter — ALWAYS EMIT THIS):
+<<SUB_AREA: Ambulation and Balance>>
+Support level: Assistance Required
+
+The string "<<SUB_AREA:" appears NOWHERE in your other output. It is ONLY used as the sub-area delimiter. If you find yourself writing markdown bold or heading syntax for a sub-area name, STOP and replace it with <<SUB_AREA: [Name]>>.
+
+FAILURE TO SEPARATE SUB-AREAS, OR FAILURE TO USE THE LITERAL <<SUB_AREA: [Name]>> DELIMITER, IS A CRITICAL ERROR. The frontend will display the entire domain as a single unbroken block to the clinician, who will then have to manually edit it back into the correct format.
 `;
 
 const ASSESSMENT_SCORING_RULES = `
