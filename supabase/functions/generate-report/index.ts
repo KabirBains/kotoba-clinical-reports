@@ -195,6 +195,123 @@ async function callClaude(sys: string | SystemBlock[], user: string, max: number
   return { text: data.content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("\n"), usage: data.usage };
 }
 
+// ── LIGHT RUBRIC SELF-CHECK ────────────────────────────────────
+// An optional, small Claude call that evaluates the generated section
+// against ~8 high-impact rubric criteria from v5.3. Returns a structured
+// pass/fail map with brief reasons. Total cost: ~1k input + ~300 output
+// per check, roughly 10x cheaper than the main generation call.
+//
+// Opt-in via body: { self_check: true }. Default off so existing
+// callers see no cost change. Designed to be called for sections where
+// the clinician explicitly wants extra rigor (e.g., S12.3 mental health
+// risk, S17 recommendations, S2 background) without running the full
+// review-report flow.
+
+type RubricCheckResult = {
+  criterion: string;
+  pass: boolean;
+  reason: string;
+};
+
+async function runLightRubricCheck(
+  generatedText: string,
+  sectionName: string | undefined
+): Promise<{ checks: RubricCheckResult[]; usage: any } | null> {
+  // The criteria evaluated are a high-impact subset of the v5.3 rubric.
+  // Each one is a yes/no judgment that is hard to make with pure regex
+  // but cheap for Claude to assess in a single short call.
+  const isDomainSection = sectionName?.startsWith("section13") || sectionName?.startsWith("section14");
+
+  const criteriaList = [
+    { id: "A1_person_first", description: "Uses participant name or 'the participant' as first reference in each paragraph (not standalone pronouns)." },
+    { id: "A2_no_bullets", description: "Continuous prose only — no bullet points, numbered lists, or markdown headings in the body." },
+    { id: "A6a_definitive_verbs", description: "Uses definitive verbs ('cannot', 'is unable to', 'requires') rather than hedged constructions like 'experiences difficulty with'." },
+    { id: "A7_attributed_speculation", description: "Any speculation or clinical opinion is attributed using 'In the assessor's clinical opinion' or equivalent — no unattributed 'it appears', 'may be', 'could suggest'." },
+    { id: "A8a_diagnosis_named", description: "Where a limitation is linked to disability, the specific diagnosis is named (e.g., 'secondary to schizophrenia') rather than 'due to his disability'." },
+    { id: "B10_participant_anchoring", description: "Every paragraph contains at least one detail unique to this specific participant (not generic boilerplate)." },
+    { id: "B11_consequence_specificity", description: "Any consequence statement ('Without this support…') names a specific, participant-relevant outcome rather than generic 'functional decline'." },
+    { id: "B13_sentence_length_variety", description: "At least one sentence under 15 words appears in the section (creates clinical rhythm)." },
+  ];
+
+  if (isDomainSection) {
+    criteriaList.push({
+      id: "D2_support_level_declarations",
+      description: "Every sub-area opens with an explicit 'Support level: [level]' statement before the narrative paragraph.",
+    });
+    criteriaList.push({
+      id: "A18a_evidence_citation",
+      description: "The section opens with the evidence citation block: 'Evidence: As per standardised assessment; as evident in functional assessment and observations; as evident in interviews; collateral information; reviewed reports.'",
+    });
+  }
+
+  const checkSystem = `You are a quality reviewer for NDIS Functional Capacity Assessment report sections.
+
+Your task: evaluate the provided section text against a list of binary pass/fail criteria. For each criterion, return:
+  - pass: true or false
+  - reason: a brief one-sentence explanation (max 25 words) — for failures, point to the specific text that failed; for passes, briefly note evidence
+
+Return ONLY a valid JSON object of the form:
+{
+  "checks": [
+    { "criterion": "<id>", "pass": true|false, "reason": "<brief>" },
+    ...
+  ]
+}
+
+Do not include any commentary outside the JSON. Do not use markdown code fences.`;
+
+  const checkUser = `SECTION: ${sectionName || "unknown"}
+
+CRITERIA TO EVALUATE:
+${criteriaList.map(c => `  - ${c.id}: ${c.description}`).join("\n")}
+
+GENERATED TEXT:
+---
+${generatedText}
+---
+
+Return the JSON object now.`;
+
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": CLAUDE_API_KEY!,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 1000,
+        system: checkSystem,
+        messages: [{ role: "user", content: checkUser }],
+      }),
+    });
+
+    if (!res.ok) {
+      console.warn("Light rubric self-check failed:", res.status, await res.text());
+      return null;
+    }
+
+    const data = await res.json();
+    const rawText = data.content?.[0]?.text || "";
+
+    // Parse the JSON response. Tolerate code fences just in case.
+    const cleaned = rawText.trim().replace(/^```json?\s*/i, "").replace(/```\s*$/, "").trim();
+    const parsed = JSON.parse(cleaned);
+
+    if (!parsed || !Array.isArray(parsed.checks)) {
+      console.warn("Light rubric self-check returned unexpected shape");
+      return null;
+    }
+
+    return { checks: parsed.checks as RubricCheckResult[], usage: data.usage };
+  } catch (e: unknown) {
+    console.warn("Light rubric self-check exception:", (e as Error).message);
+    return null;
+  }
+}
+
 const ANTI_REDUNDANCY = `
 ANTI-REDUNDANCY RULES:
 1. DOCUMENT ONCE, REFERENCE THEREAFTER.
@@ -380,6 +497,11 @@ serve(async (req: Request) => {
       participant_sex,
       participant_pronouns,
       participant_title,
+      // Opt-in light rubric self-check. When true, the function makes
+      // a small additional Claude call after generation to evaluate the
+      // output against ~8-10 high-impact rubric criteria. Default false
+      // to preserve backward compatibility and existing per-call cost.
+      self_check,
     } = body;
     if (!prompt) return new Response(JSON.stringify({ success: false, error: "No prompt" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
@@ -556,6 +678,17 @@ serve(async (req: Request) => {
     // decides what to do with the warnings.
     const bannedPhraseHits = detectBannedPhrases(result.text);
 
+    // === OPT-IN LIGHT RUBRIC SELF-CHECK ===
+    // When the caller passes self_check: true, run a small focused Claude
+    // call against the generated text to evaluate ~8-10 high-impact rubric
+    // criteria. Adds ~1k input + ~300 output tokens (~10x cheaper than the
+    // main generation call). The result is structured pass/fail flags
+    // surfaced in the response.
+    let rubricCheck: { checks: RubricCheckResult[]; usage: any } | null = null;
+    if (self_check === true) {
+      rubricCheck = await runLightRubricCheck(result.text, section_name);
+    }
+
     return new Response(JSON.stringify({
       success: true,
       text: result.text,
@@ -567,6 +700,7 @@ serve(async (req: Request) => {
       has_safety_alerts: hasSafetyAlerts,
       banned_phrase_hits: bannedPhraseHits,
       banned_phrase_count: bannedPhraseHits.reduce((acc, h) => acc + h.count, 0),
+      rubric_check: rubricCheck,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e: unknown) {
     return new Response(JSON.stringify({ success: false, error: (e as Error).message || "Internal error" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
