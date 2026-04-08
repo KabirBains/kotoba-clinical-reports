@@ -251,14 +251,25 @@ export function RecommendationCard({ rec, index, onUpdate, onRemove }: Recommend
           {/* Consequence */}
           <div>
             <label className="text-[11px] font-semibold text-muted-foreground block mb-1">
-              Without this support, the participant is at risk of…
+              Without this support, <strong>{rec.supportName.split(" ")[0] || "the participant"}</strong> is at risk of…
+              <span className="text-[10px] font-normal text-muted-foreground/70 ml-1">
+                (be specific to this participant — generic statements will be flagged)
+              </span>
             </label>
             <textarea
               rows={2}
               value={rec.consequence}
               onChange={(e) => updateField("consequence", e.target.value)}
-              className="w-full p-3 text-xs bg-muted/30 border border-border/50 rounded-md resize-y focus:outline-none focus:ring-1 focus:ring-accent/50"
+              placeholder={
+                support?.exampleConsequenceTemplate
+                  ? `e.g., ${support.exampleConsequenceTemplate}\n\nBut tailor this to THIS participant — name their specific risks, link to their diagnosis and observed limitations.`
+                  : "Name the specific consequences for this participant if the support is not provided. Reference their diagnosis, observed limitations, and concrete risks (not generic statements)."
+              }
+              className="w-full p-3 text-xs bg-muted/30 border border-border/50 rounded-md resize-y focus:outline-none focus:ring-1 focus:ring-accent/50 placeholder:text-muted-foreground/50"
             />
+            <p className="text-[10px] text-muted-foreground/60 mt-1">
+              If left blank, the AI will generate a participant-specific consequence at report time using the participant's diagnoses, functional capacity findings, and risk profile.
+            </p>
           </div>
 
           {/* Linked sections */}
