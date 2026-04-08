@@ -160,10 +160,10 @@ Return ONLY the sections that had corrections applied. Output the complete corre
       JSON.stringify({ success: true, correctedSections }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
-  } catch (err) {
+  } catch (err: unknown) {
     console.error("correct-report error:", err);
     return new Response(
-      JSON.stringify({ success: false, error: err.message || "Unknown error" }),
+      JSON.stringify({ success: false, error: (err as Error).message || "Unknown error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
