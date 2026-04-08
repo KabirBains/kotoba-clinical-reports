@@ -365,7 +365,7 @@ serve(async (req: Request) => {
       domain_hint,
       participant_name,
       participant_first_name,
-      // NEW: explicit safety declaration. When the clinician has identified
+      // Explicit safety declaration. When the clinician has identified
       // safety concerns (e.g., suicidal ideation, BoC, abscond history), they
       // pass them as an array of short strings. The function injects these
       // into S2 (briefly) and S12.3 (fully) regardless of whether the same
@@ -373,6 +373,13 @@ serve(async (req: Request) => {
       // fires even when notes are sparse or when the clinician declared a
       // concern outside the collateral interview flow.
       safety_concerns,
+      // Demographic fields. All optional, all forward-compatible.
+      // If a field is missing, the participant block falls back to its
+      // pre-existing behaviour (name-only).
+      participant_age,
+      participant_sex,
+      participant_pronouns,
+      participant_title,
     } = body;
     if (!prompt) return new Response(JSON.stringify({ success: false, error: "No prompt" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
@@ -404,8 +411,35 @@ serve(async (req: Request) => {
     let dynamicSuffix = "";
 
     if (fullName) {
-      dynamicSuffix += `\n\nPARTICIPANT: ${fullName} (use '${firstName}' after formal introduction).\nNEVER use full name after first mention. NEVER use another person's name in participant-referencing position.\n`;
+      // Build a richer participant block when demographic fields are
+      // provided. Each field is optional — missing fields are simply
+      // omitted from the descriptor rather than appearing as placeholders.
+      const demographicParts: string[] = [];
+      if (participant_age) demographicParts.push(String(participant_age));
+      if (participant_sex) demographicParts.push(String(participant_sex));
+      const demographicDescriptor = demographicParts.length > 0
+        ? ` (${demographicParts.join(", ")})`
+        : "";
+
+      dynamicSuffix += `\n\nPARTICIPANT: ${fullName}${demographicDescriptor}\n`;
+      dynamicSuffix += `Use '${firstName}' after the formal first-mention introduction.\n`;
+      dynamicSuffix += `NEVER use full name after first mention. NEVER use another person's name in participant-referencing position.\n`;
+
+      if (participant_title) {
+        dynamicSuffix += `FORMAL TITLE: Use "${participant_title}" in the formal first mention (e.g. "${participant_title} ${fullName} (referred to as ${firstName} for the remainder of the report)").\n`;
+      }
+
+      if (participant_pronouns) {
+        // Honour the participant's stated pronouns explicitly. This is
+        // important for non-default presentations (they/them, fluid,
+        // self-described). The model should NOT default to gendered
+        // pronouns based on name, surname, or any other inference.
+        dynamicSuffix += `PRONOUNS: ${firstName} uses ${participant_pronouns} pronouns. Use these consistently throughout. Do NOT default to gendered pronouns based on name or any inference. If the pronouns are unfamiliar or non-default, treat this as a deliberate participant-led choice and apply it carefully.\n`;
+      }
     }
+    // Note: ANTI_REDUNDANCY, ASSESSMENT_SCORING_RULES and SUB_AREA_RULES
+    // are now part of the cached prefix above (added by PR A: prompt
+    // caching). Do not append them here again.
 
     // === COLLATERAL ROUTING ===
     let collateralContext = ""; let domainCollateral = ""; let safetySummary = ""; let hasSafetyAlerts = false;
@@ -464,14 +498,14 @@ serve(async (req: Request) => {
           // concerns in full. This is the canonical location per the v5.3
           // anti-redundancy rules. Mark as MANDATORY so the model knows it
           // cannot omit any item from the declared list.
-          systemPrompt += "\n\n=== CLINICIAN-DECLARED SAFETY CONCERNS — DOCUMENT ALL OF THESE FULLY ===\n" + declaredBlock + "\nThese items have been explicitly declared by the assessing clinician as safety concerns for this participant. Each one MUST appear in your output for this section, framed clinically and attributed appropriately. Do not omit any item. If a particular item belongs more naturally in a different sub-section (12.1 Health, 12.2 Behavioural, 12.3 Mental Health, 12.4 BoC, 12.5 Supervision), route it there but ensure it appears.\n";
+          dynamicSuffix += "\n\n=== CLINICIAN-DECLARED SAFETY CONCERNS — DOCUMENT ALL OF THESE FULLY ===\n" + declaredBlock + "\nThese items have been explicitly declared by the assessing clinician as safety concerns for this participant. Each one MUST appear in your output for this section, framed clinically and attributed appropriately. Do not omit any item. If a particular item belongs more naturally in a different sub-section (12.1 Health, 12.2 Behavioural, 12.3 Mental Health, 12.4 BoC, 12.5 Supervision), route it there but ensure it appears.\n";
         } else if (section_name === "section2") {
           // S2 should mention briefly with cross-reference to S12.
-          systemPrompt += "\n\n=== CLINICIAN-DECLARED SAFETY CONCERNS (brief mention only — full detail in S12) ===\n" + declaredBlock + "\nMention these briefly in the trauma/medical history paragraphs as relevant. Do NOT document in full — Section 12 carries the full account. Cross-reference S12 explicitly.\n";
+          dynamicSuffix += "\n\n=== CLINICIAN-DECLARED SAFETY CONCERNS (brief mention only — full detail in S12) ===\n" + declaredBlock + "\nMention these briefly in the trauma/medical history paragraphs as relevant. Do NOT document in full — Section 12 carries the full account. Cross-reference S12 explicitly.\n";
         } else if (["section16","section17","section18"].includes(section_name || "")) {
           // Risks/recommendations sections should reference safety concerns
           // when justifying support intensity.
-          systemPrompt += "\n\n=== CLINICIAN-DECLARED SAFETY CONCERNS (cross-reference S12) ===\n" + declaredBlock + "\nReference these where they justify the recommended support intensity or constitute a documented risk of insufficient funding. Do NOT restate in full — cross-reference S12.\n";
+          dynamicSuffix += "\n\n=== CLINICIAN-DECLARED SAFETY CONCERNS (cross-reference S12) ===\n" + declaredBlock + "\nReference these where they justify the recommended support intensity or constitute a documented risk of insufficient funding. Do NOT restate in full — cross-reference S12.\n";
         }
         // Other sections: safety concerns are not injected. The model is
         // told via the cross-section lookback that S12 contains the detail.
