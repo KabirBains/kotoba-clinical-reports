@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import type { AssessmentScoreSummary } from "@/lib/assessment-library";
 
 interface ZaritScoringProps {
   scores: Record<string, string>;
@@ -43,6 +44,50 @@ function getBurdenLevel(score: number) {
   if (score <= 40) return { label: "Mild to Moderate Burden", className: "text-yellow-600" };
   if (score <= 60) return { label: "Moderate to Severe Burden", className: "text-orange-600" };
   return { label: "Severe Burden", className: "text-red-600" };
+}
+
+// ─── EXPORTED SCORING FUNCTION ──────────────────────────────────
+// Single source of truth for Zarit Burden Interview scoring.
+// Consumed by the assessment-scoring dispatcher for the AI generation prompt.
+
+/**
+ * Unified score summary for the AI prompt builder. Replaces the duplicated
+ * Zarit scoring logic that was inlined in ClientEditor.tsx buildScoreSummary.
+ */
+export function getZaritScoreSummary(scores: Record<string, string>): AssessmentScoreSummary {
+  let sum = 0;
+  let answered = 0;
+  for (let i = 1; i <= 22; i++) {
+    const val = scores[String(i)];
+    if (val !== undefined && val !== "") {
+      sum += parseInt(val);
+      answered++;
+    }
+  }
+
+  const itemsTotal = 22;
+  const isComplete = answered === itemsTotal;
+  const total = answered > 0 ? `${sum}/88` : "";
+  let classification = "";
+
+  if (isComplete) {
+    if (sum <= 20) classification = "No to Mild Burden";
+    else if (sum <= 40) classification = "Mild to Moderate Burden";
+    else if (sum <= 60) classification = "Moderate to Severe Burden";
+    else classification = "Severe Burden";
+  } else if (answered > 0) {
+    classification = `Incomplete (${answered}/${itemsTotal})`;
+  }
+
+  return {
+    rows: [],
+    total,
+    classification,
+    isComplete,
+    itemsAnswered: answered,
+    itemsTotal,
+    scoringDirection: "Zarit Burden Interview: HIGHER scores = GREATER carer burden. 0/88 = no burden, 88/88 = severe burden. Used to quantify informal carer sustainability.",
+  };
 }
 
 export function ZaritScoring({ scores, onUpdateScores }: ZaritScoringProps) {

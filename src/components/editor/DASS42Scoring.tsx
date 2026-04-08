@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { cn } from "@/lib/utils";
+import type { AssessmentScoreSummary } from "@/lib/assessment-library";
 
 const ITEM_MAP: Record<number, string> = {
   1: "S", 2: "A", 3: "D", 4: "A", 5: "D", 6: "S", 7: "A",
@@ -97,6 +98,55 @@ function getClassification(thresholds: { max: number; label: string }[], score: 
     if (score <= t.max) return t.label;
   }
   return thresholds[thresholds.length - 1]?.label || "Unknown";
+}
+
+// ─── EXPORTED SCORING FUNCTION ──────────────────────────────────
+// Single source of truth for DASS-42 scoring. Replaces duplicated logic
+// in ClientEditor.tsx and ReportMode.tsx.
+
+/**
+ * Unified score summary for the AI prompt builder. Each subscale uses
+ * established normative thresholds (Lovibond & Lovibond, 1995).
+ */
+export function getDass42ScoreSummary(scores: Record<string, string>): AssessmentScoreSummary {
+  const rows: { label: string; value: string }[] = [];
+  let grandTotal = 0;
+  let grandAnswered = 0;
+  const itemsTotal = 42;
+
+  for (const sub of DASS42_SUBSCALES) {
+    let subSum = 0;
+    let subAnswered = 0;
+    for (const n of sub.items) {
+      const v = scores[String(n)];
+      if (v !== undefined && v !== "") {
+        subSum += parseInt(v);
+        subAnswered++;
+      }
+    }
+    grandTotal += subSum;
+    grandAnswered += subAnswered;
+
+    let cls = "Incomplete";
+    if (subAnswered === sub.items.length) {
+      cls = getClassification(sub.thresholds, subSum);
+    }
+    rows.push({ label: `${sub.name} (${sub.short})`, value: `${subSum}/${sub.items.length * 3} — ${cls}` });
+  }
+
+  const isComplete = grandAnswered === itemsTotal;
+  const total = grandAnswered > 0 ? `${grandTotal}/126` : "";
+  const classification = isComplete ? "See subscale breakdown" : (grandAnswered > 0 ? `Incomplete (${grandAnswered}/${itemsTotal})` : "");
+
+  return {
+    rows,
+    total,
+    classification,
+    isComplete,
+    itemsAnswered: grandAnswered,
+    itemsTotal,
+    scoringDirection: "DASS-42: HIGHER scores = WORSE symptoms. Each subscale (Depression / Anxiety / Stress) is interpreted against normative severity thresholds: Normal, Mild, Moderate, Severe, or Extremely Severe. Used in psychosocial disability assessments.",
+  };
 }
 
 interface DASS42ScoringProps {

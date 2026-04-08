@@ -1,5 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { type CollateralInterview, LIAISE_TEMPLATES } from "./LiaiseMode";
+// Imports from the unified scoring source-of-truth (replaces ~150 lines of
+// duplicated WHODAS / DASS-42 scoring logic that used to live in this file).
+import { getWhodasDomainBreakdown } from "./WHODASScoring";
+import { getDass42ScoreSummary } from "./DASS42Scoring";
 import { buildMethodologyText } from "./MethodologyAggregator";
 import { PARTICIPANT_KEYS, CLINICIAN_KEYS } from "./ParticipantReportDetails";
 import { cn } from "@/lib/utils";
@@ -70,77 +74,26 @@ function EditableCell({ value, onChange, style, redText }: {
   );
 }
 
-/* ─── WHODAS 2.0 domain table helper ─── */
-const WHODAS_DOMAINS = [
-  { name: "Cognition", items: [1,2,3,4,5,6], max: 24 },
-  { name: "Mobility", items: [7,8,9,10,11], max: 20 },
-  { name: "Self-Care", items: [12,13,14], max: 12 },
-  { name: "Getting Along", items: [15,16,17,18,19,20], max: 24 },
-  { name: "Life Activities (Household)", items: [21,22,23,24], max: 16 },
-  { name: "Life Activities (Work/School)", items: [25,26,27,28], max: 16, optional: true },
-  { name: "Participation", items: [29,30,31,32,33,34,35,36], max: 32 },
-];
+/* ─── WHODAS 2.0 domain table ─────────────────────────────────────
+ * Renders a per-domain breakdown table for WHODAS 2.0 assessment results.
+ * Domain definitions, scoring math, and classification thresholds are all
+ * imported from `WHODASScoring.tsx`, the single source of truth for WHODAS.
+ * This component used to duplicate ~110 lines of scoring logic that has
+ * since been moved into the scoring component.
+ */
 
-const WHODAS_SCORE_MAP: Record<string, number> = {
-  "None": 0, "Mild": 1, "Moderate": 2, "Severe": 3, "Extreme / Cannot do": 4,
+const SEVERITY_COLORS: Record<string, string> = {
+  "No disability": "#16a34a",
+  "Mild disability": "#65a30d",
+  "Moderate disability": "#d97706",
+  "Severe disability": "#dc2626",
+  "Extreme disability": "#7f1d1d",
+  "Not assessed": "#a1a1aa",
 };
 
-function whodasClassification(pct: number): { label: string; color: string } {
-  if (pct <= 4) return { label: "None", color: "#16a34a" };
-  if (pct <= 24) return { label: "Mild", color: "#65a30d" };
-  if (pct <= 49) return { label: "Moderate", color: "#d97706" };
-  if (pct <= 95) return { label: "Severe", color: "#dc2626" };
-  return { label: "Extreme", color: "#7f1d1d" };
-}
-
-interface WhodasDomainRow {
-  name: string;
-  raw: number;
-  max: number;
-  pct: number;
-  cls: { label: string; color: string };
-  assessed: boolean;
-}
-
-function buildWhodasDomainRows(scores: Record<string, string>): WhodasDomainRow[] {
-  return WHODAS_DOMAINS.map((d) => {
-    let sum = 0;
-    let answered = 0;
-    for (const itemNum of d.items) {
-      // Try all key formats: "whodas-1", "1", "item_1", "q1"
-      const val = scores[`whodas-${itemNum}`] ?? scores[String(itemNum)] ?? scores[`item_${itemNum}`] ?? scores[`q${itemNum}`];
-      if (val !== undefined && val !== null && val !== "") {
-        // Value may be a numeric string ("3") or a label ("Severe")
-        const numeric = Number(val);
-        if (!isNaN(numeric)) {
-          sum += numeric;
-          answered++;
-        } else if (val in WHODAS_SCORE_MAP) {
-          sum += WHODAS_SCORE_MAP[val];
-          answered++;
-        }
-      }
-    }
-    const assessed = answered > 0;
-    const pct = assessed ? Math.round((sum / d.max) * 100) : 0;
-    return {
-      name: d.name,
-      raw: sum,
-      max: d.max,
-      pct,
-      cls: assessed ? whodasClassification(pct) : { label: "Not assessed", color: "#a1a1aa" },
-      assessed,
-    };
-  });
-}
-
 function WhodasDomainTable({ scores }: { scores: Record<string, string> }) {
-  const rows = buildWhodasDomainRows(scores);
-  const assessed = rows.filter(r => r.assessed);
-  const totalRaw = assessed.reduce((s, r) => s + r.raw, 0);
-  const totalMax = assessed.reduce((s, r) => s + r.max, 0);
-  const totalPct = totalMax > 0 ? Math.round((totalRaw / totalMax) * 100) : 0;
-  const totalCls = totalMax > 0 ? whodasClassification(totalPct) : { label: "Not assessed", color: "#a1a1aa" };
+  const breakdown = getWhodasDomainBreakdown(scores);
+  const totalCls = breakdown.overallClassification || "Not assessed";
 
   return (
     <div>
@@ -155,17 +108,20 @@ function WhodasDomainTable({ scores }: { scores: Record<string, string> }) {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {rows.map((r) => (
-            <TableRow key={r.name}>
+          {breakdown.rows.map((r) => (
+            <TableRow key={r.id}>
               <TableCell className="text-xs py-1.5 font-medium">{r.name}</TableCell>
               <TableCell className="text-xs py-1.5 text-right font-mono">
                 {r.assessed ? `${r.raw}/${r.max}` : "--"}
               </TableCell>
               <TableCell className="text-xs py-1.5 text-right font-mono">
-                {r.assessed ? `${r.pct}%` : "--"}
+                {r.assessed ? `${r.percent}%` : "--"}
               </TableCell>
-              <TableCell className="text-xs py-1.5 text-right font-semibold" style={{ color: r.cls.color }}>
-                {r.cls.label}
+              <TableCell
+                className="text-xs py-1.5 text-right font-semibold"
+                style={{ color: SEVERITY_COLORS[r.classification] || SEVERITY_COLORS["Not assessed"] }}
+              >
+                {r.classification.replace(" disability", "")}
               </TableCell>
             </TableRow>
           ))}
@@ -173,13 +129,16 @@ function WhodasDomainTable({ scores }: { scores: Record<string, string> }) {
           <TableRow className="border-t-2 border-border">
             <TableCell className="text-xs py-1.5 font-bold">TOTAL</TableCell>
             <TableCell className="text-xs py-1.5 text-right font-mono font-bold">
-              {totalMax > 0 ? `${totalRaw}/${totalMax}` : "--"}
+              {breakdown.maxPossible > 0 ? `${breakdown.grandTotal}/${breakdown.maxPossible}` : "--"}
             </TableCell>
             <TableCell className="text-xs py-1.5 text-right font-mono font-bold">
-              {totalMax > 0 ? `${totalPct}%` : "--"}
+              {breakdown.overallPct !== null ? `${breakdown.overallPct}%` : "--"}
             </TableCell>
-            <TableCell className="text-xs py-1.5 text-right font-bold" style={{ color: totalCls.color }}>
-              {totalCls.label}
+            <TableCell
+              className="text-xs py-1.5 text-right font-bold"
+              style={{ color: SEVERITY_COLORS[totalCls] || SEVERITY_COLORS["Not assessed"] }}
+            >
+              {totalCls.replace(" disability", "")}
             </TableCell>
           </TableRow>
         </TableBody>
@@ -188,25 +147,33 @@ function WhodasDomainTable({ scores }: { scores: Record<string, string> }) {
   );
 }
 
-/* ─── DASS-42 subscale table helper ─── */
-const DASS42_SUBSCALE_DEFS = [
-  { id: "depression", name: "Depression (D)", items: [3,5,10,13,16,17,21,24,26,31,34,37,38,42], max: 42, thresholds: [{max:9,label:"Normal",color:"#16a34a"},{max:13,label:"Mild",color:"#65a30d"},{max:20,label:"Moderate",color:"#d97706"},{max:27,label:"Severe",color:"#dc2626"},{max:999,label:"Extremely Severe",color:"#7f1d1d"}] },
-  { id: "anxiety", name: "Anxiety (A)", items: [2,4,7,9,15,19,20,23,25,28,30,36,40,41], max: 42, thresholds: [{max:7,label:"Normal",color:"#16a34a"},{max:9,label:"Mild",color:"#65a30d"},{max:14,label:"Moderate",color:"#d97706"},{max:19,label:"Severe",color:"#dc2626"},{max:999,label:"Extremely Severe",color:"#7f1d1d"}] },
-  { id: "stress", name: "Stress (S)", items: [1,6,8,11,12,14,18,22,27,29,32,33,35,39], max: 42, thresholds: [{max:14,label:"Normal",color:"#16a34a"},{max:18,label:"Mild",color:"#65a30d"},{max:25,label:"Moderate",color:"#d97706"},{max:33,label:"Severe",color:"#dc2626"},{max:999,label:"Extremely Severe",color:"#7f1d1d"}] },
-];
+/* ─── DASS-42 subscale table ─────────────────────────────────────
+ * Renders a per-subscale breakdown for DASS-42. Subscale definitions and
+ * thresholds are imported from `DASS42Scoring.tsx`, the single source of
+ * truth for DASS-42. This component used to duplicate ~50 lines of subscale
+ * definitions and threshold mapping.
+ */
+
+const DASS_SEVERITY_COLORS: Record<string, string> = {
+  "Normal": "#16a34a",
+  "Mild": "#65a30d",
+  "Moderate": "#d97706",
+  "Severe": "#dc2626",
+  "Extremely Severe": "#7f1d1d",
+  "Incomplete": "#a1a1aa",
+  "Not assessed": "#a1a1aa",
+};
 
 function Dass42DomainTable({ scores }: { scores: Record<string, string> }) {
-  const rows = DASS42_SUBSCALE_DEFS.map(sub => {
-    let sum = 0; let answered = 0;
-    for (const n of sub.items) {
-      const v = scores[String(n)];
-      if (v !== undefined && v !== "") { sum += parseInt(v) || 0; answered++; }
+  const summary = getDass42ScoreSummary(scores);
+  // The summary.rows have the format: { label: "Depression (D)", value: "12/42 — Severe" }
+  // We need to parse the value back into score / max / classification for table rendering.
+  const parsedRows = summary.rows.map((row) => {
+    const m = row.value.match(/^(\d+)\/(\d+) — (.+)$/);
+    if (m) {
+      return { name: row.label, sum: parseInt(m[1]), max: parseInt(m[2]), cls: m[3] };
     }
-    let cls = { label: "Not assessed", color: "#a1a1aa" };
-    if (answered > 0) {
-      for (const t of sub.thresholds) { if (sum <= t.max) { cls = { label: t.label, color: t.color }; break; } }
-    }
-    return { name: sub.name, sum, max: sub.items.length * 3, answered, total: sub.items.length, cls };
+    return { name: row.label, sum: 0, max: 0, cls: "Incomplete" };
   });
 
   return (
@@ -222,17 +189,20 @@ function Dass42DomainTable({ scores }: { scores: Record<string, string> }) {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {rows.map((r) => (
+          {parsedRows.map((r) => (
             <TableRow key={r.name}>
               <TableCell className="text-xs py-1.5 font-medium">{r.name}</TableCell>
               <TableCell className="text-xs py-1.5 text-right font-mono">
-                {r.answered > 0 ? r.sum : "--"}
+                {r.cls !== "Incomplete" ? r.sum : "--"}
               </TableCell>
               <TableCell className="text-xs py-1.5 text-right font-mono text-muted-foreground">
-                {r.max}
+                {r.max || "--"}
               </TableCell>
-              <TableCell className="text-xs py-1.5 text-right font-semibold" style={{ color: r.cls.color }}>
-                {r.cls.label}
+              <TableCell
+                className="text-xs py-1.5 text-right font-semibold"
+                style={{ color: DASS_SEVERITY_COLORS[r.cls] || DASS_SEVERITY_COLORS["Not assessed"] }}
+              >
+                {r.cls}
               </TableCell>
             </TableRow>
           ))}

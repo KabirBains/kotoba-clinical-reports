@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
+import type { AssessmentScoreSummary } from "@/lib/assessment-library";
 
 interface FRATScoringProps {
   scores: Record<string, string>;
@@ -106,6 +107,85 @@ function getRiskLevel(score: number) {
   if (score >= 16) return { level: "HIGH", className: "bg-red-600" };
   if (score >= 12) return { level: "MEDIUM", className: "bg-yellow-600" };
   return { level: "LOW", className: "bg-green-600" };
+}
+
+// ─── EXPORTED SCORING FUNCTION ──────────────────────────────────
+// Single source of truth for FRAT scoring including AMTS sub-tool and
+// auto-high-risk triggers. Replaces duplicated logic in ClientEditor.tsx.
+
+/**
+ * Unified score summary for the AI prompt builder.
+ * Note: PART1_ITEMS stores selections as option indexes (0-3) under keys
+ * `part1_recent_falls` etc. The prior buildScoreSummary in ClientEditor
+ * had this right, while the dead getScoreForOption code in
+ * assessment-library.ts had it wrong (text labels). This function uses
+ * the index-based approach which matches what the actual scoring component
+ * stores.
+ */
+export function getFratScoreSummary(scores: Record<string, string>): AssessmentScoreSummary {
+  const rows: { label: string; value: string }[] = [];
+  let fratTotal = 0;
+  let fratAnswered = 0;
+
+  for (const item of PART1_ITEMS) {
+    const idx = scores[`part1_${item.id}`];
+    if (idx !== undefined && idx !== "") {
+      const optIdx = parseInt(idx);
+      const opt = item.options[optIdx];
+      if (opt) {
+        fratTotal += opt.score;
+        fratAnswered++;
+        rows.push({ label: item.name, value: `${opt.text} (${opt.score})` });
+      }
+    }
+  }
+
+  // Auto-high-risk triggers override the calculated score
+  const anyAutoHigh =
+    scores["auto_functional_change"] === "true" ||
+    scores["auto_dizziness"] === "true";
+
+  let total = "";
+  let classification = "";
+  const itemsTotal = PART1_ITEMS.length; // 4
+  const isComplete = fratAnswered === itemsTotal;
+
+  if (anyAutoHigh) {
+    total = `${fratTotal}/20 (auto HIGH)`;
+    classification = "High risk (automatic trigger)";
+  } else if (isComplete) {
+    total = `${fratTotal}/20`;
+    if (fratTotal >= 16) classification = "High risk";
+    else if (fratTotal >= 12) classification = "Medium risk";
+    else classification = "Low risk";
+  } else if (fratAnswered > 0) {
+    total = `${fratTotal}/20 (${fratAnswered}/${itemsTotal} answered)`;
+    classification = "Incomplete";
+  }
+
+  // Add AMTS row if any AMTS items have been scored
+  let amtsTotal = 0;
+  let amtsAnswered = 0;
+  for (let i = 1; i <= 10; i++) {
+    const v = scores[`amts_${i}`];
+    if (v !== undefined && v !== "") {
+      amtsTotal += parseInt(v);
+      amtsAnswered++;
+    }
+  }
+  if (amtsAnswered > 0) {
+    rows.push({ label: "AMTS Score", value: `${amtsTotal}/10` });
+  }
+
+  return {
+    rows,
+    total,
+    classification,
+    isComplete,
+    itemsAnswered: fratAnswered,
+    itemsTotal,
+    scoringDirection: "FRAT: HIGHER scores = greater falls risk. Low 5-11, Medium 12-15, High 16-20. Automatic high-risk triggers (functional change, dizziness) override the calculated score.",
+  };
 }
 
 export function FRATScoring({ scores, onUpdateScores }: FRATScoringProps) {
