@@ -27,7 +27,7 @@ function textToDocxXml(text: string, fontSize: string = "20"): string {
   if (!text || text.trim() === "") {
     return '<w:p><w:pPr><w:spacing w:after="120"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="' + fontSize + '"/><w:i/><w:color w:val="9CA3AF"/></w:rPr><w:t>[Section not yet completed]</w:t></w:r></w:p>';
   }
-  const paragraphs = text.split(/\\n\\n+/).filter((p) => p.trim());
+  const paragraphs = text.split(/\n\n+/).filter((p) => p.trim());
   return paragraphs
     .map((para) => {
       const escaped = escapeXml(para.trim());
