@@ -168,8 +168,28 @@ async function loadDocs() {
   cache = { template: result.template, prompts: result.prompts, rubric: result.rubric, at: Date.now() }; return cache;
 }
 
-async function callClaude(sys: string, user: string, max: number = 3000): Promise<{ text: string; usage: any }> {
-  const res = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "Content-Type": "application/json", "x-api-key": CLAUDE_API_KEY!, "anthropic-version": "2023-06-01" }, body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: max, system: sys, messages: [{ role: "user", content: user }] }) });
+// System prompt is a structured array so we can cache the stable prefix.
+// The first block (cached) contains the ~9k tokens of reference docs and the
+// always-on rule blocks. Anthropic prompt caching reuses these tokens at ~10%
+// cost across the 5-minute TTL. The second block contains per-call dynamic
+// context (participant naming, collateral routing, generated_sections).
+type SystemBlock = { type: "text"; text: string; cache_control?: { type: "ephemeral" } };
+
+async function callClaude(sys: string | SystemBlock[], user: string, max: number = 3000): Promise<{ text: string; usage: any }> {
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": CLAUDE_API_KEY!,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: max,
+      system: sys,
+      messages: [{ role: "user", content: user }],
+    }),
+  });
   if (!res.ok) throw new Error(`Claude API error (${res.status}): ${await res.text()}`);
   const data = await res.json();
   return { text: data.content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("\n"), usage: data.usage };
@@ -239,18 +259,27 @@ serve(async (req: Request) => {
     const fullName = participant_name || "";
     const firstName = participant_first_name || (fullName ? fullName.split(" ")[0] : "");
 
-    let systemPrompt = "You are an expert clinical report writing assistant for Occupational Therapists in the Australian NDIS framework.\n\n=== DOCUMENT 1: FCA REPORT TEMPLATE (v5.1) ===\n" + docs.template + "\n\n=== DOCUMENT 2: AI PROMPT TEMPLATES (v5.3) ===\n" + docs.prompts + "\n\n=== DOCUMENT 3: QUALITY RUBRIC (v5.3) ===\n" + docs.rubric + "\n\nYOUR ROLE: Transform clinical observations into NDIS-quality prose. Do NOT add information not provided. Plain text only. No preamble.";
+    // ── CACHED PREFIX ──────────────────────────────────────────
+    // Stable across calls within the 5-minute prompt cache TTL.
+    // Includes role + 3 reference docs + always-on rule blocks.
+    // SUB_AREA_RULES is included unconditionally (cheap to ship, harmless
+    // for non-domain sections, and critical that it stays cacheable).
+    const cachedPrefix =
+      "You are an expert clinical report writing assistant for Occupational Therapists in the Australian NDIS framework.\n\n" +
+      "=== DOCUMENT 1: FCA REPORT TEMPLATE (v5.1) ===\n" + docs.template + "\n\n" +
+      "=== DOCUMENT 2: AI PROMPT TEMPLATES (v5.3) ===\n" + docs.prompts + "\n\n" +
+      "=== DOCUMENT 3: QUALITY RUBRIC (v5.3) ===\n" + docs.rubric + "\n\n" +
+      "YOUR ROLE: Transform clinical observations into NDIS-quality prose. Do NOT add information not provided. Plain text only. No preamble." +
+      ANTI_REDUNDANCY +
+      ASSESSMENT_SCORING_RULES +
+      SUB_AREA_RULES;
+
+    // ── DYNAMIC SUFFIX ─────────────────────────────────────────
+    // Changes per call. Participant naming, collateral routing, lookback.
+    let dynamicSuffix = "";
 
     if (fullName) {
-      systemPrompt += `\n\nPARTICIPANT: ${fullName} (use '${firstName}' after formal introduction).\nNEVER use full name after first mention. NEVER use another person's name in participant-referencing position.\n`;
-    }
-
-    systemPrompt += ANTI_REDUNDANCY;
-    systemPrompt += ASSESSMENT_SCORING_RULES;
-
-    // Add sub-area rules for domain sections
-    if (section_name?.startsWith("section13") || section_name?.startsWith("section14")) {
-      systemPrompt += SUB_AREA_RULES;
+      dynamicSuffix += `\n\nPARTICIPANT: ${fullName} (use '${firstName}' after formal introduction).\nNEVER use full name after first mention. NEVER use another person's name in participant-referencing position.\n`;
     }
 
     // === COLLATERAL ROUTING ===
@@ -263,27 +292,27 @@ serve(async (req: Request) => {
       if (domain_hint) domainCollateral = extractCollateralForDomain(collateral_interviews, domain_hint);
 
       if (section_name === "section6" || section_name === "section6_collateral") {
-        systemPrompt += "\n\n=== FULL COLLATERAL — GENERATE SECTION 6 ===\n" + collateralContext;
+        dynamicSuffix += "\n\n=== FULL COLLATERAL — GENERATE SECTION 6 ===\n" + collateralContext;
       } else if (section_name === "section2") {
-        if (safetySummary) systemPrompt += "\n\n=== SAFETY COLLATERAL (brief, for background) ===\n" + safetySummary;
-        if (collateralContext) systemPrompt += "\n\n=== COLLATERAL CONTEXT ===\n" + collateralContext;
+        if (safetySummary) dynamicSuffix += "\n\n=== SAFETY COLLATERAL (brief, for background) ===\n" + safetySummary;
+        if (collateralContext) dynamicSuffix += "\n\n=== COLLATERAL CONTEXT ===\n" + collateralContext;
       } else if (section_name === "section12" || section_name?.startsWith("section12_")) {
-        if (safetySummary) systemPrompt += "\n\n=== SAFETY-CRITICAL — DOCUMENT FULLY HERE ===\n" + safetySummary;
+        if (safetySummary) dynamicSuffix += "\n\n=== SAFETY-CRITICAL — DOCUMENT FULLY HERE ===\n" + safetySummary;
         const rc = extractCollateralForDomain(collateral_interviews, "Risk");
-        if (rc) systemPrompt += "\n\n=== RISK COLLATERAL ===\n" + rc;
+        if (rc) dynamicSuffix += "\n\n=== RISK COLLATERAL ===\n" + rc;
       } else if (section_name?.startsWith("section13")) {
-        if (domainCollateral) systemPrompt += "\n\n=== DOMAIN COLLATERAL (use once, attribute) ===\n" + domainCollateral;
+        if (domainCollateral) dynamicSuffix += "\n\n=== DOMAIN COLLATERAL (use once, attribute) ===\n" + domainCollateral;
         if (hasSafetyAlerts && (domain_hint?.toLowerCase().includes("social") || domain_hint?.toLowerCase().includes("behaviour"))) {
-          systemPrompt += "\nSafety info is in Section 12. Cross-reference only.";
+          dynamicSuffix += "\nSafety info is in Section 12. Cross-reference only.";
         }
       } else if (["section16","section17","section18"].includes(section_name || "")) {
-        if (safetySummary) systemPrompt += "\n\n=== SAFETY CONTEXT (cross-ref S12) ===\n" + safetySummary;
-        if (collateralContext && section_name === "section17") systemPrompt += "\n\n=== COLLATERAL FOR RECS ===\n" + collateralContext;
+        if (safetySummary) dynamicSuffix += "\n\n=== SAFETY CONTEXT (cross-ref S12) ===\n" + safetySummary;
+        if (collateralContext && section_name === "section17") dynamicSuffix += "\n\n=== COLLATERAL FOR RECS ===\n" + collateralContext;
       } else if (section_name === "section8" || section_name === "section9") {
         const cc = extractCollateralForDomain(collateral_interviews, "Carer");
-        if (cc) systemPrompt += "\n\n=== CARER COLLATERAL ===\n" + cc;
+        if (cc) dynamicSuffix += "\n\n=== CARER COLLATERAL ===\n" + cc;
       } else if (collateralContext) {
-        systemPrompt += "\n\n=== COLLATERAL AVAILABLE ===\n" + collateralContext;
+        dynamicSuffix += "\n\n=== COLLATERAL AVAILABLE ===\n" + collateralContext;
       }
     }
 
@@ -291,10 +320,20 @@ serve(async (req: Request) => {
     if (generated_sections && typeof generated_sections === "object") {
       let lb = "\n\n=== PREVIOUS SECTIONS (cross-ref only) ===";
       for (const [k, v] of Object.entries(generated_sections)) { if (v && (v as string).trim()) lb += `\n--- ${k} ---\n${v}\n`; }
-      systemPrompt += lb;
+      dynamicSuffix += lb;
     }
 
-    const result = await callClaude(systemPrompt, prompt, max_tokens);
+    // Build the structured system prompt: cached prefix + dynamic suffix.
+    // The cached prefix is reused across calls within the 5-min TTL at ~10%
+    // input cost. The dynamic suffix is sent fresh each call.
+    const systemBlocks: SystemBlock[] = [
+      { type: "text", text: cachedPrefix, cache_control: { type: "ephemeral" } },
+    ];
+    if (dynamicSuffix) {
+      systemBlocks.push({ type: "text", text: dynamicSuffix });
+    }
+
+    const result = await callClaude(systemBlocks, prompt, max_tokens);
 
     // === POST-PROCESSING: Parse sub-areas if present ===
     let parsedSubAreas: Record<string, string> | null = null;
