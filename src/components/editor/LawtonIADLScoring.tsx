@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
+import type { AssessmentScoreSummary } from "@/lib/assessment-library";
 
 interface LawtonIADLScoringProps {
   scores: Record<string, string>;
@@ -88,6 +89,58 @@ function getFunctionLevel(score: number, max: number) {
   if (pct >= 25) return { label: "Moderately Dependent", className: "text-yellow-600" };
   if (pct > 0) return { label: "Severely Dependent", className: "text-orange-600" };
   return { label: "Totally Dependent", className: "text-red-600" };
+}
+
+// ─── EXPORTED SCORING FUNCTION ──────────────────────────────────
+// Single source of truth for Lawton IADL scoring including gender-aware
+// domain filtering. Replaces duplicated logic in ClientEditor.tsx.
+
+/**
+ * Unified score summary for the AI prompt builder.
+ * Lawton IADL is gender-aware: by default the male variant excludes
+ * food preparation, housekeeping, and laundry domains (5 domains).
+ * The full version (8 domains) applies for female and unspecified.
+ */
+export function getLawtonScoreSummary(scores: Record<string, string>): AssessmentScoreSummary {
+  const gender = scores["__gender"] || "all";
+  const activeDomains = gender === "male" ? DOMAINS.filter((d) => d.maleIncluded) : DOMAINS;
+
+  const rows: { label: string; value: string }[] = [];
+  let sum = 0;
+  let answered = 0;
+
+  for (const domain of activeDomains) {
+    const val = scores[domain.id];
+    if (val !== undefined && val !== "") {
+      const optIdx = parseInt(val);
+      const opt = domain.options[optIdx];
+      const score = opt?.score ?? 0;
+      sum += score;
+      answered++;
+      rows.push({ label: domain.name, value: score === 1 ? "Independent" : "Dependent" });
+    }
+  }
+
+  const itemsTotal = activeDomains.length;
+  const isComplete = answered === itemsTotal;
+  const total = answered > 0 ? `${sum}/${itemsTotal}` : "";
+
+  let classification = "";
+  if (answered > 0) {
+    if (sum === itemsTotal) classification = "High function — independent";
+    else if (sum >= 5) classification = "Moderate function — some assistance needed";
+    else classification = "Low function — significant assistance needed";
+  }
+
+  return {
+    rows,
+    total,
+    classification,
+    isComplete,
+    itemsAnswered: answered,
+    itemsTotal,
+    scoringDirection: "Lawton IADL: HIGHER scores = BETTER function. 0 = fully dependent, 8 (or 5 for the male variant) = fully independent. Each domain scores 0 or 1.",
+  };
 }
 
 export function LawtonIADLScoring({ scores, onUpdateScores }: LawtonIADLScoringProps) {

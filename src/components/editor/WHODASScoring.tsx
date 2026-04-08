@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { cn } from "@/lib/utils";
+import type { AssessmentScoreSummary } from "@/lib/assessment-library";
 
 const DOMAINS = [
   {
@@ -121,6 +122,129 @@ const scoreButtonStyles: Record<number, { base: string; active: string }> = {
   3: { base: "bg-red-50 border-red-200 dark:bg-red-950/20 dark:border-red-800", active: "bg-red-600 border-red-600 text-white" },
   4: { base: "bg-purple-50 border-purple-200 dark:bg-purple-950/20 dark:border-purple-800", active: "bg-purple-600 border-purple-600 text-white" },
 };
+
+// ─── EXPORTED SCORING DATA ──────────────────────────────────────
+// Single source of truth for WHODAS 2.0 domain definitions and scoring.
+// Consumed by ReportMode.tsx for rendering and by the assessment-scoring
+// dispatcher for the AI generation prompt.
+
+export const WHODAS_DOMAIN_DEFS = DOMAINS.map((d) => ({
+  id: d.id,
+  name: d.name.replace(/^Domain \d+[a-z]? — /, ""),
+  fullName: d.name,
+  items: d.items.map((i) => i.num),
+  optional: !!(d as { optional?: boolean }).optional,
+}));
+
+/**
+ * Read a single WHODAS item score from the scores object. Tolerates legacy
+ * key formats so historical data still scores correctly.
+ */
+export function readWhodasItemScore(scores: Record<string, string>, itemNum: number): number | null {
+  const candidates = [
+    scores[`whodas-${itemNum}`],
+    scores[`whodas_${itemNum}`], // legacy underscore format
+    scores[String(itemNum)],
+    scores[`item_${itemNum}`],
+    scores[`q${itemNum}`],
+  ];
+  for (const v of candidates) {
+    if (v === undefined || v === null || v === "") continue;
+    // Numeric string ("0" through "4")
+    const n = Number(v);
+    if (!isNaN(n)) return n;
+    // Text label fallback ("None", "Mild", etc.)
+    const labelMap: Record<string, number> = {
+      "None": 0, "Mild": 1, "Moderate": 2, "Severe": 3, "Extreme / Cannot do": 4, "Extreme": 4,
+    };
+    if (v in labelMap) return labelMap[v];
+  }
+  return null;
+}
+
+function whodasClassification(percent: number): string {
+  if (percent <= 4) return "No disability";
+  if (percent <= 24) return "Mild disability";
+  if (percent <= 49) return "Moderate disability";
+  if (percent <= 95) return "Severe disability";
+  return "Extreme disability";
+}
+
+/**
+ * Compute the per-domain breakdown for WHODAS 2.0. Returns one row per
+ * domain that has at least one answered item, plus aggregate totals.
+ * Used by both ReportMode rendering and the AI prompt builder.
+ */
+export function getWhodasDomainBreakdown(scores: Record<string, string>): {
+  rows: { id: string; name: string; raw: number; max: number; percent: number; classification: string; assessed: boolean }[];
+  grandTotal: number;
+  maxPossible: number;
+  overallPct: number | null;
+  overallClassification: string;
+} {
+  const rows = WHODAS_DOMAIN_DEFS.map((d) => {
+    let sum = 0;
+    let answered = 0;
+    for (const itemNum of d.items) {
+      const v = readWhodasItemScore(scores, itemNum);
+      if (v !== null) { sum += v; answered++; }
+    }
+    const max = d.items.length * 4;
+    const assessed = answered > 0;
+    const percent = assessed ? Math.round((sum / max) * 100) : 0;
+    return {
+      id: d.id,
+      name: d.name,
+      raw: sum,
+      max,
+      percent,
+      classification: assessed ? whodasClassification(percent) : "Not assessed",
+      assessed,
+    };
+  });
+  const assessedRows = rows.filter((r) => r.assessed);
+  const grandTotal = assessedRows.reduce((s, r) => s + r.raw, 0);
+  const maxPossible = assessedRows.reduce((s, r) => s + r.max, 0);
+  const overallPct = maxPossible > 0 ? Math.round((grandTotal / maxPossible) * 100) : null;
+  const overallClassification = overallPct !== null ? whodasClassification(overallPct) : "";
+  return { rows, grandTotal, maxPossible, overallPct, overallClassification };
+}
+
+/**
+ * Unified score summary for the AI prompt builder and report assembler.
+ * Consumed by the dispatcher in src/lib/assessment-scoring.ts.
+ */
+export function getWhodasScoreSummary(scores: Record<string, string>): AssessmentScoreSummary {
+  const breakdown = getWhodasDomainBreakdown(scores);
+  const itemsTotal = WHODAS_DOMAIN_DEFS.reduce((s, d) => s + d.items.length, 0);
+  // Items 25-28 are optional (work/school) — only count toward total if any answered
+  const workItems = [25, 26, 27, 28];
+  const workAnswered = workItems.some((n) => readWhodasItemScore(scores, n) !== null);
+  const effectiveItemsTotal = workAnswered ? itemsTotal : itemsTotal - workItems.length;
+  let itemsAnswered = 0;
+  for (let n = 1; n <= itemsTotal; n++) {
+    if (readWhodasItemScore(scores, n) !== null) itemsAnswered++;
+  }
+  const isComplete = itemsAnswered >= effectiveItemsTotal;
+
+  const rows = breakdown.rows
+    .filter((r) => r.assessed)
+    .map((r) => ({ label: r.name, value: `${r.raw}/${r.max} (${r.percent}%)` }));
+
+  const total = breakdown.maxPossible > 0
+    ? `${breakdown.grandTotal}/${breakdown.maxPossible} (${breakdown.overallPct}%)`
+    : "";
+
+  return {
+    rows,
+    total,
+    classification: breakdown.overallClassification,
+    isComplete,
+    itemsAnswered,
+    itemsTotal: effectiveItemsTotal,
+    scoringDirection: "WHODAS 2.0: HIGHER scores = WORSE disability. 0% = no disability, 100% = extreme disability across all assessed domains.",
+  };
+}
 
 interface WHODASScoringProps {
   scores: Record<string, string>;

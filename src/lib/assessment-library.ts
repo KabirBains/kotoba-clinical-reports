@@ -33,6 +33,50 @@ export interface AssessmentInstance {
   customItems?: { id: string; label: string; value: string }[];
 }
 
+/**
+ * Unified score summary returned by every assessment scoring component.
+ *
+ * Each scoring component (WHODASScoring, LSP16Scoring, etc.) exports a
+ * `getXxxScoreSummary(scores)` function that returns this shape. The
+ * dispatcher in `assessment-scoring.ts` calls the right one based on the
+ * AssessmentInstance.definitionId.
+ *
+ * Replaces the old per-tool buildScoreSummary logic that was duplicated in
+ * ClientEditor.tsx and the WHODAS_DOMAINS / Dass42_SUBSCALE_DEFS constants
+ * that were duplicated in ReportMode.tsx.
+ */
+export interface AssessmentScoreSummary {
+  /** Per-domain or per-subscale rows for table rendering. */
+  rows: { label: string; value: string }[];
+  /** Total score string e.g. "78/144 (54%)" or "Level 5" or "" if not yet calculable. */
+  total: string;
+  /** Classification string e.g. "Severe disability" or "High risk" or "" if not yet calculable. */
+  classification: string;
+  /** True only when all expected items have been scored. */
+  isComplete: boolean;
+  /** Number of items the participant has answered so far. */
+  itemsAnswered: number;
+  /** Total number of items expected for this tool. */
+  itemsTotal: number;
+  /** Critical scoring direction warning, e.g. "Higher = WORSE functioning". */
+  scoringDirection: string;
+}
+
+/**
+ * Empty score summary returned when a tool has no scoring data yet, or when
+ * the dispatcher does not recognise the definitionId. Callers can rely on
+ * the shape being non-null.
+ */
+export const EMPTY_SCORE_SUMMARY: AssessmentScoreSummary = {
+  rows: [],
+  total: "",
+  classification: "",
+  isComplete: false,
+  itemsAnswered: 0,
+  itemsTotal: 0,
+  scoringDirection: "",
+};
+
 const WHODAS_OPTIONS = ["None", "Mild", "Moderate", "Severe", "Extreme / Cannot do"];
 const WHODAS_SCORE_MAP: Record<string, number> = {
   "None": 0, "Mild": 1, "Moderate": 2, "Severe": 3, "Extreme / Cannot do": 4,

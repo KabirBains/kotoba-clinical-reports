@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import type { AssessmentScoreSummary } from "@/lib/assessment-library";
 
 interface CANSScoringProps {
   scores: Record<string, string>;
@@ -67,6 +68,77 @@ const CANS_LEVELS = [
   { level: "1", label: "Can live alone, but needs intermittent support (less than weekly)" },
   { level: "0", label: "Does not need support — can live in the community totally independently" },
 ];
+
+// ─── EXPORTED SCORING FUNCTION ──────────────────────────────────
+// Single source of truth for CANS scoring. Replaces duplicated logic in
+// ClientEditor.tsx buildScoreSummary.
+
+const CANS_LEVEL_DESCRIPTIONS: Record<string, string> = {
+  "7": "Cannot be left alone — 24hr support",
+  "6": "Can be left alone a few hours — 20–23hr support",
+  "5": "Can be left alone part of day, not overnight — 12–19hr",
+  "4.3": "Up to 11hr (Group A)",
+  "4.2": "Up to 11hr (Group B)",
+  "4.1": "Up to 11hr (Group C)",
+  "3": "Needs support a few days a week",
+  "2": "Needs support at least once a week",
+  "1": "Needs intermittent support (less than weekly)",
+  "0": "No support needed",
+};
+
+/**
+ * Unified score summary for the AI prompt builder.
+ */
+export function getCansScoreSummary(scores: Record<string, string>): AssessmentScoreSummary {
+  const rows: { label: string; value: string }[] = [];
+  let totalYes = 0;
+  let totalAnswered = 0;
+  let highestGroup: string | null = null;
+
+  for (const g of GROUPS) {
+    let groupYes = 0;
+    let groupAnswered = 0;
+    for (const item of g.items) {
+      const v = scores[String(item.num)];
+      if (v === "true") {
+        groupYes++;
+        groupAnswered++;
+      } else if (v === "false") {
+        groupAnswered++;
+      }
+    }
+    totalYes += groupYes;
+    totalAnswered += groupAnswered;
+    if (groupYes > 0 && !highestGroup) highestGroup = g.id;
+    rows.push({ label: g.name, value: `${groupYes} needs identified` });
+  }
+
+  const cansLevel = scores["__cans_level"] || null;
+  let total = "";
+  let classification = "";
+
+  if (cansLevel) {
+    total = `Level ${cansLevel}`;
+    classification = CANS_LEVEL_DESCRIPTIONS[cansLevel] || `Level ${cansLevel}`;
+  } else if (highestGroup) {
+    total = `${totalYes} needs identified`;
+    classification = `Highest group: ${highestGroup} (level not set)`;
+  } else if (totalAnswered === 28) {
+    total = "0 needs identified";
+    classification = "No support needed (Level 0)";
+  }
+
+  const itemsTotal = 28;
+  return {
+    rows,
+    total,
+    classification,
+    isComplete: totalAnswered === itemsTotal,
+    itemsAnswered: totalAnswered,
+    itemsTotal,
+    scoringDirection: "CANS: HIGHER level (0–7) = MORE care needs. Level is determined by the highest group of need endorsed AND how long the person can be safely left alone. Level must be set explicitly via the level selector.",
+  };
+}
 
 export function CANSScoring({ scores, onUpdateScores }: CANSScoringProps) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});

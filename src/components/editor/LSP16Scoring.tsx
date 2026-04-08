@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import type { AssessmentScoreSummary } from "@/lib/assessment-library";
 
 /*
   Abbreviated Life Skills Profile (LSP-16)
@@ -92,49 +93,81 @@ function getSubscaleInterpretation(subKey: string, score: number, max: number) {
   return { direction, meaning, severity: severity.label, percent };
 }
 
-// Export structured data with embedded interpretation for AI consumption
-export function getLSP16ExportData(scores: Record<string, string>) {
-  const subscaleResults: Record<string, { sum: number; answered: number; max: number; percent: number | null }> = {};
-  for (const [key, sub] of Object.entries(SUBSCALES)) {
-    const answered = sub.items.filter(n => scores[String(n)] !== undefined && scores[String(n)] !== "").length;
-    const sum = sub.items.reduce((acc, n) => { const v = scores[String(n)]; return acc + (v !== undefined && v !== "" ? parseInt(v) : 0); }, 0);
-    const percent = answered > 0 ? (sum / sub.max) * 100 : null;
-    subscaleResults[key] = { sum, answered, max: sub.max, percent };
-  }
+// Note: the old getLSP16ExportData function was removed during the
+// assessment-scoring single-source-of-truth refactor. It was unused
+// (no consumers in the codebase) and duplicated logic that now lives
+// in getLsp16ScoreSummary below. If you need the rich interpretation
+// strings it used to produce, regenerate them in the AI prompt builder
+// using the data from getLsp16ScoreSummary().
 
-  let totalSum = 0; let totalAnswered = 0;
+// ─── EXPORTED SCORING DATA ──────────────────────────────────────
+// Single source of truth for LSP-16 subscale definitions and scoring.
+// Consumed by the assessment-scoring dispatcher for the AI generation prompt.
+
+export const LSP16_SUBSCALE_DEFS = Object.entries(SUBSCALES).map(([id, sub]) => ({
+  id,
+  name: sub.name.replace(/^[A-D]\.\s*/, ""),
+  fullName: sub.name,
+  items: sub.items,
+  max: sub.max,
+}));
+
+function lsp16OverallClassification(percent: number): string {
+  if (percent === 0) return "No disability";
+  if (percent <= 25) return "Mild disability";
+  if (percent <= 50) return "Moderate disability";
+  if (percent <= 75) return "Severe disability";
+  return "Extreme disability";
+}
+
+/**
+ * Unified score summary for the AI prompt builder. Replaces the duplicated
+ * LSP-16 scoring logic that was inlined in ClientEditor.tsx buildScoreSummary.
+ */
+export function getLsp16ScoreSummary(scores: Record<string, string>): AssessmentScoreSummary {
+  let totalSum = 0;
+  let totalAnswered = 0;
   for (let i = 1; i <= 16; i++) {
     const val = scores[String(i)];
-    if (val !== undefined && val !== "") { totalSum += parseInt(val); totalAnswered++; }
-  }
-  const totalPercent = totalAnswered > 0 ? (totalSum / 48) * 100 : null;
-  const totalSeverity = totalPercent !== null ? getSeverityLabel(totalPercent) : null;
-
-  const exportData: Record<string, any> = {
-    tool: "LSP-16",
-    toolFullName: "Abbreviated Life Skills Profile — 16 Items",
-    scoringDirection: "ALL SUBSCALES: Higher scores = GREATER disability = WORSE functioning. A score of 0 = no disability. A score at maximum = extreme disability. Do NOT interpret high scores as strengths.",
-    total: totalSeverity ? {
-      score: totalSum, max: 48, percent: totalPercent!.toFixed(1), severity: totalSeverity.label,
-      interpretation: `Total score ${totalSum}/48 (${totalPercent!.toFixed(1)}%) indicates ${totalSeverity.label.toLowerCase()} overall disability. Higher total = worse overall functioning.`,
-    } : null,
-    subscales: {} as Record<string, any>,
-    itemScores: scores,
-  };
-
-  for (const [key, sub] of Object.entries(SUBSCALES)) {
-    const r = subscaleResults[key];
-    if (r && r.answered > 0) {
-      const interp = getSubscaleInterpretation(key, r.sum, r.max);
-      exportData.subscales[key] = {
-        name: sub.name.replace(/^[A-D]\.\s*/, ""),
-        score: r.sum, max: r.max, percent: r.percent!.toFixed(1),
-        severity: interp.severity, scoringDirection: interp.direction,
-        interpretation: interp.meaning, domain: sub.domain,
-      };
+    if (val !== undefined && val !== "") {
+      totalSum += parseInt(val);
+      totalAnswered++;
     }
   }
-  return exportData;
+  const itemsTotal = 16;
+  const isComplete = totalAnswered === itemsTotal;
+  const percent = totalAnswered > 0 ? (totalSum / 48) * 100 : 0;
+
+  const total = totalAnswered > 0 ? `${totalSum}/48 (${percent.toFixed(1)}%)` : "";
+  const classification = totalAnswered > 0
+    ? (isComplete ? lsp16OverallClassification(percent) : `Incomplete (${totalAnswered}/${itemsTotal})`)
+    : "";
+
+  const rows: { label: string; value: string }[] = [];
+  for (const sub of LSP16_SUBSCALE_DEFS) {
+    let subSum = 0;
+    let subAnswered = 0;
+    for (const n of sub.items) {
+      const v = scores[String(n)];
+      if (v !== undefined && v !== "") {
+        subSum += parseInt(v);
+        subAnswered++;
+      }
+    }
+    if (subAnswered === 0) continue;
+    const subPct = (subSum / sub.max) * 100;
+    rows.push({ label: sub.name, value: `${subSum}/${sub.max} (${subPct.toFixed(1)}%)` });
+  }
+
+  return {
+    rows,
+    total,
+    classification,
+    isComplete,
+    itemsAnswered: totalAnswered,
+    itemsTotal,
+    scoringDirection: "LSP-16: ALL subscales — HIGHER scores = WORSE functioning. 0/48 = no disability, 48/48 = extreme disability. Maximum withdrawal score (12/12) means SEVERE social withdrawal, NOT a strength. Self-care 15/15 = EXTREME self-care deficits.",
+  };
 }
 
 export function getLSP16Summary(scores: Record<string, string>) {

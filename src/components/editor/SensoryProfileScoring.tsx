@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import type { AssessmentScoreSummary } from "@/lib/assessment-library";
 
 interface SensoryProfileScoringProps {
   scores: Record<string, string>;
@@ -136,6 +137,55 @@ function getClassification(score: number, quadrantKey: string, ageGroup: string)
     if (range && score >= range[0] && score <= range[1]) return cl;
   }
   return null;
+}
+
+// ─── EXPORTED SCORING FUNCTION ──────────────────────────────────
+// Single source of truth for Sensory Profile scoring including age-normed
+// quadrant classifications. Replaces duplicated logic in ClientEditor.tsx.
+
+/**
+ * Unified score summary for the AI prompt builder.
+ * The Sensory Profile uses age-normed bands. The age group is read from
+ * the scores object via the magic key `__age_group` (set via the UI).
+ * Defaults to "18-64" if not set.
+ */
+export function getSensoryProfileScoreSummary(scores: Record<string, string>): AssessmentScoreSummary {
+  const ageGroup = scores["__age_group"] || "18-64";
+  const rows: { label: string; value: string }[] = [];
+  let totalAnswered = 0;
+  const itemsTotal = 60;
+
+  for (const [quadrantKey, q] of Object.entries(QUADRANTS)) {
+    const answered = q.items.filter((n) => {
+      const v = scores[String(n)];
+      return v !== undefined && v !== "";
+    }).length;
+    const sum = q.items.reduce((acc, n) => {
+      const v = scores[String(n)];
+      return acc + (v !== undefined && v !== "" ? parseInt(v) : 0);
+    }, 0);
+    totalAnswered += answered;
+
+    let classLabel = "Incomplete";
+    if (answered === q.items.length) {
+      const cl = getClassification(sum, quadrantKey, ageGroup);
+      if (cl) classLabel = cl.label;
+    }
+    rows.push({ label: q.name, value: `${sum}/75 — ${classLabel}` });
+  }
+
+  const total = `${totalAnswered}/${itemsTotal} items scored`;
+  const isComplete = totalAnswered === itemsTotal;
+
+  return {
+    rows,
+    total,
+    classification: isComplete ? "See quadrant breakdown" : `Incomplete (${totalAnswered}/${itemsTotal})`,
+    isComplete,
+    itemsAnswered: totalAnswered,
+    itemsTotal,
+    scoringDirection: "Adolescent/Adult Sensory Profile: Quadrant scores are interpreted using age-normed bands (Much Less / Less / Similar / More / Much More than Most People). Higher scores in 'Sensitivity' and 'Avoiding' quadrants indicate greater sensory reactivity. Age group: " + ageGroup,
+  };
 }
 
 const SCORE_OPTIONS = [
