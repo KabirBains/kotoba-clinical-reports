@@ -180,10 +180,10 @@ Return the quality scorecard as valid JSON only.`;
       JSON.stringify({ success: true, scorecard }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
-  } catch (err) {
+  } catch (err: unknown) {
     console.error("review-report error:", err);
     return new Response(
-      JSON.stringify({ success: false, error: err.message || "Unknown error" }),
+      JSON.stringify({ success: false, error: (err as Error).message || "Unknown error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
