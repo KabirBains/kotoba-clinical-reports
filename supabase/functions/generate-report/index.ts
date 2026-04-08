@@ -262,6 +262,93 @@ Zarit: HIGHER = GREATER carer burden (0-88).
 Vineland-3: LOWER = WORSE.
 `;
 
+// ── BANNED PHRASE DETECTION ────────────────────────────────────
+// The v5.3 prompt templates and v5.2 rubric (criterion B9) define a list
+// of banned stock phrases that may appear at most once per full report.
+// The model is instructed to avoid these in the system prompt, but
+// compliance is imperfect. This post-processing layer detects banned-phrase
+// usage and surfaces it in the response so the frontend can either
+// re-generate or flag for clinician review.
+//
+// Each entry is { regex, label, max_occurrences }. Some banned phrases are
+// permitted once per report (max_occurrences = 1) — the per-call detector
+// flags any usage in a single section, and the orchestrator can compare
+// across sections to enforce the per-report limit.
+type BannedPhraseRule = {
+  regex: RegExp;
+  label: string;
+  replacement_hint: string;
+};
+
+const BANNED_PHRASES: BannedPhraseRule[] = [
+  {
+    regex: /\bthese (challenges|limitations|deficits)\b/gi,
+    label: "these challenges/limitations/deficits",
+    replacement_hint: "Name the specific issue (e.g., 'these mobility limitations', 'these cognitive deficits').",
+  },
+  {
+    regex: /\bsignificantly (impacts?|affects?)\b/gi,
+    label: "significantly impacts/affects",
+    replacement_hint: "Use 'prevents', 'eliminates capacity to', or a specific causal verb.",
+  },
+  {
+    regex: /\bfunctional decline\b/gi,
+    label: "functional decline",
+    replacement_hint: "Name the specific domain: 'deterioration in mobility', 'deterioration in self-care'.",
+  },
+  {
+    regex: /\bsocial isolation\b/gi,
+    label: "social isolation",
+    replacement_hint: "After first use, alternate with 'withdrawal from community life', 'reduced social contact', or domain-specific framing.",
+  },
+  {
+    regex: /\bmeaningful activities\b/gi,
+    label: "meaningful activities",
+    replacement_hint: "Name the actual activities the participant values.",
+  },
+  {
+    regex: /\bremains? at high risk\b/gi,
+    label: "remains at high risk",
+    replacement_hint: "Use 'faces [specific consequence]' (e.g., 'faces tenancy loss', 'faces deterioration in mental health').",
+  },
+  {
+    regex: /\bcapacity[- ]building interventions?\b/gi,
+    label: "capacity-building interventions",
+    replacement_hint: "Name the specific intervention (e.g., 'occupational therapy intervention', 'AAC training').",
+  },
+  {
+    regex: /\bdue to (his|her|their) disability\b/gi,
+    label: "due to his/her/their disability",
+    replacement_hint: "Use 'secondary to [named diagnosis]' (e.g., 'secondary to schizophrenia').",
+  },
+];
+
+type BannedPhraseHit = {
+  label: string;
+  matched_text: string;
+  count: number;
+  replacement_hint: string;
+};
+
+function detectBannedPhrases(text: string): BannedPhraseHit[] {
+  if (!text || typeof text !== "string") return [];
+  const hits: BannedPhraseHit[] = [];
+  for (const rule of BANNED_PHRASES) {
+    // Reset regex state in case the regex object is shared.
+    rule.regex.lastIndex = 0;
+    const matches = text.match(rule.regex);
+    if (matches && matches.length > 0) {
+      hits.push({
+        label: rule.label,
+        matched_text: matches[0],
+        count: matches.length,
+        replacement_hint: rule.replacement_hint,
+      });
+    }
+  }
+  return hits;
+}
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
@@ -423,6 +510,18 @@ serve(async (req: Request) => {
       }
     }
 
+    // === POST-PROCESSING: Detect banned phrases ===
+    // The v5.3 prompt rules and v5.2 rubric (B9) define banned stock phrases
+    // that should appear at most once per full report. This per-call check
+    // surfaces any banned-phrase usage in the response so the orchestrator
+    // can either re-generate with stricter instructions or flag the section
+    // for clinician review.
+    //
+    // The check is intentionally non-blocking: we always return the
+    // generated text, even if it contains banned phrases. The frontend
+    // decides what to do with the warnings.
+    const bannedPhraseHits = detectBannedPhrases(result.text);
+
     return new Response(JSON.stringify({
       success: true,
       text: result.text,
@@ -432,6 +531,8 @@ serve(async (req: Request) => {
       has_collateral_context: !!collateralContext,
       has_domain_collateral: !!domainCollateral,
       has_safety_alerts: hasSafetyAlerts,
+      banned_phrase_hits: bannedPhraseHits,
+      banned_phrase_count: bannedPhraseHits.reduce((acc, h) => acc + h.count, 0),
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e: unknown) {
     return new Response(JSON.stringify({ success: false, error: (e as Error).message || "Internal error" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
