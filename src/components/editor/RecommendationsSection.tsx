@@ -37,7 +37,6 @@ export function RecommendationsSection({
     catColor: string,
     tasks: string[],
     outcomes: string[],
-    consequence: string,
     sections: string[],
     isCapital?: boolean,
     isConsumable?: boolean
@@ -56,7 +55,14 @@ export function RecommendationsSection({
       customTask: "",
       justification: "",
       outcomes: [...outcomes],
-      consequence,
+      // Consequence starts BLANK. The clinician fills it in (with the
+      // help of the placeholder hint shown in RecommendationCard) or the
+      // AI generation pipeline writes a participant-specific consequence
+      // at report time. We deliberately do NOT seed this with the
+      // exampleConsequenceTemplate from the library, because that would
+      // become generic boilerplate copied verbatim into reports — which
+      // violates rubric criterion B11 (consequence specificity).
+      consequence: "",
       linkedSections: [...sections],
       s34Justification: "",
       estimatedCost: "",
@@ -252,7 +258,6 @@ export function RecommendationsSection({
                             cat.color,
                             item.tasks,
                             item.outcomes,
-                            item.consequence,
                             item.sections,
                             item.isCapital,
                             item.isConsumable

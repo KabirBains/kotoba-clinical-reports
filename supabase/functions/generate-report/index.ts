@@ -597,6 +597,30 @@ serve(async (req: Request) => {
       }
     }
 
+    // === RECOMMENDATIONS-SPECIFIC: PARTICIPANT-SPECIFIC CONSEQUENCE RULE ===
+    // When generating Section 17 (Recommendations) narratives, the model
+    // must produce a participant-specific consequence statement for every
+    // recommendation. Generic phrasing ("functional decline", "social
+    // isolation", "deterioration in daily functioning") is forbidden by
+    // rubric criterion B11 (consequence specificity).
+    //
+    // This directive runs regardless of whether collateral_interviews are
+    // present. It catches the case where the recommendations builder
+    // produces a recommendation with a blank consequence field (the new
+    // default after the participant-specific consequences refactor) and
+    // ensures the model derives the consequence from the cross-section
+    // lookback rather than falling back to boilerplate.
+    if (section_name === "section17") {
+      dynamicSuffix += "\n\n=== CONSEQUENCE STATEMENT REQUIREMENT (CRITICAL) ===\n" +
+        "Every recommendation in this section MUST include a consequence statement that is SPECIFIC to this participant. The consequence must:\n" +
+        "  1. Name the participant directly (use the first name set in the PARTICIPANT block).\n" +
+        "  2. Reference at least one specific finding from the cross-section context (functional capacity, risk profile, assessment scores, or carer sustainability).\n" +
+        "  3. Name a concrete risk pathway — what specifically happens to this participant if the support is not provided.\n" +
+        "  4. Avoid generic phrases that would apply to any participant. The following are FORBIDDEN unless followed by a participant-specific consequence in the same sentence: 'functional decline', 'social isolation' (after first use), 'deterioration in daily functioning', 'reduced quality of life', 'increased risk of harm'.\n" +
+        "  5. Use the format: 'Without this support, [first name] is at risk of [specific outcome] given [specific finding from earlier sections].'\n\n" +
+        "If a recommendation in the input has a blank or generic consequence field, you MUST construct a participant-specific consequence using the cross-section context. Do NOT pad with boilerplate. Do NOT skip the consequence — every recommendation must have one.\n";
+    }
+
     // === EXPLICIT SAFETY CONCERNS ROUTING ===
     // Clinician-declared safety concerns are routed independently of
     // collateral_interviews. This ensures safety routing fires even when:
