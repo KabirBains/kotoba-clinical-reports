@@ -269,7 +269,24 @@ serve(async (req: Request) => {
     let body;
     try { body = await req.json(); } catch { return new Response(JSON.stringify({ success: false, error: "Invalid JSON" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }); }
 
-    const { prompt, max_tokens = 3000, collateral_interviews, section_name, generated_sections, domain_hint, participant_name, participant_first_name } = body;
+    const {
+      prompt,
+      max_tokens = 3000,
+      collateral_interviews,
+      section_name,
+      generated_sections,
+      domain_hint,
+      participant_name,
+      participant_first_name,
+      // NEW: explicit safety declaration. When the clinician has identified
+      // safety concerns (e.g., suicidal ideation, BoC, abscond history), they
+      // pass them as an array of short strings. The function injects these
+      // into S2 (briefly) and S12.3 (fully) regardless of whether the same
+      // content appears in collateral_interviews. This ensures safety routing
+      // fires even when notes are sparse or when the clinician declared a
+      // concern outside the collateral interview flow.
+      safety_concerns,
+    } = body;
     if (!prompt) return new Response(JSON.stringify({ success: false, error: "No prompt" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
     let docs;
@@ -334,6 +351,43 @@ serve(async (req: Request) => {
         if (cc) dynamicSuffix += "\n\n=== CARER COLLATERAL ===\n" + cc;
       } else if (collateralContext) {
         dynamicSuffix += "\n\n=== COLLATERAL AVAILABLE ===\n" + collateralContext;
+      }
+    }
+
+    // === EXPLICIT SAFETY CONCERNS ROUTING ===
+    // Clinician-declared safety concerns are routed independently of
+    // collateral_interviews. This ensures safety routing fires even when:
+    //   (a) the clinician has not conducted any collateral interviews,
+    //   (b) the safety concern was identified outside the interview flow,
+    //   (c) the SAFETY_KEYWORDS scanner failed to catch a paraphrased note.
+    // The clinician passes safety_concerns as an array of short declared
+    // items (e.g., ["passive suicidal ideation — historical episode 2024",
+    // "abscond risk", "documented choking history"]). These are then
+    // injected into the appropriate section based on section_name, with
+    // S12.3 receiving the FULL list and S2 receiving only a brief mention.
+    if (Array.isArray(safety_concerns) && safety_concerns.length > 0) {
+      const declared = safety_concerns
+        .map((s: unknown) => typeof s === "string" ? s.trim() : "")
+        .filter((s: string) => s.length > 0);
+      if (declared.length > 0) {
+        const declaredBlock = declared.map(s => `- ${s}`).join("\n");
+        hasSafetyAlerts = true;
+        if (section_name === "section12" || section_name?.startsWith("section12_")) {
+          // S12 (and especially 12.3 Mental Health Risk) MUST document safety
+          // concerns in full. This is the canonical location per the v5.3
+          // anti-redundancy rules. Mark as MANDATORY so the model knows it
+          // cannot omit any item from the declared list.
+          systemPrompt += "\n\n=== CLINICIAN-DECLARED SAFETY CONCERNS — DOCUMENT ALL OF THESE FULLY ===\n" + declaredBlock + "\nThese items have been explicitly declared by the assessing clinician as safety concerns for this participant. Each one MUST appear in your output for this section, framed clinically and attributed appropriately. Do not omit any item. If a particular item belongs more naturally in a different sub-section (12.1 Health, 12.2 Behavioural, 12.3 Mental Health, 12.4 BoC, 12.5 Supervision), route it there but ensure it appears.\n";
+        } else if (section_name === "section2") {
+          // S2 should mention briefly with cross-reference to S12.
+          systemPrompt += "\n\n=== CLINICIAN-DECLARED SAFETY CONCERNS (brief mention only — full detail in S12) ===\n" + declaredBlock + "\nMention these briefly in the trauma/medical history paragraphs as relevant. Do NOT document in full — Section 12 carries the full account. Cross-reference S12 explicitly.\n";
+        } else if (["section16","section17","section18"].includes(section_name || "")) {
+          // Risks/recommendations sections should reference safety concerns
+          // when justifying support intensity.
+          systemPrompt += "\n\n=== CLINICIAN-DECLARED SAFETY CONCERNS (cross-reference S12) ===\n" + declaredBlock + "\nReference these where they justify the recommended support intensity or constitute a documented risk of insufficient funding. Do NOT restate in full — cross-reference S12.\n";
+        }
+        // Other sections: safety concerns are not injected. The model is
+        // told via the cross-section lookback that S12 contains the detail.
       }
     }
 
