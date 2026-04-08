@@ -291,6 +291,142 @@ interface ReportModeProps {
   onFindInReport: (issue: QualityIssue) => void;
 }
 
+// ─── Helpers: flatten JSON-stored sections to plain prose for download ───
+// Domain, assessment, and recommendation sections are stored in reportContent
+// as JSON.stringify(...) so the on-screen view can render them as structured
+// tables. The .docx assembler expects plain prose, so we flatten here.
+
+function stripHtml(text: string): string {
+  if (!text) return "";
+  return text
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/[ \t]+\n/g, "\n")
+    .trim();
+}
+
+interface DomainEntryStored {
+  text?: string;
+  rating?: string;
+  label?: string;
+}
+
+interface AssessmentEntryStored {
+  name?: string;
+  dateAdministered?: string;
+  synopsis?: string;
+  total?: string;
+  classification?: string;
+  interpretation?: string;
+}
+
+interface RecommendationEntryStored {
+  text?: string;
+  supportName?: string;
+  category?: string;
+}
+
+function tryParseJson<T = unknown>(content: string): Record<string, T> | null {
+  if (!content || typeof content !== "string" || !content.trim()) return null;
+  try {
+    const parsed = JSON.parse(content);
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, T>) : null;
+  } catch {
+    return null;
+  }
+}
+
+function getStringField(obj: unknown, field: string): string {
+  if (!obj || typeof obj !== "object") return "";
+  const v = (obj as Record<string, unknown>)[field];
+  return typeof v === "string" ? v : v == null ? "" : String(v);
+}
+
+function flattenDomainJson(content: string): string {
+  const parsed = tryParseJson<DomainEntryStored>(content);
+  if (!parsed) return content || ""; // legacy plain text or empty
+  // Legacy fallback shape: { _fullText: { text: "..." } }
+  const fullText = parsed._fullText;
+  if (fullText && typeof fullText === "object" && getStringField(fullText, "text")) {
+    return stripHtml(getStringField(fullText, "text"));
+  }
+  const blocks: string[] = [];
+  for (const [, entry] of Object.entries(parsed)) {
+    if (!entry || typeof entry !== "object") continue;
+    const text = stripHtml(getStringField(entry, "text"));
+    if (!text) continue;
+    const label = getStringField(entry, "label");
+    blocks.push(label ? `${label}\n${text}` : text);
+  }
+  return blocks.join("\n\n");
+}
+
+function flattenAssessmentsJson(content: string): string {
+  const parsed = tryParseJson<AssessmentEntryStored>(content);
+  if (!parsed) return content || "";
+  const blocks: string[] = [];
+  for (const [, entry] of Object.entries(parsed)) {
+    if (!entry || typeof entry !== "object") continue;
+    const interpretation = stripHtml(getStringField(entry, "interpretation"));
+    if (!interpretation) continue;
+    const name = getStringField(entry, "name") || "Assessment";
+    blocks.push(`${name}\n${interpretation}`);
+  }
+  return blocks.join("\n\n");
+}
+
+function flattenRecommendationsJson(content: string): string {
+  const parsed = tryParseJson<RecommendationEntryStored>(content);
+  if (!parsed) return content || "";
+  const blocks: string[] = [];
+  for (const [, entry] of Object.entries(parsed)) {
+    if (!entry || typeof entry !== "object") continue;
+    const text = stripHtml(getStringField(entry, "text"));
+    if (!text) continue;
+    const supportName = getStringField(entry, "supportName");
+    const category = getStringField(entry, "category");
+    const heading = supportName
+      ? category
+        ? `${supportName} (${category})`
+        : supportName
+      : "";
+    blocks.push(heading ? `${heading}\n${text}` : text);
+  }
+  return blocks.join("\n\n");
+}
+
+function buildAssessmentsSummary(content: string): Array<{
+  tool: string;
+  date: string;
+  score: string;
+  classification: string;
+  whySelected: string;
+}> {
+  const parsed = tryParseJson<AssessmentEntryStored>(content);
+  if (!parsed) return [];
+  const out: Array<{ tool: string; date: string; score: string; classification: string; whySelected: string }> = [];
+  for (const [, entry] of Object.entries(parsed)) {
+    if (!entry || typeof entry !== "object") continue;
+    const name = getStringField(entry, "name");
+    const total = getStringField(entry, "total");
+    const classification = getStringField(entry, "classification");
+    if (!name && !total && !classification) continue;
+    out.push({
+      tool: name,
+      date: getStringField(entry, "dateAdministered"),
+      score: total,
+      classification,
+      whySelected: stripHtml(getStringField(entry, "synopsis")).slice(0, 240),
+    });
+  }
+  return out;
+}
+
 // Map app note keys → reportAssembler section keys
 function buildReportData(props: ReportModeProps): ReportData {
   const { notes, reportContent, clientName, clientDiagnosis, ndisNumber, assessments, recommendations, clinicianProfile, diagnoses, collateralInterviews } = props;
@@ -363,29 +499,36 @@ function buildReportData(props: ReportModeProps): ReportData {
     section9: s("social-environment"),
     section10: s("typical-week"),
     section11: s("risk-safety"),
-    section12_1: s("mobility", "section12_1"),
-    section12_2: s("transfers", "section12_2"),
-    section12_3: s("personal-adls", "section12_3"),
-    section12_4: s("domestic-iadls", "section12_4"),
-    section12_5: s("executive-iadls", "section12_5"),
-    section12_6: s("cognition", "section12_6"),
-    section12_7: s("communication", "section12_7"),
-    section12_8: s("social-functioning", "section12_8"),
-    section12_9: s("sensory-profile", "section12_9"),
-    section13: s("assessments"),
+    section12_1: flattenDomainJson(s("mobility", "section12_1")),
+    section12_2: flattenDomainJson(s("transfers", "section12_2")),
+    section12_3: flattenDomainJson(s("personal-adls", "section12_3")),
+    section12_4: flattenDomainJson(s("domestic-iadls", "section12_4")),
+    section12_5: flattenDomainJson(s("executive-iadls", "section12_5")),
+    section12_6: flattenDomainJson(s("cognition", "section12_6")),
+    section12_7: flattenDomainJson(s("communication", "section12_7")),
+    section12_8: flattenDomainJson(s("social-functioning", "section12_8")),
+    section12_9: flattenDomainJson(s("sensory-profile", "section12_9")),
+    section13: flattenAssessmentsJson(s("assessments")),
     section14: s("limitations-barriers"),
     section15: s("functional-impact"),
-    section16: s("recommendations"),
+    section16: flattenRecommendationsJson(s("recommendations")),
     section17: notes["risks-insufficient-funding"] || "",
     section18: s("review-monitoring"),
     section19: notes["section-34-statement"] || "",
-    assessments: assessments.map((a) => ({
-      tool: typeof a.name === "string" ? a.name : "",
-      date: "",
-      score: "",
-      classification: "",
-      whySelected: "",
-    })),
+    assessments: (() => {
+      // Prefer the structured summary parsed from generated assessment JSON
+      // (it has scores, classifications, dates). Fall back to bare prop names
+      // if the AI hasn't run yet.
+      const fromJson = buildAssessmentsSummary(reportContent["assessments"] || "");
+      if (fromJson.length > 0) return fromJson;
+      return assessments.map((a) => ({
+        tool: typeof a.name === "string" ? a.name : "",
+        date: "",
+        score: "",
+        classification: "",
+        whySelected: "",
+      }));
+    })(),
     recommendations: recommendations.map((r, idx) => ({
       support: r.supportName || "",
       category: r.ndisCategory || "",
