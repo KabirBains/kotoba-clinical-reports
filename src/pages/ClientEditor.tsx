@@ -26,6 +26,38 @@ import { Switch } from "@/components/ui/switch";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { format } from "date-fns";
 
+// ─── Narrative threading response types ───────────────────────────────────
+// Mirror of the shape returned by the thread-narrative edge function (v2
+// iterative loop). The edge function validates + stamps the shape so the
+// client treats these as read-only display data.
+type ThreadType = "causation" | "amplification" | "recommendation" | "consistency" | "contradiction";
+type ThreadConfidence = "high" | "medium" | "low";
+type ThreadDirection = "forward" | "backward" | "bidirectional";
+
+interface ThreadMapEntry {
+  id: string;
+  source_section: string;
+  source_observation: string;
+  target_sections?: string[];
+  target_insertions?: Record<string, string>;
+  type?: ThreadType;
+  direction?: ThreadDirection;
+  confidence?: ThreadConfidence;
+  clinical_reasoning?: string;
+  pass?: number;
+  source_has_attribution?: boolean;
+  use_reference_framing?: boolean;
+}
+
+interface ThreadIterationStat {
+  pass: number;
+  identified: number;
+  woven: number;
+  low_confidence_suggestions: number;
+  rejected_backward_contradictions: number;
+  converged: boolean;
+}
+
 export default function ClientEditor() {
   const { clientId } = useParams<{ clientId: string }>();
   const navigate = useNavigate();
@@ -49,9 +81,17 @@ export default function ClientEditor() {
   const [dismissedIssueKeys, setDismissedIssueKeys] = useState<Set<string>>(new Set());
   const [scorecardVisible, setScorecardVisible] = useState(false);
   const [narrativeThreadingEnabled, setNarrativeThreadingEnabled] = useState(true);
-  const [threadMap, setThreadMap] = useState<any[]>([]);
+  // Narrative threading state — v2 loop returns per-iteration breakdowns,
+  // low-confidence suggestions, and contradiction flags alongside the main
+  // threadMap. Shape is validated and stamped on the edge function side; the
+  // UI treats it as read-only display data.
+  const [threadMap, setThreadMap] = useState<ThreadMapEntry[]>([]);
   const [threadsIdentified, setThreadsIdentified] = useState(0);
   const [threadsWoven, setThreadsWoven] = useState(0);
+  const [threadPassesCompleted, setThreadPassesCompleted] = useState(0);
+  const [threadIterationStats, setThreadIterationStats] = useState<ThreadIterationStat[]>([]);
+  const [threadSuggestions, setThreadSuggestions] = useState<ThreadMapEntry[]>([]);
+  const [threadContradictions, setThreadContradictions] = useState<ThreadMapEntry[]>([]);
   const [threadWarnings, setThreadWarnings] = useState<string[]>([]);
   const [isThreading, setIsThreading] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setInterval>>();
@@ -1033,13 +1073,27 @@ export default function ClientEditor() {
                         setThreadMap(threadData.thread_map || []);
                         setThreadsIdentified(threadData.threads_identified || 0);
                         setThreadsWoven(threadData.threads_woven || 0);
+                        // v2: iterative loop state
+                        setThreadPassesCompleted(threadData.passes_completed || 0);
+                        setThreadIterationStats(threadData.iteration_stats || []);
+                        setThreadSuggestions(threadData.low_confidence_suggestions || []);
+                        setThreadContradictions(threadData.contradiction_flags || []);
 
                         if (threadData.warnings?.length > 0) {
                           setThreadWarnings(threadData.warnings);
                         }
 
                         if (threadData.threads_woven > 0) {
-                          toast.success(`${threadData.threads_woven} narrative threads woven across ${threadData.threads_identified} connections`);
+                          const passes = threadData.passes_completed || 1;
+                          toast.success(
+                            `${threadData.threads_woven} narrative threads woven across ${passes} pass${passes === 1 ? "" : "es"}`,
+                          );
+                        }
+                        if ((threadData.contradiction_flags?.length || 0) > 0) {
+                          toast.warning(
+                            `${threadData.contradiction_flags.length} potential contradiction${threadData.contradiction_flags.length === 1 ? "" : "s"} flagged for review`,
+                            { duration: 10000 },
+                          );
                         }
                       } else {
                         console.warn("Threading returned no data:", threadData);
@@ -1106,25 +1160,119 @@ export default function ClientEditor() {
         </div>
       )}
 
-      {/* Thread map summary */}
-      {threadsWoven > 0 && !generatingReport && mode === "report" && (
+      {/* Thread map summary — v2 iterative, grouped by pass, with suggestions + contradictions */}
+      {(threadsWoven > 0 || threadSuggestions.length > 0 || threadContradictions.length > 0) && !generatingReport && mode === "report" && (
         <div className="bg-card border-b border-border/30">
           <div className="max-w-7xl mx-auto px-4 py-2">
             <Collapsible>
               <CollapsibleTrigger className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors w-full">
                 <Link2 className="h-3.5 w-3.5 text-primary" />
-                <span className="font-medium">{threadsIdentified} narrative threads identified, {threadsWoven} sections connected</span>
+                <span className="font-medium">
+                  {threadsWoven} threads woven{threadPassesCompleted > 0 ? ` across ${threadPassesCompleted} pass${threadPassesCompleted === 1 ? "" : "es"}` : ""}
+                  {threadSuggestions.length > 0 ? ` · ${threadSuggestions.length} suggestion${threadSuggestions.length === 1 ? "" : "s"}` : ""}
+                  {threadContradictions.length > 0 ? ` · ${threadContradictions.length} contradiction${threadContradictions.length === 1 ? "" : "s"}` : ""}
+                </span>
                 <span className="text-xs ml-auto">Click to expand</span>
               </CollapsibleTrigger>
-              <CollapsibleContent className="mt-2 space-y-1.5">
-                {threadMap.map((thread: any) => (
-                  <div key={thread.id} className="text-xs text-muted-foreground pl-5 border-l-2 border-primary/20 py-1">
-                    <span className="font-medium text-foreground">📍 {thread.source_section}</span>
-                    <span className="mx-1">→</span>
-                    <span>{(thread.target_sections || []).join(", ")}</span>
-                    <div className="text-muted-foreground/70 mt-0.5 italic">"{thread.source_observation}"</div>
+              <CollapsibleContent className="mt-2 space-y-4">
+                {/* Iteration breakdown */}
+                {threadIterationStats.length > 0 && (
+                  <div className="text-[11px] text-muted-foreground flex gap-3 flex-wrap pl-5">
+                    {threadIterationStats.map((stat) => (
+                      <span key={stat.pass} className="px-2 py-0.5 rounded bg-muted/50">
+                        Pass {stat.pass}: {stat.woven} woven, {stat.identified} identified
+                        {stat.converged ? " · converged" : ""}
+                      </span>
+                    ))}
                   </div>
-                ))}
+                )}
+
+                {/* Woven threads grouped by pass */}
+                {threadsWoven > 0 && (
+                  <div className="space-y-1.5">
+                    <div className="text-[11px] font-semibold text-foreground pl-5">Woven connections</div>
+                    {[1, 2, 3].map((passNum) => {
+                      const threadsInPass = threadMap.filter((t) => (t.pass || 1) === passNum);
+                      if (threadsInPass.length === 0) return null;
+                      return (
+                        <div key={passNum} className="pl-5">
+                          <div className="text-[10px] uppercase tracking-wide text-muted-foreground/70 mb-1">
+                            Pass {passNum}
+                          </div>
+                          {threadsInPass.map((thread) => (
+                            <div key={thread.id} className="text-xs text-muted-foreground border-l-2 border-primary/20 pl-2 py-1">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="font-medium text-foreground">📍 {thread.source_section}</span>
+                                <span>→</span>
+                                <span>{(thread.target_sections || []).join(", ")}</span>
+                                {thread.type && (
+                                  <span className="text-[9px] uppercase tracking-wide px-1.5 py-0 rounded bg-muted/60">
+                                    {thread.type}
+                                  </span>
+                                )}
+                                {thread.confidence && (
+                                  <span className={`text-[9px] uppercase tracking-wide px-1.5 py-0 rounded ${
+                                    thread.confidence === "high"
+                                      ? "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-300"
+                                      : "bg-yellow-100 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-300"
+                                  }`}>
+                                    {thread.confidence}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-muted-foreground/70 mt-0.5 italic">"{thread.source_observation}"</div>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Low-confidence suggestions */}
+                {threadSuggestions.length > 0 && (
+                  <div className="space-y-1.5 pl-5">
+                    <div className="text-[11px] font-semibold text-foreground">Suggestions (not auto-woven — review manually)</div>
+                    {threadSuggestions.map((thread) => (
+                      <div key={thread.id} className="text-xs text-muted-foreground border-l-2 border-dashed border-yellow-500/40 pl-2 py-1">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-medium text-foreground">💡 {thread.source_section}</span>
+                          <span>→</span>
+                          <span>{(thread.target_sections || []).join(", ")}</span>
+                          {thread.type && (
+                            <span className="text-[9px] uppercase tracking-wide px-1.5 py-0 rounded bg-muted/60">
+                              {thread.type}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-muted-foreground/70 mt-0.5 italic">"{thread.source_observation}"</div>
+                        {thread.clinical_reasoning && (
+                          <div className="text-muted-foreground/60 text-[10px] mt-0.5">{thread.clinical_reasoning}</div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Contradiction flags */}
+                {threadContradictions.length > 0 && (
+                  <div className="space-y-1.5 pl-5">
+                    <div className="text-[11px] font-semibold text-destructive">Potential contradictions (review manually — NOT auto-resolved)</div>
+                    {threadContradictions.map((thread) => (
+                      <div key={thread.id} className="text-xs text-muted-foreground border-l-2 border-destructive/40 pl-2 py-1">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-medium text-foreground">⚠ {thread.source_section}</span>
+                          <span>↔</span>
+                          <span>{(thread.target_sections || []).join(", ")}</span>
+                        </div>
+                        <div className="text-muted-foreground/70 mt-0.5 italic">"{thread.source_observation}"</div>
+                        {thread.clinical_reasoning && (
+                          <div className="text-destructive/80 text-[10px] mt-0.5">{thread.clinical_reasoning}</div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </CollapsibleContent>
             </Collapsible>
           </div>
