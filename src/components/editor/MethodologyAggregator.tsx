@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { type AssessmentInstance } from "@/lib/assessment-library";
 import { type DiagnosisInstance } from "@/lib/diagnosis-library";
-import { type CollateralInterview, LIAISE_TEMPLATES } from "./LiaiseMode";
+import { type CollateralInterview, LIAISE_TEMPLATES, LIAISE_TEMPLATES_V2 } from "./LiaiseMode";
 import { ChevronDown, ChevronRight, CheckCircle2 } from "lucide-react";
 import { useState } from "react";
 import {
@@ -197,7 +197,7 @@ export function MethodologyAggregator({
                 </TableHeader>
                 <TableBody>
                   {collateralInterviews.map((iv) => {
-                    const template = LIAISE_TEMPLATES[iv.templateId];
+                    const template = LIAISE_TEMPLATES_V2[iv.templateId] ?? LIAISE_TEMPLATES[iv.templateId];
                     const methodLabel = METHOD_LABELS[iv.method] || iv.method || "—";
                     return (
                       <TableRow key={iv.id}>
@@ -295,7 +295,7 @@ export function buildMethodologyText(
     parts.push("Collateral information gathered:");
     for (const ci of collateralInterviews) {
       const methodLabel = METHOD_LABELS[ci.method] || ci.method || "interview";
-      const template = LIAISE_TEMPLATES[ci.templateId];
+      const template = LIAISE_TEMPLATES_V2[ci.templateId] ?? LIAISE_TEMPLATES[ci.templateId];
       parts.push(`- ${methodLabel} interview with ${ci.intervieweeName || "[Name]"}, ${ci.intervieweeRole || template?.name || ""}${ci.date ? `, ${ci.date}` : ""}`);
     }
   }
