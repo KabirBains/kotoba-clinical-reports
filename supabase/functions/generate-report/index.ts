@@ -574,6 +574,17 @@ serve(async (req: Request) => {
 
       if (section_name === "section6" || section_name === "section6_collateral") {
         dynamicSuffix += "\n\n=== FULL COLLATERAL — GENERATE SECTION 6 ===\n" + collateralContext;
+      } else if (section_name === "section6_informant") {
+        // Per-informant Section 6.2 summary (Liaise Phase 2).
+        // The caller passes collateral_interviews with a SINGLE entry —
+        // the informant whose formal attributed summary this call is
+        // generating. formatCollateralForPrompt naturally focuses on
+        // that entry; we add a framing directive so the model produces
+        // an ATTRIBUTED single-informant summary rather than a generic
+        // section 6 dump.
+        dynamicSuffix += "\n\n=== INFORMANT COLLATERAL — GENERATE ATTRIBUTED 6.2 SUMMARY ===\n";
+        dynamicSuffix += "Write a formal collateral summary focused EXCLUSIVELY on the single informant below. Every clinical statement in your output must be attributed to this informant by name and role. Do not reference other informants (there are none in this payload). Do not write in the participant's or clinician's voice — this is a second-hand account.\n\n";
+        dynamicSuffix += collateralContext;
       } else if (section_name === "section2") {
         if (safetySummary) dynamicSuffix += "\n\n=== SAFETY COLLATERAL (brief, for background) ===\n" + safetySummary;
         if (collateralContext) dynamicSuffix += "\n\n=== COLLATERAL CONTEXT ===\n" + collateralContext;

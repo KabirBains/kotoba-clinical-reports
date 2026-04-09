@@ -541,23 +541,88 @@ export default function ClientEditor() {
                     phase1Items.push({ key: sectionId, prompt, maxTokens: 2000, inputForHash: observations, label: `Section: ${sectionId}`, extraBody: Object.keys(extraBody).length > 0 ? extraBody : undefined });
                   }
 
-                  // Section 6 — Methodology/Collateral (always generate if we have collateral or methodology notes)
+                  // ─── SECTION 6 — Collateral Information (Liaise Phase 2 fix) ───────────
+                  // v5.1 template: Section 6 is "Collateral Information" and Section 7
+                  // is "Methodology". Previously a single "methodology" queue item
+                  // produced a blended blob that was stored under reportData.section6.
+                  // That blended blob was labelled "Methodology" in the .docx and
+                  // contained both methodology notes AND collateral interview content,
+                  // which conflicts with the v5.1 split.
+                  //
+                  // New behaviour:
+                  //   • Section 6.2 is generated PER-INFORMANT. For each collateral
+                  //     interview, a dedicated AI call produces a formal attributed
+                  //     summary paragraph of THAT informant's contribution. The
+                  //     outputs are then concatenated into a single section6_collateral
+                  //     blob which ReportMode surfaces as data.section6.
+                  //   • Section 7 is a SEPARATE methodology queue item that generates
+                  //     a short description of the assessment process (tools used,
+                  //     settings, duration, limitations). It is surfaced as
+                  //     data.section7 in the downloaded report.
+                  //   • The old "methodology" key is no longer generated. ReportMode
+                  //     retains a fallback read of s("methodology") so existing saved
+                  //     reports are not broken by this change.
+
+                  // Per-informant section 6 items. Each interview produces ONE
+                  // summary paragraph. We key them by a stable id so unchanged
+                  // interviews can be skipped by the content-hash check.
+                  const section6InformantKeys: string[] = [];
+                  for (const iv of collateralInterviews) {
+                    const key = `section6_informant_${iv.id}`;
+                    section6InformantKeys.push(key);
+
+                    // Build the single-informant collateral payload. Only this
+                    // interview is passed so the edge function focuses the
+                    // summary on THIS informant. Sending the full list would
+                    // tempt the model to reference other informants.
+                    const singlePayload = [{
+                      templateId: iv.templateId,
+                      intervieweeName: iv.intervieweeName,
+                      intervieweeRole: iv.intervieweeRole,
+                      method: iv.method,
+                      date: iv.date,
+                      responses: iv.responses || {},
+                      customQuestions: iv.customQuestions || {},
+                      generalNotes: iv.generalNotes || '',
+                    }];
+
+                    const informantLabel = iv.intervieweeName || "[Unnamed informant]";
+                    const informantRole = iv.intervieweeRole || LIAISE_TEMPLATES[iv.templateId]?.name || "stakeholder";
+                    const rubric = getRubricForSection("text");
+                    const prompt = `Write a formal attributed collateral summary paragraph for Section 6.2 (Collateral Interview Summaries) of an NDIS Functional Capacity Assessment for ${clientName}.\n\nINFORMANT: ${informantLabel}\nROLE / RELATIONSHIP: ${informantRole}\nINTERVIEW METHOD: ${iv.method || "[Not specified]"}\nINTERVIEW DATE: ${iv.date || "[Not specified]"}\n\nDIAGNOSIS CONTEXT: ${diagnosis || "[Not provided]"}\n\n${rubric}\n\nTASK:\n- Write 1-2 paragraphs (no more) that summarise THIS informant's contribution only.\n- Open with a formal introduction of the informant by name and role (e.g. "${informantLabel}, ${informantRole}, reported that ...").\n- Every clinical statement must be explicitly attributed to the informant using phrases like "reported", "described", "observed", "stated", "noted".\n- Do NOT write in the participant's voice or the clinician's voice. This is a second-hand account.\n- Do NOT reference other informants — this summary concerns ${informantLabel} only.\n- Cover the main functional themes this informant raised (daily functioning, ADLs, cognition, behaviour, social, risk/safety, carer capacity) but only where the informant actually commented.\n- Person-first language. Third-person active voice. No bullet points, no markdown, no headings.\n- Output only the summary paragraph(s). No preamble, no trailing notes.`;
+
+                    const inputForHash = `${iv.id}|${iv.intervieweeName}|${iv.intervieweeRole}|${iv.method}|${iv.date}|${JSON.stringify(iv.responses || {})}|${JSON.stringify(iv.customQuestions || {})}|${iv.generalNotes || ''}`;
+
+                    phase1Items.push({
+                      key,
+                      prompt,
+                      maxTokens: 1500,
+                      inputForHash,
+                      label: `Collateral: ${informantLabel}`,
+                      extraBody: {
+                        ...nameFields,
+                        section_name: "section6_informant",
+                        collateral_interviews: singlePayload,
+                      },
+                    });
+                  }
+
+                  // Section 7 — Methodology (assessment approach, tools, method, limitations)
                   const methodologyNotes = notes["methodology"] || "";
                   const methodologyInput = methodologyNotes || buildMethodologyText(assessments, collateralInterviews, diagnoses, notes);
-                  if (methodologyInput.trim() || collateralPayload.length > 0) {
+                  if (methodologyInput.trim() || scoredAssessments.length > 0 || collateralPayload.length > 0) {
                     const templateGuidance = getTemplateGuidance("methodology");
                     const rubric = getRubricForSection("text");
-                    const prompt = `Write the 'Methodology' section (Section 6) of an NDIS Functional Capacity Assessment for ${clientName}.\n\n${templateGuidance ? templateGuidance + "\n\n" : ""}CLINICIAN INPUT:\n${methodologyInput}\n\nDIAGNOSIS CONTEXT: ${diagnosis || "[Not provided]"}${collateralContext}\n\n${rubric}\n\nWrite 2-3 paragraphs covering assessment methodology, direct observations, collateral sources, and environmental assessment. Person-first language, no markdown. Output only the section text.`;
+                    const prompt = `Write the 'Methodology' section (Section 7) of an NDIS Functional Capacity Assessment for ${clientName}.\n\n${templateGuidance ? templateGuidance + "\n\n" : ""}CLINICIAN INPUT (describes how the assessment was conducted):\n${methodologyInput}\n\nDIAGNOSIS CONTEXT: ${diagnosis || "[Not provided]"}\n\n${rubric}\n\nTASK:\n- Write 2 concise paragraphs (no more) describing the assessment approach for this participant.\n- Paragraph 1: State the assessment purpose, the setting(s), the date(s), the duration, and who was present. Describe the methods used (clinical interview, observation, standardised assessments, collateral interviews).\n- Paragraph 2: Name the standardised tools administered and briefly state why each was selected. Note any limitations (e.g. fatigue, time pressure, reliance on informant report).\n- Do NOT list the content of collateral interviews here — that is handled in Section 6.\n- Do NOT restate diagnoses — that is Section 4.\n- Person-first language. Third-person active voice. No bullet points, no markdown, no headings.\n- Output only the methodology text. No preamble.`;
                     phase1Items.push({
-                      key: "methodology",
+                      key: "section7_methodology",
                       prompt,
-                      maxTokens: 2000,
-                      inputForHash: methodologyInput + JSON.stringify(collateralPayload),
+                      maxTokens: 1500,
+                      inputForHash: methodologyInput + JSON.stringify(scoredAssessments.map(a => a.name)),
                       label: "Section: Methodology",
                       extraBody: {
                         ...nameFields,
-                        section_name: "section6",
-                        collateral_interviews: collateralPayload,
+                        section_name: "section7",
                       },
                     });
                   }
@@ -623,23 +688,81 @@ export default function ClientEditor() {
                   // Map phase 1 results
                   let successCount = 0;
                   let storedSection6Text = "";
+                  let storedSection7Text = "";
+
+                  // Track per-informant summaries by their key so we can
+                  // concatenate them into section6_collateral in interview
+                  // order (matching Section 6.1 Sources Summary).
+                  const informantSummariesByKey: Record<string, string> = {};
 
                   for (const result of phase1Results) {
-                    if (result.skipped && result.skipReason === "unchanged") { successCount++; continue; }
+                    if (result.skipped && result.skipReason === "unchanged") {
+                      // For skipped (unchanged) informant items we still need
+                      // the previously-generated text. Read it from the
+                      // existing reportContent cache.
+                      if (result.key?.startsWith("section6_informant_")) {
+                        const prev = reportContent[result.key];
+                        if (prev) informantSummariesByKey[result.key] = prev;
+                      }
+                      successCount++;
+                      continue;
+                    }
                     if (!result.success) continue;
+
                     const topMatch = topLevelEntries.find(([id]) => id === result.key);
-                    if (topMatch || result.key === "methodology") {
+                    if (topMatch) {
                       newContent[result.key] = result.text || "";
                       successCount++;
-                      if (result.key === "methodology") {
-                        storedSection6Text = result.text || "";
-                      }
+                      continue;
+                    }
+
+                    if (result.key?.startsWith("section6_informant_")) {
+                      // Store the per-informant summary so it can be
+                      // concatenated after the loop.
+                      newContent[result.key] = result.text || "";
+                      informantSummariesByKey[result.key] = result.text || "";
+                      successCount++;
+                      continue;
+                    }
+
+                    if (result.key === "section7_methodology") {
+                      newContent[result.key] = result.text || "";
+                      storedSection7Text = result.text || "";
+                      successCount++;
+                      continue;
                     }
                   }
 
-                  // If section6 wasn't regenerated (skipped as unchanged), use existing content
+                  // ─── Concatenate per-informant summaries into section6_collateral ───
+                  // Walk the informant keys in the SAME order they were
+                  // queued (matches the order the clinician completed the
+                  // interviews, which matches Section 6.1 Sources Summary).
+                  // Each summary is prefixed with an attribution heading so
+                  // the final .docx can distinguish informants visually.
+                  const section6Parts: string[] = [];
+                  for (let idx = 0; idx < section6InformantKeys.length; idx++) {
+                    const key = section6InformantKeys[idx];
+                    const summary = informantSummariesByKey[key] || newContent[key] || "";
+                    if (!summary.trim()) continue;
+                    const iv = collateralInterviews[idx];
+                    const informantLabel = iv?.intervieweeName || "[Unnamed informant]";
+                    const informantRole = iv?.intervieweeRole || LIAISE_TEMPLATES[iv?.templateId || ""]?.name || "stakeholder";
+                    section6Parts.push(`${informantLabel} (${informantRole})\n\n${summary.trim()}`);
+                  }
+                  if (section6Parts.length > 0) {
+                    newContent["section6_collateral"] = section6Parts.join("\n\n");
+                    storedSection6Text = newContent["section6_collateral"];
+                  }
+
+                  // Fallback: if section 6 was not regenerated (skipped or no
+                  // interviews) but a prior run stored content under the legacy
+                  // "methodology" key, surface that so the cross-section
+                  // lookback in Phase 2 still has SOMETHING for section 6.
                   if (!storedSection6Text && newContent["methodology"]) {
                     storedSection6Text = newContent["methodology"];
+                  }
+                  if (!storedSection7Text && reportContent["section7_methodology"]) {
+                    storedSection7Text = reportContent["section7_methodology"];
                   }
 
                   // ── Build Phase 2 queue items ──
