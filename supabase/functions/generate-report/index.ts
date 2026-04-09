@@ -139,10 +139,27 @@ function extractCollateralForDomain(interviews: any[], hint: string): string {
   for (const iv of interviews) {
     const tid = iv.templateId || "unknown"; const qs = QUESTION_MAP[tid] || {};
     const label = `${iv.intervieweeName || "[Informant]"}, ${iv.intervieweeRole || TEMPLATE_LABELS[tid] || "stakeholder"}`;
-    if (!iv.responses) continue;
+    // Collect matched Q/As from BOTH structured responses AND custom questions.
+    // Custom questions were previously dropped entirely from domain sections;
+    // they only reached Section 6.2 via formatCollateralForPrompt. This is the
+    // Liaise Phase 3 fix — any question tied to a matching domain id should
+    // flow through to the domain narrative alongside the structured answers.
     const qas: { q: string; a: string }[] = [];
-    for (const [key, val] of Object.entries(iv.responses)) { if (!val || !(val as string).trim()) continue; const lu = key.lastIndexOf("_"); if (lu === -1) continue; const did = key.substring(0, lu); const qi = parseInt(key.substring(lu + 1)); if (ids.includes(did)) { const dq = qs[did] || []; qas.push({ q: dq[qi] || `Q${qi+1}`, a: val as string }); } }
-    if (qas.length) { parts.push(`From ${label}:`); for (const qa of qas) { parts.push(`  Q: ${qa.q}`); parts.push(`  A: ${qa.a}`); } parts.push(""); }
+    if (iv.responses) { for (const [key, val] of Object.entries(iv.responses)) { if (!val || !(val as string).trim()) continue; const lu = key.lastIndexOf("_"); if (lu === -1) continue; const did = key.substring(0, lu); const qi = parseInt(key.substring(lu + 1)); if (ids.includes(did)) { const dq = qs[did] || []; qas.push({ q: dq[qi] || `Q${qi+1}`, a: val as string }); } } }
+    if (iv.customQuestions) { for (const [did, customs] of Object.entries(iv.customQuestions)) { if (!ids.includes(did) || !Array.isArray(customs)) continue; for (const cq of customs) { if (cq?.question && cq?.response && (cq.response as string).trim()) { qas.push({ q: `${cq.question} (custom)`, a: cq.response as string }); } } } }
+    if (qas.length) {
+      parts.push(`From ${label}:`);
+      for (const qa of qas) { parts.push(`  Q: ${qa.q}`); parts.push(`  A: ${qa.a}`); }
+      // Attach generalNotes ONLY when this informant contributed matched Q/As
+      // for the current domain. Without the qas.length gate, every informant's
+      // generalNotes would leak into every domain section regardless of
+      // relevance, which is the opposite of what the DOMAIN_TO_COLLATERAL
+      // filter is designed to enforce.
+      if (iv.generalNotes && (iv.generalNotes as string).trim()) {
+        parts.push(`  General notes from ${label}: ${(iv.generalNotes as string).trim()}`);
+      }
+      parts.push("");
+    }
   }
   return parts.join("\n");
 }
