@@ -463,8 +463,18 @@ function buildReportData(props: ReportModeProps): ReportData {
       ? diagnoses.map(d => `${d.name} (ICD-10: ${d.icd10}${d.dsm5 ? `, DSM-5: ${d.dsm5}` : ""})\n${d.description}`).join("\n\n")
       : s("diagnoses"),
     section5: s("ot-case-history"),
-    section6: s("methodology") || buildMethodologyText(assessments, collateralInterviews || [], diagnoses || [], notes),
-    section7: s("informal-supports"),
+    // v5.1 template: Section 6 = Collateral Information, Section 7 = Methodology.
+    // Liaise Phase 2 splits the old blended "methodology" blob into two distinct
+    // outputs. ReportMode now prefers the new keys but keeps legacy fallbacks so
+    // previously-generated reports are not broken by this change.
+    //   • section6_collateral is built from per-informant AI summaries (one per
+    //     collateral interview) concatenated in interview order.
+    //   • section7_methodology is a short AI-generated description of the
+    //     assessment approach (tools, settings, duration, limitations).
+    //   • The legacy "methodology" key is surfaced in either slot as a fallback
+    //     so existing reports continue to show their Section 6 content.
+    section6: s("section6_collateral") || s("methodology") || buildMethodologyText(assessments, collateralInterviews || [], diagnoses || [], notes),
+    section7: s("section7_methodology") || s("informal-supports"),
     section8: s("home-environment"),
     section9: s("social-environment"),
     section10: s("typical-week"),
