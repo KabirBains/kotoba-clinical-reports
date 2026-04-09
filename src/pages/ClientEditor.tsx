@@ -17,7 +17,7 @@ import { buildMethodologyText } from "@/components/editor/MethodologyAggregator"
 import { KotobaLogo } from "@/components/KotobaLogo";
 import { NotesMode } from "@/components/editor/NotesMode";
 import { ReportMode } from "@/components/editor/ReportMode";
-import { LiaiseMode, type CollateralInterview } from "@/components/editor/LiaiseMode";
+import { LiaiseMode, LIAISE_TEMPLATES, type CollateralInterview } from "@/components/editor/LiaiseMode";
 import { EditorSidebar } from "@/components/editor/EditorSidebar";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, FileText, PenLine, Clock, Handshake, Link2 } from "lucide-react";
@@ -426,15 +426,59 @@ export default function ClientEditor() {
                     generalNotes: i.generalNotes || '',
                   }));
 
-                  // ── Build collateral context summary (for prompt enrichment) ──
+                  // ── Build collateral context summary (legacy user-prompt inlining) ──
+                  // NOTE (Liaise Phase 1 fix): This block used to produce opaque
+                  // raw-key summaries like "daily_functioning_0: response text"
+                  // which were meaningless to the AI without question text.
+                  // The edge function (generate-report) already has a
+                  // sophisticated formatCollateralForPrompt routine that
+                  // correctly uses question text and routes by section. As of
+                  // Phase 1, we pass section_name on every call so the edge
+                  // function's routing fires, and we no longer inline collateral
+                  // in the user prompt at all (see COLLATERAL_SECTIONS handling
+                  // below — the inclusion flag is now disabled by default).
+                  //
+                  // This summary is retained ONLY as a fallback for diagnostic
+                  // logs and for any future prompt that might want a compact
+                  // overview. It now uses proper question text via LIAISE_TEMPLATES.
                   let collateralContext = "";
                   if (collateralInterviews.length > 0) {
                     const summaries = collateralInterviews.map(iv => {
-                      const respEntries = Object.entries(iv.responses).filter(([, v]) => v && v.trim());
-                      const responseSummary = respEntries.map(([k, v]) => `  - ${k}: ${v}`).join("\n");
-                      return `[${iv.templateId}] ${iv.intervieweeName || "Unnamed"} (${iv.intervieweeRole || iv.templateId}):\n${responseSummary}${iv.generalNotes ? `\n  General notes: ${iv.generalNotes}` : ""}`;
+                      const template = LIAISE_TEMPLATES[iv.templateId];
+                      // Group responses by domain name (not ID) for readability
+                      const qaByDomain: Record<string, string[]> = {};
+                      for (const [key, val] of Object.entries(iv.responses || {})) {
+                        if (!val || !String(val).trim()) continue;
+                        const lastUnderscore = key.lastIndexOf("_");
+                        if (lastUnderscore === -1) continue;
+                        const domainId = key.substring(0, lastUnderscore);
+                        const qIdx = parseInt(key.substring(lastUnderscore + 1));
+                        const domain = template?.domains.find(d => d.id === domainId);
+                        const questionText = domain?.questions[qIdx] ?? `Q${qIdx + 1}`;
+                        const domainName = domain?.name ?? domainId;
+                        (qaByDomain[domainName] = qaByDomain[domainName] || []).push(
+                          `  Q: ${questionText}\n  A: ${val}`
+                        );
+                      }
+                      // Include custom questions per domain (previously dropped)
+                      for (const [domainId, customs] of Object.entries(iv.customQuestions || {})) {
+                        if (!Array.isArray(customs)) continue;
+                        for (const cq of customs) {
+                          if (!cq?.question || !cq?.response || !String(cq.response).trim()) continue;
+                          const domain = template?.domains.find(d => d.id === domainId);
+                          const domainName = domain?.name ?? domainId;
+                          (qaByDomain[domainName] = qaByDomain[domainName] || []).push(
+                            `  Q (custom): ${cq.question}\n  A: ${cq.response}`
+                          );
+                        }
+                      }
+                      const qaText = Object.entries(qaByDomain)
+                        .map(([domain, qas]) => `[${domain}]\n${qas.join("\n")}`)
+                        .join("\n\n");
+                      const templateName = template?.name || iv.templateId;
+                      return `=== ${templateName}: ${iv.intervieweeName || "Unnamed"} (${iv.intervieweeRole || templateName}) ===\n${qaText}${iv.generalNotes ? `\n\n[General Notes]\n  ${iv.generalNotes}` : ""}`;
                     }).join("\n\n");
-                    collateralContext = `\n\nCOLLATERAL INTERVIEW DATA:\nThe following collateral information was gathered from stakeholder interviews. Reference and corroborate relevant observations where they support clinical findings:\n\n${summaries}`;
+                    collateralContext = `\n\nCOLLATERAL INTERVIEW DATA:\nThe following collateral information was gathered from stakeholder interviews. Reference and corroborate relevant observations where they support clinical findings. Attribute every reference by informant name and role (e.g. "Jane Smith, daily support worker, reported that ...").\n\n${summaries}`;
                   }
 
                   // ── Build queue items ──
@@ -443,16 +487,54 @@ export default function ClientEditor() {
                   const newContent: Record<string, string> = { ...reportContent };
 
                   // Sections that benefit from collateral context in prompt
-                  const COLLATERAL_SECTIONS = new Set(["background", "informal-supports", "home-environment", "social-environment", "typical-week", "risk-safety"]);
+                  // ─── SECTION NAME MAP (Liaise Phase 1 fix) ───────────────
+                  // Maps the client's string section IDs to the edge function's
+                  // expected section_name values. The edge function's
+                  // generate-report routes collateral (and other context) based
+                  // on section_name — section2 gets safety+full collateral,
+                  // section8/9 get carer-specific collateral, section12 gets
+                  // safety+risk collateral, etc.
+                  //
+                  // Before this fix, phase 1 calls passed no section_name, so
+                  // the edge function's sophisticated section-aware routing was
+                  // entirely bypassed and collateral was dumped generically.
+                  //
+                  // NOTE: these section numbers use the v5.1 template scheme
+                  // (section6 = Collateral Information, section7 = Methodology).
+                  // Section 6 is handled separately below.
+                  const SECTION_NAME_MAP: Record<string, string> = {
+                    "reason-referral": "section1",
+                    "background": "section2",
+                    "participant-goals": "section3",
+                    "diagnoses": "section4",
+                    "ot-case-history": "section5",
+                    // "methodology" is handled separately below (section6/section7)
+                    "informal-supports": "section8",
+                    "home-environment": "section9",
+                    "social-environment": "section10",
+                    "typical-week": "section11",
+                    "risk-safety": "section12",
+                  };
 
                   // 1. Top-level text sections (excluding methodology — handled separately as section 6)
                   for (const [sectionId, observations] of topLevelEntries) {
                     if (sectionId === "methodology") continue; // handled in phase as section6
                     const templateGuidance = getTemplateGuidance(sectionId);
                     const rubric = getRubricForSection("text");
-                    const includeCollateral = COLLATERAL_SECTIONS.has(sectionId) && collateralContext;
-                    const prompt = `Write a section of an NDIS Functional Capacity Assessment for ${clientName}.\n\nSECTION: ${sectionId}\n\n${templateGuidance ? templateGuidance + "\n\n" : ""}CLINICIAN OBSERVATIONS (transform these into formal clinical prose):\n${observations}\n\nDIAGNOSIS CONTEXT: ${diagnosis || "[Not provided]"}${includeCollateral ? collateralContext : ""}\n\n${rubric}\n\nWrite 2-3 paragraphs of formal NDIS report prose. Use observation → impact → support need structure. Person-first language, third-person active voice. No bullet points, no markdown. Output only the section text.`;
+                    // Liaise Phase 1: We NO LONGER inline collateralContext into
+                    // the user prompt. The edge function's formatCollateralForPrompt
+                    // produces a correctly-formatted, section-appropriate version
+                    // in the system prompt, which is better quality and avoids
+                    // double-injection. The only thing we pass in the user prompt
+                    // is the clinician's own observations.
+                    const prompt = `Write a section of an NDIS Functional Capacity Assessment for ${clientName}.\n\nSECTION: ${sectionId}\n\n${templateGuidance ? templateGuidance + "\n\n" : ""}CLINICIAN OBSERVATIONS (transform these into formal clinical prose):\n${observations}\n\nDIAGNOSIS CONTEXT: ${diagnosis || "[Not provided]"}\n\n${rubric}\n\nWrite 2-3 paragraphs of formal NDIS report prose. Use observation → impact → support need structure. Person-first language, third-person active voice. No bullet points, no markdown. Output only the section text.`;
                     const extraBody: Record<string, any> = { ...nameFields };
+                    // Liaise Phase 1: pass section_name so the edge function's
+                    // section-aware collateral routing fires correctly.
+                    const mappedSectionName = SECTION_NAME_MAP[sectionId];
+                    if (mappedSectionName) {
+                      extraBody.section_name = mappedSectionName;
+                    }
                     if (collateralPayload.length > 0) {
                       extraBody.collateral_interviews = collateralPayload;
                     }

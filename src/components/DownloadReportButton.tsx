@@ -75,6 +75,12 @@ export default function DownloadReportButton({ reportData }: DownloadReportButto
           },
           assessments: reportData.assessments || [],
           recommendations: reportData.recommendations || [],
+          // CRITICAL: collateral_interviews is required by the assemble-report
+          // function to render Section 6.1 Collateral Sources Summary table.
+          // Without this field, every downloaded report showed "No collateral
+          // interviews were conducted for this assessment" regardless of how
+          // many interviews the clinician had completed in Liaise mode.
+          collateral_interviews: reportData.collateralInterviews || [],
         },
       });
 
