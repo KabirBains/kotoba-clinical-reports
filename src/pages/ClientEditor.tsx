@@ -17,7 +17,7 @@ import { buildMethodologyText } from "@/components/editor/MethodologyAggregator"
 import { KotobaLogo } from "@/components/KotobaLogo";
 import { NotesMode } from "@/components/editor/NotesMode";
 import { ReportMode } from "@/components/editor/ReportMode";
-import { LiaiseMode, LIAISE_TEMPLATES, type CollateralInterview } from "@/components/editor/LiaiseMode";
+import { LiaiseMode, LIAISE_TEMPLATES, LIAISE_TEMPLATES_V2, getQuestionText, flattenStoredResponse, type CollateralInterview } from "@/components/editor/LiaiseMode";
 import { EditorSidebar } from "@/components/editor/EditorSidebar";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, FileText, PenLine, Clock, Handshake, Link2 } from "lucide-react";
@@ -415,13 +415,27 @@ export default function ClientEditor() {
                   }
 
                   // ── Build collateral payload for edge function ──
+                  // Liaise V2 stores multi-select checklist responses as
+                  // JSON-encoded arrays (e.g. '["Walking stick","Walker"]').
+                  // The edge function's collateral formatter doesn't yet
+                  // know how to decode those (that's PR B), so we flatten
+                  // them to comma-separated strings here before shipping.
+                  // Open questions and single-select checklists pass
+                  // through unchanged via flattenStoredResponse.
+                  const flattenResponseMap = (r: Record<string, string>): Record<string, string> => {
+                    const out: Record<string, string> = {};
+                    for (const [k, v] of Object.entries(r || {})) {
+                      out[k] = flattenStoredResponse(v);
+                    }
+                    return out;
+                  };
                   const collateralPayload = collateralInterviews.map(i => ({
                     templateId: i.templateId,
                     intervieweeName: i.intervieweeName,
                     intervieweeRole: i.intervieweeRole,
                     method: i.method,
                     date: i.date,
-                    responses: i.responses || {},
+                    responses: flattenResponseMap(i.responses || {}),
                     customQuestions: i.customQuestions || {},
                     generalNotes: i.generalNotes || '',
                   }));
@@ -444,7 +458,11 @@ export default function ClientEditor() {
                   let collateralContext = "";
                   if (collateralInterviews.length > 0) {
                     const summaries = collateralInterviews.map(iv => {
-                      const template = LIAISE_TEMPLATES[iv.templateId];
+                      // Look up in V2 first, fall back to V1 legacy templates.
+                      // Both template types have .domains[].questions[] but V1
+                      // questions are plain strings while V2 questions are
+                      // {type, text, ...} objects — getQuestionText() normalises.
+                      const template = LIAISE_TEMPLATES_V2[iv.templateId] ?? LIAISE_TEMPLATES[iv.templateId];
                       // Group responses by domain name (not ID) for readability
                       const qaByDomain: Record<string, string[]> = {};
                       for (const [key, val] of Object.entries(iv.responses || {})) {
@@ -454,10 +472,12 @@ export default function ClientEditor() {
                         const domainId = key.substring(0, lastUnderscore);
                         const qIdx = parseInt(key.substring(lastUnderscore + 1));
                         const domain = template?.domains.find(d => d.id === domainId);
-                        const questionText = domain?.questions[qIdx] ?? `Q${qIdx + 1}`;
+                        const questionText = getQuestionText(domain?.questions[qIdx]) || `Q${qIdx + 1}`;
                         const domainName = domain?.name ?? domainId;
+                        // Flatten JSON-array multi-select values into readable prose.
+                        const displayVal = flattenStoredResponse(String(val));
                         (qaByDomain[domainName] = qaByDomain[domainName] || []).push(
-                          `  Q: ${questionText}\n  A: ${val}`
+                          `  Q: ${questionText}\n  A: ${displayVal}`
                         );
                       }
                       // Include custom questions per domain (previously dropped)
@@ -581,13 +601,16 @@ export default function ClientEditor() {
                       intervieweeRole: iv.intervieweeRole,
                       method: iv.method,
                       date: iv.date,
-                      responses: iv.responses || {},
+                      // Flatten V2 multi-select JSON arrays into readable
+                      // comma-separated strings before sending to the edge
+                      // function (see flattenResponseMap above).
+                      responses: flattenResponseMap(iv.responses || {}),
                       customQuestions: iv.customQuestions || {},
                       generalNotes: iv.generalNotes || '',
                     }];
 
                     const informantLabel = iv.intervieweeName || "[Unnamed informant]";
-                    const informantRole = iv.intervieweeRole || LIAISE_TEMPLATES[iv.templateId]?.name || "stakeholder";
+                    const informantRole = iv.intervieweeRole || LIAISE_TEMPLATES_V2[iv.templateId]?.name || LIAISE_TEMPLATES[iv.templateId]?.name || "stakeholder";
                     const rubric = getRubricForSection("text");
                     const prompt = `Write a formal attributed collateral summary paragraph for Section 6.2 (Collateral Interview Summaries) of an NDIS Functional Capacity Assessment for ${clientName}.\n\nINFORMANT: ${informantLabel}\nROLE / RELATIONSHIP: ${informantRole}\nINTERVIEW METHOD: ${iv.method || "[Not specified]"}\nINTERVIEW DATE: ${iv.date || "[Not specified]"}\n\nDIAGNOSIS CONTEXT: ${diagnosis || "[Not provided]"}\n\n${rubric}\n\nTASK:\n- Write 1-2 paragraphs (no more) that summarise THIS informant's contribution only.\n- Open with a formal introduction of the informant by name and role (e.g. "${informantLabel}, ${informantRole}, reported that ...").\n- Every clinical statement must be explicitly attributed to the informant using phrases like "reported", "described", "observed", "stated", "noted".\n- Do NOT write in the participant's voice or the clinician's voice. This is a second-hand account.\n- Do NOT reference other informants — this summary concerns ${informantLabel} only.\n- Cover the main functional themes this informant raised (daily functioning, ADLs, cognition, behaviour, social, risk/safety, carer capacity) but only where the informant actually commented.\n- Person-first language. Third-person active voice. No bullet points, no markdown, no headings.\n- Output only the summary paragraph(s). No preamble, no trailing notes.`;
 
