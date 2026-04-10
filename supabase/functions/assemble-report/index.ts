@@ -1,18 +1,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import JSZip from "https://esm.sh/jszip@3.10.1";
-
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
-
-const BUCKET = "report-documents";
-const TEMPLATE_FILE = "OT_FCA_Template_v5.1.docx";
 
 function escapeXml(text: string): string {
   return text
