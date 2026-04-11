@@ -8,7 +8,7 @@
 // 4. Preventing duplicate in-flight calls for the same key
 // ============================================================
 
-import { supabase } from "@/integrations/supabase/client";
+import { kotobaSupabase as supabase } from "@/integrations/supabase/kotobaClient";
 
 const INTER_REQUEST_DELAY = 2500; // ms between requests
 const RETRY_429_DELAY = 8000;     // ms to wait on 429 before single retry
