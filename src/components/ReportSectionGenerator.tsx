@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2, CheckCircle2, AlertTriangle, Info, RotateCcw, Pencil, Sparkles } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, stripMarkdown } from "@/lib/utils";
 
 interface ReportSectionGeneratorProps {
   sectionId: string;
@@ -81,7 +81,7 @@ export default function ReportSectionGenerator({
         JSON.stringify(clinicianInput)
       );
 
-      setEditableText(rubricResult.auto_corrected_text || prose);
+      setEditableText(stripMarkdown(rubricResult.auto_corrected_text || prose));
       setFlags(rubricResult.flags_for_clinician || []);
       setCorrections(rubricResult.corrections_made || []);
       setStatus("ready");
