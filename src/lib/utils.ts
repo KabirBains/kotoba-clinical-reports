@@ -48,5 +48,7 @@ export function stripMarkdown(text: string): string {
     .replace(/^>\s?/gm, "")
     // Collapse multiple blank lines into one
     .replace(/\n{3,}/g, "\n\n")
+    // Strip trailing Section 34 boilerplate that the AI sometimes appends
+    .replace(/\s*This support is considered reasonable and necessary under Section 34 of the NDIS Act 2013\.?\s*$/gi, "")
     .trim();
 }
