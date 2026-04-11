@@ -13,12 +13,39 @@ import { stripMarkdown } from "@/lib/utils";
 
 const INTER_REQUEST_DELAY = 2500; // ms between requests
 const RETRY_429_DELAY = 8000;     // ms to wait on 429 before single retry
+const STORAGE_KEY = "kotoba_input_hashes";
+
+// ── Report-scoped hash cache (localStorage-backed) ──────────
+let currentReportId: string | null = null;
+
+export function setHashCacheReportId(reportId: string): void {
+  currentReportId = reportId;
+}
+
+function prefixKey(key: string): string {
+  return currentReportId ? `${currentReportId}:${key}` : key;
+}
+
+function loadCache(): Map<string, string> {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return new Map();
+    return new Map(Object.entries(JSON.parse(raw)));
+  } catch {
+    return new Map();
+  }
+}
+
+function saveCache(cache: Map<string, string>): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(Object.fromEntries(cache)));
+  } catch {
+    // storage full or unavailable — ignore
+  }
+}
 
 // ── In-flight tracking ──────────────────────────────────────
 const inFlight = new Set<string>();
-
-// ── Input hash cache (key → hash of last generated input) ───
-const inputHashCache = new Map<string, string>();
 
 function simpleHash(str: string): string {
   let hash = 0;
@@ -32,17 +59,31 @@ function simpleHash(str: string): string {
 
 export function hasInputChanged(key: string, input: string): boolean {
   const hash = simpleHash(input);
-  const prev = inputHashCache.get(key);
+  const cache = loadCache();
+  const prev = cache.get(prefixKey(key));
   if (prev === hash) return false;
   return true;
 }
 
 export function markInputGenerated(key: string, input: string): void {
-  inputHashCache.set(key, simpleHash(input));
+  const cache = loadCache();
+  cache.set(prefixKey(key), simpleHash(input));
+  saveCache(cache);
 }
 
 export function clearInputCache(): void {
-  inputHashCache.clear();
+  if (!currentReportId) {
+    localStorage.removeItem(STORAGE_KEY);
+    return;
+  }
+  const cache = loadCache();
+  const prefix = `${currentReportId}:`;
+  for (const k of Array.from(cache.keys())) {
+    if (k.startsWith(prefix)) {
+      cache.delete(k);
+    }
+  }
+  saveCache(cache);
 }
 
 // ── Queue item type ─────────────────────────────────────────
