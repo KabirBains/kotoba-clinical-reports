@@ -11,8 +11,8 @@
 import { kotobaSupabase as supabase } from "@/integrations/supabase/kotobaClient";
 import { stripMarkdown } from "@/lib/utils";
 
-const INTER_REQUEST_DELAY = 2500; // ms between requests
-const RETRY_429_DELAY = 8000;     // ms to wait on 429 before single retry
+const INTER_REQUEST_DELAY = 12000; // ms between requests
+const RETRY_429_DELAY = 20000;     // ms to wait on 429 before single retry
 const STORAGE_KEY = "kotoba_input_hashes";
 
 // ── Report-scoped hash cache (localStorage-backed) ──────────
