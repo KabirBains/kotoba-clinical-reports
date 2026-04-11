@@ -90,7 +90,7 @@ export const RECOMMENDATION_GUIDANCE = `RECOMMENDATION WRITING RULES (from FCA T
 - List specific tasks covered with clinical rationale for the hours.
 - State how the support helps therapeutically (capacity building, recovery, integration).
 - Consequence statement: 'Without this support, [participant] is at risk of [specific consequence].'
-- Section 34 close: 'This support is considered reasonable and necessary under Section 34 of the NDIS Act 2013.'
+- Do NOT end with a sentence about Section 34 or 'reasonable and necessary' — that is covered in its own dedicated section of the report (Section 19).
 - Use 'is expected to' not 'will'.
 - Reference specific report sections where evidence was documented.
 - Name diagnoses explicitly — do not use generic terms.`;
