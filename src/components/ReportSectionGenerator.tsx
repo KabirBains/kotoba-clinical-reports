@@ -81,7 +81,7 @@ export default function ReportSectionGenerator({
         JSON.stringify(clinicianInput)
       );
 
-      setEditableText(rubricResult.auto_corrected_text || prose);
+      setEditableText(stripMarkdown(rubricResult.auto_corrected_text || prose));
       setFlags(rubricResult.flags_for_clinician || []);
       setCorrections(rubricResult.corrections_made || []);
       setStatus("ready");
