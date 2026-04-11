@@ -9,6 +9,7 @@
 // ============================================================
 
 import { kotobaSupabase as supabase } from "@/integrations/supabase/kotobaClient";
+import { stripMarkdown } from "@/lib/utils";
 
 const INTER_REQUEST_DELAY = 2500; // ms between requests
 const RETRY_429_DELAY = 8000;     // ms to wait on 429 before single retry
@@ -218,11 +219,11 @@ export async function processQueue(
                 item.extraBody?.participant_first_name
               );
               if (fieldRefine?.refined_text) {
-                refinedObj[fieldKey] = fieldRefine.refined_text;
+                refinedObj[fieldKey] = stripMarkdown(fieldRefine.refined_text);
                 anyRefined = true;
                 if (fieldRefine.warnings?.length) allWarnings.push(...fieldRefine.warnings);
               } else {
-                refinedObj[fieldKey] = fieldText;
+                refinedObj[fieldKey] = stripMarkdown(fieldText);
               }
             }
 
@@ -237,7 +238,7 @@ export async function processQueue(
               item.extraBody?.participant_name,
               item.extraBody?.participant_first_name
             );
-            finalText = refineResult?.refined_text || result.text;
+            finalText = stripMarkdown(refineResult?.refined_text || result.text);
             refined = !!refineResult?.refined_text;
             refineWarnings = refineResult?.warnings;
           }
@@ -249,7 +250,7 @@ export async function processQueue(
             item.extraBody?.participant_name,
             item.extraBody?.participant_first_name
           );
-          finalText = refineResult?.refined_text || result.text;
+          finalText = stripMarkdown(refineResult?.refined_text || result.text);
           refined = !!refineResult?.refined_text;
           refineWarnings = refineResult?.warnings;
         }
