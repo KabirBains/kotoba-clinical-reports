@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { kotobaSupabase as supabase } from "@/integrations/supabase/kotobaClient";
 import { 
   ASSESSMENT_LIBRARY, 
   type AssessmentDefinition, 

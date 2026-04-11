@@ -358,7 +358,7 @@ FLAG: suspected fabrication, missing hours, incorrect categories, missing conseq
 // ── 6. API CALLING FUNCTIONS ─────────────────────────────────
 
 async function callClaude(userMessage: string, maxTokens: number = 2000, extraBody?: Record<string, any>): Promise<{ text: string; name_warnings?: string[] }> {
-  const { supabase } = await import("@/integrations/supabase/client");
+  const { kotobaSupabase: supabase } = await import("@/integrations/supabase/kotobaClient");
 
   const { data, error } = await supabase.functions.invoke("generate-report", {
     body: { prompt: userMessage, max_tokens: maxTokens, ...extraBody },
