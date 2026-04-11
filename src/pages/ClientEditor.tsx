@@ -287,7 +287,7 @@ export default function ClientEditor() {
         .filter(([, text]) => text && text.trim())
         .map(([key, text]) => `=== ${SECTION_LABELS[key] || key} ===\n${text}`)
         .join("\n\n");
-      const { data, error } = await supabase.functions.invoke("review-report", {
+      const { data, error } = await kotobaSupabase.functions.invoke("review-report", {
         body: { reportText, participantName: client?.client_name || "" },
       });
       if (error) throw error;
@@ -1051,7 +1051,7 @@ export default function ClientEditor() {
 
                     try {
                       const diagnosesText = diagnoses.map(d => d.name).join(", ") || diagnosis;
-                      const { data: threadData, error: threadError } = await supabase.functions.invoke("thread-narrative", {
+                      const { data: threadData, error: threadError } = await kotobaSupabase.functions.invoke("thread-narrative", {
                         method: "POST",
                         body: {
                           generated_sections: newContent,
@@ -1454,7 +1454,7 @@ export default function ClientEditor() {
                         suggestedFix: issue.suggestedFix, description: issue.description,
                       };
                     });
-                  const { data, error } = await supabase.functions.invoke("correct-report", {
+                  const { data, error } = await kotobaSupabase.functions.invoke("correct-report", {
                     body: { corrections: acceptedFixes },
                   });
                   if (error) throw error;
