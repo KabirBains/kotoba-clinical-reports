@@ -10,7 +10,7 @@ import { getInstanceScoreSummary } from "@/lib/assessment-scoring";
 import { type RecommendationInstance } from "@/lib/recommendations-library";
 import { type DiagnosisInstance } from "@/lib/diagnosis-library";
 import { type GoalInstance } from "@/components/editor/ParticipantGoals";
-import { type QueueItem, processQueue } from "@/ai/generationQueue";
+import { type QueueItem, processQueue, setHashCacheReportId } from "@/ai/generationQueue";
 import { getTemplateGuidance, getRubricForSection, FUNCTIONAL_DOMAIN_GUIDANCE, ASSESSMENT_INTERPRETATION_GUIDANCE, RECOMMENDATION_GUIDANCE } from "@/ai/promptGuidance";
 import { SYNOPSIS_LIBRARY } from "@/ai/reportEngine";
 import { buildMethodologyText } from "@/components/editor/MethodologyAggregator";
@@ -63,6 +63,11 @@ export default function ClientEditor() {
   const { clientId } = useParams<{ clientId: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
+
+  // Scope the generation hash cache to this client so different clients don't share skip-state
+  useEffect(() => {
+    if (clientId) setHashCacheReportId(clientId);
+  }, [clientId]);
   const queryClient = useQueryClient();
   const [mode, setMode] = useState<"notes" | "report" | "liaise">("notes");
   const [notes, setNotes] = useState<Record<string, string>>({});
@@ -912,7 +917,7 @@ export default function ClientEditor() {
                       ? `Clinician's draft consequence (transform into participant-specific prose, do NOT copy verbatim — name THIS participant's specific risks):\n${r.consequence.trim()}`
                       : `No consequence provided by clinician. You MUST derive a participant-specific consequence statement from:\n  - The named diagnoses above\n  - The functional capacity findings in earlier sections (provided in generated_sections)\n  - The risk and safety profile from Section 12\nDo NOT use generic phrasing like "functional decline" or "social isolation". Name THIS participant's specific risks (e.g., "without daily showering support, [name] faces ongoing skin breakdown given documented poor hygiene tolerance and history of pressure injury").`;
 
-                    const prompt = `${RECOMMENDATION_GUIDANCE}\n\nConvert this structured recommendation into formal NDIS clinical prose. Person-first language, no bullet points, no markdown.\n\nParticipant: ${clientName}\nPrimary Diagnosis: ${client?.primary_diagnosis || ""}\n\nRecommendation ${ri + 1}: ${r.supportName}\nCategory: ${r.ndisCategory}\n${r.isCapital || r.isConsumable ? `Estimated Cost: ${r.estimatedCost || "Not specified"}` : `Current Provision: ${r.currentHours || "Nil"}\nRecommended Provision: ${r.recommendedHours || "Not specified"}\nSupport Ratio: ${r.ratio || "Not specified"}`}\n\nTasks:\n${(r.tasks || []).map(t => `- ${t}`).join("\n")}\n\nJustification: ${r.justification || "Not provided"}\nOutcomes:\n${(r.outcomes || []).map(o => `- ${OUTCOME_LABELS[o] || o}`).join("\n")}\n\nCONSEQUENCE STATEMENT (CRITICAL):\n${consequenceDirective}\n\nThe consequence must be SPECIFIC to this participant. Generic phrasing like "functional decline", "social isolation", or "deterioration in daily functioning" is NOT acceptable. Name actual risks tied to this participant's diagnoses, observed limitations, and documented incidents.\n\nS34 Justification: ${r.s34Justification || "Not provided"}\n\n${recRubric}\n\nWrite 1 cohesive paragraph following the recommendation reasoning chain above. Use 'is expected to' not 'will'. Output only the recommendation text.`;
+                    const prompt = `${RECOMMENDATION_GUIDANCE}\n\nConvert this structured recommendation into formal NDIS clinical prose. Person-first language, no bullet points, no markdown.\n\nParticipant: ${clientName}\nPrimary Diagnosis: ${client?.primary_diagnosis || ""}\n\nRecommendation ${ri + 1}: ${r.supportName}\nCategory: ${r.ndisCategory}\n${r.isCapital || r.isConsumable ? `Estimated Cost: ${r.estimatedCost || "Not specified"}` : `Current Provision: ${r.currentHours || "Nil"}\nRecommended Provision: ${r.recommendedHours || "Not specified"}\nSupport Ratio: ${r.ratio || "Not specified"}`}\n\nTasks:\n${(r.tasks || []).map(t => `- ${t}`).join("\n")}\n\nJustification: ${r.justification || "Not provided"}\nOutcomes:\n${(r.outcomes || []).map(o => `- ${OUTCOME_LABELS[o] || o}`).join("\n")}\n\nCONSEQUENCE STATEMENT (CRITICAL):\n${consequenceDirective}\n\nThe consequence must be SPECIFIC to this participant. Generic phrasing like "functional decline", "social isolation", or "deterioration in daily functioning" is NOT acceptable. Name actual risks tied to this participant's diagnoses, observed limitations, and documented incidents.\n\nS34 Justification: ${r.s34Justification || "Not provided"}\n\n${recRubric}\n\nWrite 1 cohesive paragraph following the recommendation reasoning chain above. Use 'is expected to' not 'will'. Do NOT end with a sentence about Section 34 or 'reasonable and necessary' — that is covered in its own dedicated section of the report. Output only the recommendation text.`;
 
                     const inputHash = `${r.supportName}|${r.justification || ""}|${r.consequence || ""}|${(r.tasks || []).join(",")}`;
 
