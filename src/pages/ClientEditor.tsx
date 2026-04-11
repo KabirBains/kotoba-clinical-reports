@@ -11,6 +11,7 @@ import { type RecommendationInstance } from "@/lib/recommendations-library";
 import { type DiagnosisInstance } from "@/lib/diagnosis-library";
 import { type GoalInstance } from "@/components/editor/ParticipantGoals";
 import { type QueueItem, processQueue, setHashCacheReportId } from "@/ai/generationQueue";
+import { stripMarkdown, stableStringify } from "@/lib/utils";
 import { getTemplateGuidance, getRubricForSection, FUNCTIONAL_DOMAIN_GUIDANCE, ASSESSMENT_INTERPRETATION_GUIDANCE, RECOMMENDATION_GUIDANCE } from "@/ai/promptGuidance";
 import { SYNOPSIS_LIBRARY } from "@/ai/reportEngine";
 import { buildMethodologyText } from "@/components/editor/MethodologyAggregator";
@@ -660,7 +661,7 @@ export default function ClientEditor() {
                     const rubric = getRubricForSection("text");
                     const prompt = `Write a formal attributed collateral summary paragraph for Section 6.2 (Collateral Interview Summaries) of an NDIS Functional Capacity Assessment for ${clientName}.\n\nINFORMANT: ${informantLabel}\nROLE / RELATIONSHIP: ${informantRole}\nINTERVIEW METHOD: ${iv.method || "[Not specified]"}\nINTERVIEW DATE: ${iv.date || "[Not specified]"}\n\nDIAGNOSIS CONTEXT: ${diagnosis || "[Not provided]"}\n\n${rubric}\n\nTASK:\n- Write 1-2 paragraphs (no more) that summarise THIS informant's contribution only.\n- Open with a formal introduction of the informant by name and role (e.g. "${informantLabel}, ${informantRole}, reported that ...").\n- Every clinical statement must be explicitly attributed to the informant using phrases like "reported", "described", "observed", "stated", "noted".\n- Do NOT write in the participant's voice or the clinician's voice. This is a second-hand account.\n- Do NOT reference other informants — this summary concerns ${informantLabel} only.\n- Cover the main functional themes this informant raised (daily functioning, ADLs, cognition, behaviour, social, risk/safety, carer capacity) but only where the informant actually commented.\n- Person-first language. Third-person active voice. No bullet points, no markdown, no headings.\n- Output only the summary paragraph(s). No preamble, no trailing notes.`;
 
-                    const inputForHash = `${iv.id}|${iv.intervieweeName}|${iv.intervieweeRole}|${iv.method}|${iv.date}|${JSON.stringify(iv.responses || {})}|${JSON.stringify(iv.customQuestions || {})}|${iv.generalNotes || ''}`;
+                    const inputForHash = `${iv.id}|${iv.intervieweeName}|${iv.intervieweeRole}|${iv.method}|${iv.date}|${stableStringify(iv.responses || {})}|${stableStringify(iv.customQuestions || {})}|${iv.generalNotes || ''}`;
 
                     phase1Items.push({
                       key,
@@ -1073,7 +1074,7 @@ export default function ClientEditor() {
                         // Replace newContent with threaded versions
                         for (const [key, text] of Object.entries(threadData.threaded_sections)) {
                           if (typeof text === "string" && text.trim()) {
-                            newContent[key] = text;
+                            newContent[key] = stripMarkdown(text);
                           }
                         }
                         setThreadMap(threadData.thread_map || []);

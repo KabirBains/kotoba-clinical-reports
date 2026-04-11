@@ -166,14 +166,14 @@ CRITICAL: Each recommendation must be a cohesive clinical narrative paragraph fo
 DIAGNOSIS → FUNCTIONAL IMPAIRMENT → OBSERVED LIMITATION → SUPPORT NEED → HOW SUPPORT ADDRESSES LIMITATION → EXPECTED OUTCOME → CONSEQUENCE IF NOT PROVIDED
 
 For EACH recommendation, write a single paragraph (not bullets) that includes:
-1. Bold heading with support name and NDIS category
+1. Plain text heading with support name and NDIS category (no bold, no markdown)
 2. Recommendation statement with hours, frequency, ratio, and current provision comparison
 3. Disability-to-support link naming the specific diagnosis and how it causes the limitation
 4. Tasks covered with clinical rationale for the hours
 5. How the support helps therapeutically (capacity building, recovery, integration)
 6. Consequence if not provided — specific to this participant
-7. Section 34 close with NDIS funding justification
 
+Do NOT end with a sentence about Section 34 or 'reasonable and necessary' — that is covered in Section 19 of the report.
 Use 'is expected to' not 'will'. Reference specific report sections. Name diagnoses explicitly.
 After all recommendations, write a Total Support Summary paragraph.`,
 

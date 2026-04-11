@@ -6,6 +6,23 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
+ * Deterministic JSON.stringify — sorts object keys recursively so the
+ * same data always produces the same string regardless of property
+ * insertion order.  Used for cache-key hashing.
+ */
+export function stableStringify(value: unknown): string {
+  if (value === null || value === undefined) return String(value);
+  if (typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) {
+    return "[" + value.map(stableStringify).join(",") + "]";
+  }
+  const sorted = Object.keys(value as Record<string, unknown>)
+    .sort()
+    .map((k) => JSON.stringify(k) + ":" + stableStringify((value as Record<string, unknown>)[k]));
+  return "{" + sorted.join(",") + "}";
+}
+
+/**
  * Strip common markdown formatting from AI-generated text,
  * leaving clean plain prose suitable for clinical reports.
  */
@@ -31,5 +48,7 @@ export function stripMarkdown(text: string): string {
     .replace(/^>\s?/gm, "")
     // Collapse multiple blank lines into one
     .replace(/\n{3,}/g, "\n\n")
+    // Strip trailing Section 34 boilerplate that the AI sometimes appends
+    .replace(/\s*This support is considered reasonable and necessary under Section 34 of the NDIS Act 2013\.?\s*$/gi, "")
     .trim();
 }
