@@ -26,6 +26,10 @@ function prefixKey(key: string): string {
   return currentReportId ? `${currentReportId}:${key}` : key;
 }
 
+function normalizeHashInput(input: string): string {
+  return input.replace(/\r\n?/g, "\n").trim();
+}
+
 function loadCache(): Map<string, string> {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -44,6 +48,27 @@ function saveCache(cache: Map<string, string>): void {
   }
 }
 
+function getCachedHash(cache: Map<string, string>, key: string): string | undefined {
+  const scopedKey = prefixKey(key);
+  const scopedValue = cache.get(scopedKey);
+  if (scopedValue !== undefined) {
+    return scopedValue;
+  }
+
+  if (!currentReportId) {
+    return undefined;
+  }
+
+  const legacyValue = cache.get(key);
+  if (legacyValue !== undefined) {
+    cache.set(scopedKey, legacyValue);
+    cache.delete(key);
+    saveCache(cache);
+  }
+
+  return legacyValue;
+}
+
 // ── In-flight tracking ──────────────────────────────────────
 const inFlight = new Set<string>();
 
@@ -58,16 +83,18 @@ function simpleHash(str: string): string {
 }
 
 export function hasInputChanged(key: string, input: string): boolean {
-  const hash = simpleHash(input);
   const cache = loadCache();
-  const prev = cache.get(prefixKey(key));
-  if (prev === hash) return false;
-  return true;
+  const hash = simpleHash(normalizeHashInput(input));
+  const prev = getCachedHash(cache, key);
+  return prev !== hash;
 }
 
 export function markInputGenerated(key: string, input: string): void {
   const cache = loadCache();
-  cache.set(prefixKey(key), simpleHash(input));
+  cache.set(prefixKey(key), simpleHash(normalizeHashInput(input)));
+  if (currentReportId) {
+    cache.delete(key);
+  }
   saveCache(cache);
 }
 

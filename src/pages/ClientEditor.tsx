@@ -60,15 +60,34 @@ interface ThreadIterationStat {
   converged: boolean;
 }
 
+function normalizeHashValue(value: unknown): unknown {
+  if (typeof value === "string") {
+    return value.replace(/\r\n?/g, "\n").trim();
+  }
+  if (Array.isArray(value)) {
+    return value.map(normalizeHashValue);
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, nestedValue]) => [key, normalizeHashValue(nestedValue)])
+    );
+  }
+  return value;
+}
+
+function buildHashInput(value: unknown): string {
+  return stableStringify(normalizeHashValue(value));
+}
+
 export default function ClientEditor() {
   const { clientId } = useParams<{ clientId: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  // Scope the generation hash cache to this client so different clients don't share skip-state
-  useEffect(() => {
-    if (clientId) setHashCacheReportId(clientId);
-  }, [clientId]);
+  if (clientId) {
+    setHashCacheReportId(clientId);
+  }
+
   const queryClient = useQueryClient();
   const [mode, setMode] = useState<"notes" | "report" | "liaise">("notes");
   const [notes, setNotes] = useState<Record<string, string>>({});
