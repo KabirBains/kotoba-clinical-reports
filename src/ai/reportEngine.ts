@@ -221,7 +221,7 @@ const INTERPRETATION_PROMPTS: Record<string, (input: any) => string> = {
 
   interpretation_whodas: (input) => `Generate the WHODAS 2.0 interpretation for Section 13.2 of an NDIS FCA for ${input.client_name}.
 
-FIXED SYNOPSIS (insert verbatim as opening):
+ASSESSMENT TOOL DESCRIPTION (integrate into opening paragraph):
 ${SYNOPSIS_LIBRARY.whodas}
 
 SCORES FROM SCORING TOOL:
@@ -232,13 +232,13 @@ CLINICIAN NOTES: ${input.clinician_notes || 'None provided'}
 REPORT CONTEXT:
 ${input.report_context || 'No context available'}
 
-Para 1: Insert synopsis verbatim + why the tool was selected for this participant.
+Para 1: Introduce the assessment tool and why it was selected for this participant. Draw on the description above but write in your own clinical voice — do not copy it verbatim.
 Para 2: Total score + disability level + 2-3 highest domains + functional implications.
 Para 3: Clinician notes + cross-references to earlier report sections.`,
 
   interpretation_frat: (input) => `Generate the FRAT interpretation for Section 13.2 of an NDIS FCA for ${input.client_name}.
 
-FIXED SYNOPSIS (insert verbatim as opening):
+ASSESSMENT TOOL DESCRIPTION (integrate into opening paragraph):
 ${SYNOPSIS_LIBRARY.frat}
 
 SCORES FROM SCORING TOOL:
@@ -249,67 +249,73 @@ CLINICIAN NOTES: ${input.clinician_notes || 'None provided'}
 REPORT CONTEXT:
 ${input.report_context || 'No context available'}
 
-Para 1: Synopsis verbatim + why selected. Para 2: Score + risk level + AMTS + highest risk factors. If clinical risk differs from scored level, use attributed language. Para 3: Part 2 summary + cross-refs to Section 8 (home), 12.1 (mobility), 12.2 (transfers).`,
+Para 1: Introduce the assessment tool and why it was selected. Write in your own clinical voice — do not copy the description verbatim. Para 2: Score + risk level + AMTS + highest risk factors. If clinical risk differs from scored level, use attributed language. Para 3: Part 2 summary + cross-refs to Section 8 (home), 12.1 (mobility), 12.2 (transfers).`,
 
   interpretation_lsp16: (input) => `Generate the LSP-16 interpretation for Section 13.2 of an NDIS FCA for ${input.client_name}.
 
-FIXED SYNOPSIS: ${SYNOPSIS_LIBRARY.lsp16}
+ASSESSMENT TOOL DESCRIPTION (integrate into opening paragraph):
+${SYNOPSIS_LIBRARY.lsp16}
 
 SCORES: ${JSON.stringify(input.scores, null, 2)}
 CLINICIAN NOTES: ${input.clinician_notes || 'None provided'}
 REPORT CONTEXT: ${input.report_context || 'No context available'}
 
-Para 1: Synopsis + why selected. Para 2: Total + highest subscales + implications. Cross-ref Section 12.8, Section 2. Para 3: Clinician notes + support linkage.`,
+Para 1: Introduce the assessment tool and why it was selected — write in your own clinical voice. Para 2: Total + highest subscales + implications. Cross-ref Section 12.8, Section 2. Para 3: Clinician notes + support linkage.`,
 
   interpretation_cans: (input) => `Generate the CANS interpretation for Section 13.2 of an NDIS FCA for ${input.client_name}.
 
-FIXED SYNOPSIS: ${SYNOPSIS_LIBRARY.cans}
+ASSESSMENT TOOL DESCRIPTION (integrate into opening paragraph):
+${SYNOPSIS_LIBRARY.cans}
 
 SCORES: ${JSON.stringify(input.scores, null, 2)}
 CLINICIAN NOTES: ${input.clinician_notes || 'None provided'}
 REPORT CONTEXT: ${input.report_context || 'No context available'}
 
-Para 1: Synopsis + why selected. Para 2: CANS level + time alone + highest group needs. Cross-ref Section 11, 10, 7. Para 3: Clinician notes + link to support hours.`,
+Para 1: Introduce the assessment tool and why it was selected — write in your own clinical voice. Para 2: CANS level + time alone + highest group needs. Cross-ref Section 11, 10, 7. Para 3: Clinician notes + link to support hours.`,
 
   interpretation_lawton: (input) => `Generate the Lawton IADL interpretation for Section 13.2 of an NDIS FCA for ${input.client_name}.
 
-FIXED SYNOPSIS: ${SYNOPSIS_LIBRARY.lawton}
+ASSESSMENT TOOL DESCRIPTION (integrate into opening paragraph):
+${SYNOPSIS_LIBRARY.lawton}
 
 SCORES: ${JSON.stringify(input.scores, null, 2)}
 CLINICIAN NOTES: ${input.clinician_notes || 'None provided'}
 REPORT CONTEXT: ${input.report_context || 'No context available'}
 
-Para 1: Synopsis + why selected. Para 2: Total + domains scored 0 + practical implications. Cross-ref Section 12.4, 12.5. Para 3: Clinician notes.`,
+Para 1: Introduce the assessment tool and why it was selected — write in your own clinical voice. Para 2: Total + domains scored 0 + practical implications. Cross-ref Section 12.4, 12.5. Para 3: Clinician notes.`,
 
   interpretation_sensory: (input) => `Generate the Sensory Profile interpretation for Section 13.2 of an NDIS FCA for ${input.client_name}.
 
-FIXED SYNOPSIS: ${SYNOPSIS_LIBRARY.sensory}
+ASSESSMENT TOOL DESCRIPTION (integrate into opening paragraph):
+${SYNOPSIS_LIBRARY.sensory}
 
 SCORES: ${JSON.stringify(input.scores, null, 2)}
 CLINICIAN NOTES: ${input.clinician_notes || 'None provided'}
 REPORT CONTEXT: ${input.report_context || 'No context available'}
 
-Para 1: Synopsis + why selected. Para 2: Quadrant scores using published classification language. Focus on 'More' and 'Much More' quadrants. Cross-ref Section 12.9, 12.8, 12.3. Para 3: Clinician notes + strategy recommendations.`,
+Para 1: Introduce the assessment tool and why it was selected — write in your own clinical voice. Para 2: Quadrant scores using published classification language. Focus on 'More' and 'Much More' quadrants. Cross-ref Section 12.9, 12.8, 12.3. Para 3: Clinician notes + strategy recommendations.`,
 
   interpretation_zarit: (input) => `Generate the Zarit interpretation for Section 13.2 of an NDIS FCA for ${input.client_name}.
 
-FIXED SYNOPSIS: ${SYNOPSIS_LIBRARY.zarit}
+ASSESSMENT TOOL DESCRIPTION (integrate into opening paragraph):
+${SYNOPSIS_LIBRARY.zarit}
 
 SCORES: ${JSON.stringify(input.scores, null, 2)}
 CLINICIAN NOTES: ${input.clinician_notes || 'None provided'}
 REPORT CONTEXT: ${input.report_context || 'No context available'}
 
-Para 1: Synopsis + why administered. Para 2: Total + burden level + highest areas. Cross-ref Section 7. Para 3: Clinician notes + explicit link to need for formal NDIS supports.`,
+Para 1: Introduce the assessment tool and why it was administered — write in your own clinical voice. Para 2: Total + burden level + highest areas. Cross-ref Section 7. Para 3: Clinician notes + explicit link to need for formal NDIS supports.`,
 
   interpretation_katz: (input) => `Generate the Katz ADL interpretation for Section 13.2 of an NDIS FCA for ${input.client_name}.
 
-FIXED SYNOPSIS: ${SYNOPSIS_LIBRARY.katz}
+ASSESSMENT TOOL DESCRIPTION (integrate into opening paragraph):
+${SYNOPSIS_LIBRARY.katz}
 
 SCORES: ${JSON.stringify(input.scores, null, 2)}
 CLINICIAN NOTES: ${input.clinician_notes || 'None provided'}
 REPORT CONTEXT: ${input.report_context || 'No context available'}
 
-Para 1: Synopsis + why selected. Para 2: Total + items scored 0 + daily implications. Cross-ref Section 12.3, 12.2. Para 3: Clinician notes.`,
+Para 1: Introduce the assessment tool and why it was selected — write in your own clinical voice. Para 2: Total + items scored 0 + daily implications. Cross-ref Section 12.3, 12.2. Para 3: Clinician notes.`,
 };
 
 
@@ -469,4 +475,45 @@ function summarise(text: string): string {
 
 export function getSynopsis(toolId: string): string | undefined {
   return SYNOPSIS_LIBRARY[toolId];
+}
+
+
+// ── 8. WHOLE-REPORT REFINEMENT ─────────────────────────────
+// Sends ALL generated sections to refine-report in a single API call.
+// Replaces 19-46 per-section refine calls with 1 call.
+
+export async function refineWholeReport(
+  sections: Record<string, string>,
+  participantName?: string,
+  participantFirstName?: string
+): Promise<{
+  refined_sections: Record<string, string>;
+  warnings: string[];
+  fallback: boolean;
+}> {
+  const { kotobaSupabase: supabase } = await import("@/integrations/supabase/kotobaClient");
+
+  const { data, error } = await supabase.functions.invoke("refine-report", {
+    method: "POST",
+    body: {
+      sections,
+      participant_name: participantName,
+      participant_first_name: participantFirstName,
+    },
+  });
+
+  if (error) {
+    console.error("Whole-report refinement failed:", error);
+    return { refined_sections: sections, warnings: ["Refinement failed — original text retained"], fallback: true };
+  }
+
+  if (!data?.success) {
+    return { refined_sections: sections, warnings: [data?.error || "Refinement returned no data"], fallback: true };
+  }
+
+  return {
+    refined_sections: data.refined_sections || sections,
+    warnings: data.warnings || [],
+    fallback: !!data.fallback,
+  };
 }
