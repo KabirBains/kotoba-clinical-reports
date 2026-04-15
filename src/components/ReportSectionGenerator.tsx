@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { generateSection, qualityCheck, assembleReportContext } from "@/ai/reportEngine";
-import { refineText } from "@/ai/generationQueue";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -63,16 +62,9 @@ export default function ReportSectionGenerator({
         setNameWarnings(result.name_warnings);
       }
 
-      // Refine the generated text
-      setStatus("refining");
-      const refineResult = await refineText(prose, sectionId, participantName, participantFirstName);
-      if (refineResult?.refined_text) {
-        prose = refineResult.refined_text;
-        setIsRefined(true);
-        if (refineResult.warnings && refineResult.warnings.length > 0) {
-          setRefineWarnings(refineResult.warnings);
-        }
-      }
+      // Per-section refinement removed — whole-report refinement
+      // happens after all sections are generated (see ClientEditor).
+      prose = stripMarkdown(prose);
 
       setStatus("checking");
       const rubricResult = await qualityCheck(
