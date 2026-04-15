@@ -472,7 +472,92 @@ export default function ClientEditor() {
                     rowData.sort((a, b) => a.fieldId.localeCompare(b.fieldId));
                     if (rowData.length > 0) domainEntries.push({ ...domain, rowData });
                   }
-...
+
+                  const scoredAssessments = assessments.filter(a => a.scores && Object.keys(a.scores).length > 0);
+
+                  if (topLevelEntries.length === 0 && domainEntries.length === 0 && scoredAssessments.length === 0 && recommendations.length === 0) {
+                    toast.warning("Add notes, assessments, or recommendations before generating.");
+                    setGeneratingReport(false);
+                    return;
+                  }
+
+                  // ── Build collateral payload for edge function ──
+                  const flattenResponseMap = (r: Record<string, string>): Record<string, string> => {
+                    const out: Record<string, string> = {};
+                    for (const [k, v] of Object.entries(r || {})) {
+                      out[k] = flattenStoredResponse(v);
+                    }
+                    return out;
+                  };
+                  const collateralPayload = collateralInterviews.map(i => ({
+                    templateId: i.templateId,
+                    intervieweeName: i.intervieweeName,
+                    intervieweeRole: i.intervieweeRole,
+                    method: i.method,
+                    date: i.date,
+                    responses: flattenResponseMap(i.responses || {}),
+                    customQuestions: i.customQuestions || {},
+                    generalNotes: i.generalNotes || '',
+                  }));
+
+                  // ── Build collateral context summary (legacy) ──
+                  let collateralContext = "";
+                  if (collateralInterviews.length > 0) {
+                    const summaries = collateralInterviews.map(iv => {
+                      const template = LIAISE_TEMPLATES_V2[iv.templateId] ?? LIAISE_TEMPLATES[iv.templateId];
+                      const qaByDomain: Record<string, string[]> = {};
+                      for (const [key, val] of Object.entries(iv.responses || {})) {
+                        if (!val || !String(val).trim()) continue;
+                        const lastUnderscore = key.lastIndexOf("_");
+                        if (lastUnderscore === -1) continue;
+                        const domainId = key.substring(0, lastUnderscore);
+                        const qIdx = parseInt(key.substring(lastUnderscore + 1));
+                        const domain = template?.domains.find(d => d.id === domainId);
+                        const questionText = getQuestionText(domain?.questions[qIdx]) || `Q${qIdx + 1}`;
+                        const domainName = domain?.name ?? domainId;
+                        const displayVal = flattenStoredResponse(String(val));
+                        (qaByDomain[domainName] = qaByDomain[domainName] || []).push(
+                          `  Q: ${questionText}\n  A: ${displayVal}`
+                        );
+                      }
+                      for (const [domainId, customs] of Object.entries(iv.customQuestions || {})) {
+                        if (!Array.isArray(customs)) continue;
+                        for (const cq of customs) {
+                          if (!cq?.question || !cq?.response || !String(cq.response).trim()) continue;
+                          const domain = template?.domains.find(d => d.id === domainId);
+                          const domainName = domain?.name ?? domainId;
+                          (qaByDomain[domainName] = qaByDomain[domainName] || []).push(
+                            `  Q (custom): ${cq.question}\n  A: ${cq.response}`
+                          );
+                        }
+                      }
+                      const qaText = Object.entries(qaByDomain)
+                        .map(([domain, qas]) => `[${domain}]\n${qas.join("\n")}`)
+                        .join("\n\n");
+                      const templateName = template?.name || iv.templateId;
+                      return `=== ${templateName}: ${iv.intervieweeName || "Unnamed"} (${iv.intervieweeRole || templateName}) ===\n${qaText}${iv.generalNotes ? `\n\n[General Notes]\n  ${iv.generalNotes}` : ""}`;
+                    }).join("\n\n");
+                    collateralContext = `\n\nCOLLATERAL INTERVIEW DATA:\nThe following collateral information was gathered from stakeholder interviews. Reference and corroborate relevant observations where they support clinical findings. Attribute every reference by informant name and role (e.g. "Jane Smith, daily support worker, reported that ...").\n\n${summaries}`;
+                  }
+
+                  // ── Build queue items ──
+                  const phase1Items: QueueItem[] = [];
+                  const newContent: Record<string, string> = { ...reportContent };
+
+                  const SECTION_NAME_MAP: Record<string, string> = {
+                    "reason-referral": "section1",
+                    "background": "section2",
+                    "participant-goals": "section3",
+                    "diagnoses": "section4",
+                    "ot-case-history": "section5",
+                    "informal-supports": "section8",
+                    "home-environment": "section9",
+                    "social-environment": "section10",
+                    "typical-week": "section11",
+                    "risk-safety": "section12",
+                  };
+
+                  // 1. Top-level text sections
                   for (const [sectionId, observations] of topLevelEntries) {
                     if (sectionId === "methodology") continue; // handled in phase as section6
                     const templateGuidance = getTemplateGuidance(sectionId);
