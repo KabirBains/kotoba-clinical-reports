@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { generateSection, qualityCheck, assembleReportContext } from "@/ai/reportEngine";
-import { stripMarkdown } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
