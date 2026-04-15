@@ -302,26 +302,8 @@ function AssessmentCard({
                     if (error || !data?.text) {
                       toast.error("Failed to generate interpretation");
                     } else {
-                      // Refine the generated text
-                      let finalText = data.text;
-                      try {
-                        const { data: refineData } = await supabase.functions.invoke("refine-report", {
-                          body: {
-                            generated_text: data.text,
-                            section_name: `assessment_${instance.definitionId}`,
-                            ...(participantName ? { participant_name: participantName } : {}),
-                            ...(participantFirstName ? { participant_first_name: participantFirstName } : {}),
-                          },
-                        });
-                        if (refineData?.refined_text) {
-                          finalText = refineData.refined_text;
-                          if (refineData.warnings?.length > 0) {
-                            toast.warning("Refinement warning: " + refineData.warnings.join("; "));
-                          }
-                        }
-                      } catch {
-                        // Fall back to original text
-                      }
+                      // Per-section refinement removed — use stripMarkdown only
+                      const finalText = data.text;
                       onUpdate({ ...instance, interpretation: finalText });
                       toast.success("Interpretation generated");
                     }
