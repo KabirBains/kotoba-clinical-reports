@@ -188,9 +188,35 @@ export function ParticipantReportDetails({
   const ndis = notes[PARTICIPANT_KEYS.ndisNumber] || ndisNumber || "";
   const address = notes[PARTICIPANT_KEYS.address] || "";
   const primaryContact = notes[PARTICIPANT_KEYS.primaryContact] || "";
+  const genderIdentity = notes[PARTICIPANT_KEYS.genderIdentity] || "";
+  const pronouns = notes[PARTICIPANT_KEYS.pronouns] || "";
   const phoneEmail = notes[CLINICIAN_KEYS.phoneEmail] || "";
   const dateOfAssessment = notes[CLINICIAN_KEYS.dateOfAssessment] || "";
   const dateOfReport = notes[CLINICIAN_KEYS.dateOfReport] || "";
+
+  // Determine whether to show the free-text inputs
+  const isCustomGender = genderIdentity === "Self-described";
+  const isPresetPronoun = (PRONOUN_OPTIONS as readonly string[]).includes(pronouns);
+  const showCustomPronouns = !!pronouns && !isPresetPronoun;
+  const customGenderValue = isCustomGender ? (notes["__participant__genderCustom"] || "") : "";
+
+  const handleGenderChange = (v: string) => {
+    onUpdateNote(PARTICIPANT_KEYS.genderIdentity, v);
+    // Auto-prefill pronouns ONLY if not already set by clinician
+    if (!pronouns.trim()) {
+      const suggested = defaultPronounsForGender(v);
+      if (suggested) onUpdateNote(PARTICIPANT_KEYS.pronouns, suggested);
+    }
+  };
+
+  const handlePronounSelectChange = (v: string) => {
+    if (v === "Self-described") {
+      // Clear so the custom field shows empty input
+      onUpdateNote(PARTICIPANT_KEYS.pronouns, "");
+    } else {
+      onUpdateNote(PARTICIPANT_KEYS.pronouns, v);
+    }
+  };
 
   const age = useMemo(() => {
     if (!dob) return "";
