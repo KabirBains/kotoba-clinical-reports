@@ -112,6 +112,45 @@ function Field({
   );
 }
 
+function SelectField({
+  label,
+  value,
+  onChange,
+  options,
+  required = false,
+  half = false,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: readonly string[];
+  required?: boolean;
+  half?: boolean;
+}) {
+  return (
+    <div className={cn("min-w-0", half ? "flex-[1_1_48%] min-w-[200px]" : "flex-[1_1_100%]")}>
+      <label className="text-[10px] font-semibold text-muted-foreground flex items-center gap-1 mb-0.5">
+        {label}
+        {required && <span className="text-destructive text-[9px]">*</span>}
+      </label>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={cn(
+          "w-full px-2.5 py-[7px] rounded-md border text-xs text-foreground bg-background",
+          "focus:outline-none focus:ring-1 focus:ring-accent/50 focus:border-accent/50",
+          required && !value.trim() ? "border-destructive/40" : "border-border/60"
+        )}
+      >
+        <option value="">— Select —</option>
+        {options.map((opt) => (
+          <option key={opt} value={opt}>{opt}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 function SectionBlock({
   title,
   accent,
