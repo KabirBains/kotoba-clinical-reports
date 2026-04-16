@@ -269,7 +269,18 @@ export default function ClientEditor() {
 
   const saveToCloud = useCallback(async () => {
     if (!report?.id) return;
-    const notesWithAssessments = { ...notes, __assessments__: assessments as any, __recommendations__: recommendations as any, __diagnoses__: diagnoses as any, __goals__: goals as any, __nilGoals__: nilGoals as any };
+    const notesWithAssessments: Record<string, any> = {
+      ...notes,
+      __assessments__: assessments as any,
+      __recommendations__: recommendations as any,
+      __diagnoses__: diagnoses as any,
+      __goals__: goals as any,
+      __nilGoals__: nilGoals as any,
+    };
+    // Persist Clinical Spine cache (Stage 1.5) under its dedicated key.
+    if (spineCache) {
+      notesWithAssessments[SPINE_CACHE_KEY] = spineCache;
+    }
     const updatePayload: Record<string, any> = {
       notes: notesWithAssessments,
       report_content: reportContent || null,
