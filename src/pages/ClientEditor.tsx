@@ -130,6 +130,12 @@ export default function ClientEditor() {
   const [threadContradictions, setThreadContradictions] = useState<ThreadMapEntry[]>([]);
   const [threadWarnings, setThreadWarnings] = useState<string[]>([]);
   const [isThreading, setIsThreading] = useState(false);
+  // ── Clinical Spine state (Stage 1.5) ──
+  // Mirror of reports.notes.__clinical_spine__ for fast UI reads.
+  // Persisted via the existing autosave path (saveToCloud).
+  const [spineCache, setSpineCache] = useState<SpineCache | null>(null);
+  const [isGeneratingSpine, setIsGeneratingSpine] = useState(false);
+  const spinePanelRef = useRef<HTMLDivElement>(null);
   const saveTimerRef = useRef<ReturnType<typeof setInterval>>();
   const mainRef = useRef<HTMLElement>(null);
 
