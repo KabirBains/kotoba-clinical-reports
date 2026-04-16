@@ -1486,6 +1486,19 @@ export default function ClientEditor() {
               onUpdateInterviews={setCollateralInterviews}
             />
           ) : (
+            <div className="max-w-7xl mx-auto px-4 pt-4 space-y-4">
+              {/* Stage 1.5: Clinical Spine approval checkpoint */}
+              <ClinicalSpinePanel
+                cache={spineCache}
+                isGenerating={isGeneratingSpine}
+                onGenerate={generateSpine}
+                onApprove={approveSpine}
+                onRegenerate={generateSpine}
+                panelRef={spinePanelRef}
+              />
+            </div>
+          )}
+          {mode === "report" && (
             <ReportMode
               reportContent={reportContent}
               notes={notes}
