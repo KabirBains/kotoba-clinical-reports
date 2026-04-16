@@ -315,6 +315,38 @@ export function ParticipantReportDetails({
             placeholder="Auto-calculated"
             half
           />
+          <SelectField
+            label="Gender Identity"
+            value={isCustomGender ? "Self-described" : genderIdentity}
+            onChange={handleGenderChange}
+            options={GENDER_OPTIONS}
+            half
+          />
+          {isCustomGender && (
+            <Field
+              label="Self-described gender"
+              value={customGenderValue}
+              onChange={(v) => onUpdateNote("__participant__genderCustom", v)}
+              placeholder="e.g. Demigirl"
+              half
+            />
+          )}
+          <SelectField
+            label="Pronouns"
+            value={showCustomPronouns ? "Self-described" : pronouns}
+            onChange={handlePronounSelectChange}
+            options={PRONOUN_OPTIONS}
+            half
+          />
+          {(showCustomPronouns || (!pronouns && isCustomGender)) && (
+            <Field
+              label="Custom pronouns"
+              value={pronouns}
+              onChange={(v) => onUpdateNote(PARTICIPANT_KEYS.pronouns, v)}
+              placeholder="e.g. xe/xem"
+              half
+            />
+          )}
           <Field
             label="NDIS Number"
             value={ndis}
