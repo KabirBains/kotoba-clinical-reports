@@ -548,6 +548,19 @@ export default function ClientEditor() {
               className="bg-accent text-accent-foreground hover:bg-accent/90"
               disabled={generatingReport}
               onClick={async () => {
+                // ── Stage 1.5 gate: full-report generation requires an
+                // approved Clinical Spine. Single-section regenerates
+                // remain ungated until Stage 2 wires the spine into
+                // per-section generation.
+                if (!spineCache || spineCache.status !== "approved") {
+                  toast.warning("Approve the Clinical Spine before generating the full report.");
+                  // Switch to report mode so the panel is visible, then scroll.
+                  if (mode !== "report") setMode("report");
+                  setTimeout(() => {
+                    spinePanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                  }, 50);
+                  return;
+                }
                 setGeneratingReport(true);
 
                 try {
