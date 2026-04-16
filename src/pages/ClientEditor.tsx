@@ -328,26 +328,21 @@ export default function ClientEditor() {
     const firstName = String(fullName).split(/\s+/)[0] || String(fullName);
     const pronouns = String((notes["__participant__pronouns"] as string) || "they/them");
 
-    // Assessment summary — name + classification + key scores per tool.
+    // Assessment summary — name + raw scores + clinician interpretation per tool.
     const assessmentSummary = assessments
       .filter((a) => a?.scores && Object.keys(a.scores).length > 0)
       .map((a) => {
+        const lines = [`${a.name || (a as any).libraryId || "Assessment"}`];
         try {
-          const summary = getInstanceScoreSummary(a);
-          const lines = [`${a.name || a.libraryId}`];
+          const summary: any = getInstanceScoreSummary(a);
           if (summary?.total) lines.push(`Total: ${summary.total}`);
           if (summary?.classification) lines.push(`Classification: ${summary.classification}`);
-          if (summary?.subscales?.length) {
-            lines.push("Subscales:");
-            summary.subscales.forEach((s: any) =>
-              lines.push(`  - ${s.label || s.name}: ${s.score ?? ""} ${s.classification ? `(${s.classification})` : ""}`)
-            );
-          }
-          if (a.interpretation) lines.push(`Clinician notes: ${a.interpretation}`);
-          return lines.join("\n");
         } catch {
-          return `${a.name || a.libraryId}: ${JSON.stringify(a.scores)}`;
+          // fall through to raw scores
         }
+        lines.push(`Raw scores: ${JSON.stringify(a.scores)}`);
+        if (a.interpretation) lines.push(`Clinician notes: ${a.interpretation}`);
+        return lines.join("\n");
       })
       .join("\n\n");
 
