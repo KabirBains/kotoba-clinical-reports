@@ -13,7 +13,7 @@ import { type GoalInstance } from "@/components/editor/ParticipantGoals";
 import { type QueueItem, processQueue, setHashCacheReportId } from "@/ai/generationQueue";
 import { stripMarkdown, stableStringify } from "@/lib/utils";
 import { getTemplateGuidance, getRubricForSection, FUNCTIONAL_DOMAIN_GUIDANCE, ASSESSMENT_INTERPRETATION_GUIDANCE, RECOMMENDATION_GUIDANCE } from "@/ai/promptGuidance";
-import { SYNOPSIS_LIBRARY, refineWholeReport } from "@/ai/reportEngine";
+import { SYNOPSIS_LIBRARY } from "@/ai/reportEngine";
 import { buildMethodologyText } from "@/components/editor/MethodologyAggregator";
 
 import { KotobaLogo } from "@/components/KotobaLogo";
@@ -1097,37 +1097,6 @@ export default function ClientEditor() {
 
                   // ── WHOLE-REPORT REFINEMENT STEP ──
                   // Refine all generated sections in a single API call.
-                  // This replaces 46+ per-section refine calls with 1 call.
-                  setGenerateProgress(prev => ({ ...prev, label: "Refining entire report..." }));
-                  try {
-                    const sectionsToRefine: Record<string, string> = {};
-                    for (const [key, text] of Object.entries(newContent)) {
-                      if (typeof text === "string" && text.trim()) {
-                        sectionsToRefine[key] = text;
-                      }
-                    }
-                    if (Object.keys(sectionsToRefine).length > 0) {
-                      const refineResult = await refineWholeReport(
-                        sectionsToRefine,
-                        participantFullName,
-                        participantFirstName
-                      );
-                      if (!refineResult.fallback) {
-                        for (const [key, text] of Object.entries(refineResult.refined_sections)) {
-                          if (typeof text === "string" && text.trim()) {
-                            newContent[key] = stripMarkdown(text);
-                          }
-                        }
-                        toast.success("Report refined for clinical writing quality");
-                      }
-                      if (refineResult.warnings.length > 0) {
-                        console.warn("Refinement warnings:", refineResult.warnings);
-                      }
-                    }
-                  } catch (err) {
-                    console.warn("Whole-report refinement error (non-fatal):", err);
-                  }
-
                   setReportContent(newContent);
                   setMode("report");
 
