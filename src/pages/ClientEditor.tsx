@@ -13,7 +13,17 @@ import { type GoalInstance } from "@/components/editor/ParticipantGoals";
 import { type QueueItem, processQueue, setHashCacheReportId } from "@/ai/generationQueue";
 import { stripMarkdown, stableStringify } from "@/lib/utils";
 import { getTemplateGuidance, getRubricForSection, FUNCTIONAL_DOMAIN_GUIDANCE, ASSESSMENT_INTERPRETATION_GUIDANCE, RECOMMENDATION_GUIDANCE } from "@/ai/promptGuidance";
-import { SYNOPSIS_LIBRARY } from "@/ai/reportEngine";
+import { SYNOPSIS_LIBRARY, buildClinicalSpine } from "@/ai/reportEngine";
+import {
+  SPINE_CACHE_KEY,
+  buildSpineCacheEntry,
+  computeSpineSourceHash,
+  getSpineCache,
+  markSpineStaleIfNeeded,
+  type SpineCache,
+} from "@/ai/spineCache";
+import "@/ai/devSpineValidator"; // dev-only: window.__kotobaRunSpineOnReport
+import { ClinicalSpinePanel } from "@/components/editor/ClinicalSpinePanel";
 import { buildMethodologyText } from "@/components/editor/MethodologyAggregator";
 
 import { KotobaLogo } from "@/components/KotobaLogo";
@@ -120,6 +130,12 @@ export default function ClientEditor() {
   const [threadContradictions, setThreadContradictions] = useState<ThreadMapEntry[]>([]);
   const [threadWarnings, setThreadWarnings] = useState<string[]>([]);
   const [isThreading, setIsThreading] = useState(false);
+  // ── Clinical Spine state (Stage 1.5) ──
+  // Mirror of reports.notes.__clinical_spine__ for fast UI reads.
+  // Persisted via the existing autosave path (saveToCloud).
+  const [spineCache, setSpineCache] = useState<SpineCache | null>(null);
+  const [isGeneratingSpine, setIsGeneratingSpine] = useState(false);
+  const spinePanelRef = useRef<HTMLDivElement>(null);
   const saveTimerRef = useRef<ReturnType<typeof setInterval>>();
   const mainRef = useRef<HTMLElement>(null);
 
@@ -199,6 +215,19 @@ export default function ClientEditor() {
       if (Array.isArray(savedDismissedKeys)) {
         setDismissedIssueKeys(new Set(savedDismissedKeys));
       }
+      // Load Clinical Spine cache (Stage 1.5)
+      const loadedCache = getSpineCache((savedNotes as any) || {});
+      if (loadedCache) {
+        setSpineCache(loadedCache);
+        // Detect upstream drift and auto-flag stale (no auto-regenerate)
+        markSpineStaleIfNeeded((savedNotes as any) || {}).then(({ notes: nextNotes, changed }) => {
+          if (changed) {
+            const next = getSpineCache(nextNotes);
+            if (next) setSpineCache(next);
+            setNotes(nextNotes as Record<string, string>);
+          }
+        });
+      }
     }
   }, [report]);
 
@@ -240,7 +269,18 @@ export default function ClientEditor() {
 
   const saveToCloud = useCallback(async () => {
     if (!report?.id) return;
-    const notesWithAssessments = { ...notes, __assessments__: assessments as any, __recommendations__: recommendations as any, __diagnoses__: diagnoses as any, __goals__: goals as any, __nilGoals__: nilGoals as any };
+    const notesWithAssessments: Record<string, any> = {
+      ...notes,
+      __assessments__: assessments as any,
+      __recommendations__: recommendations as any,
+      __diagnoses__: diagnoses as any,
+      __goals__: goals as any,
+      __nilGoals__: nilGoals as any,
+    };
+    // Persist Clinical Spine cache (Stage 1.5) under its dedicated key.
+    if (spineCache) {
+      notesWithAssessments[SPINE_CACHE_KEY] = spineCache;
+    }
     const updatePayload: Record<string, any> = {
       notes: notesWithAssessments,
       report_content: reportContent || null,
@@ -259,7 +299,7 @@ export default function ClientEditor() {
       setLastSaved(new Date());
       if (clientId) localStorage.setItem(`kotoba-notes-${clientId}`, JSON.stringify(notes));
     }
-  }, [report?.id, notes, assessments, recommendations, diagnoses, goals, nilGoals, reportContent, clientId, scorecard, issueStatuses, dismissedIssueKeys]);
+  }, [report?.id, notes, assessments, recommendations, diagnoses, goals, nilGoals, reportContent, clientId, scorecard, issueStatuses, dismissedIssueKeys, spineCache]);
 
   // Autosave every 30 seconds
   useEffect(() => {
@@ -277,6 +317,96 @@ export default function ClientEditor() {
   const updateNote = (sectionId: string, value: string) => {
     setNotes((prev) => ({ ...prev, [sectionId]: value }));
   };
+
+  // ── Clinical Spine handlers (Stage 1.5) ──────────────────
+  // Builds the spine inputs from the same notes structures the
+  // generation pipeline reads. Keeps spine input parity with
+  // what Stage 2 will eventually inject into per-section calls.
+  const buildSpineInputsFromState = useCallback(() => {
+    const clientName = client?.client_name || "the participant";
+    const fullName = (notes["__participant__fullName"] as string) || clientName;
+    const firstName = String(fullName).split(/\s+/)[0] || String(fullName);
+    const pronouns = String((notes["__participant__pronouns"] as string) || "they/them");
+
+    // Assessment summary — name + raw scores + clinician interpretation per tool.
+    const assessmentSummary = assessments
+      .filter((a) => a?.scores && Object.keys(a.scores).length > 0)
+      .map((a) => {
+        const lines = [`${a.name || (a as any).libraryId || "Assessment"}`];
+        try {
+          const summary: any = getInstanceScoreSummary(a);
+          if (summary?.total) lines.push(`Total: ${summary.total}`);
+          if (summary?.classification) lines.push(`Classification: ${summary.classification}`);
+        } catch {
+          // fall through to raw scores
+        }
+        lines.push(`Raw scores: ${JSON.stringify(a.scores)}`);
+        if (a.interpretation) lines.push(`Clinician notes: ${a.interpretation}`);
+        return lines.join("\n");
+      })
+      .join("\n\n");
+
+    // Clinician functional notes — top-level + Section 12 raw rows.
+    const functionalLines: string[] = [];
+    for (const [k, v] of Object.entries(notes)) {
+      if (typeof v !== "string" || !v.trim()) continue;
+      if (k.startsWith("__")) continue;
+      if (k.endsWith("__rating")) continue;
+      const label = k.replace(/__/g, " · ").replace(/-/g, " ");
+      functionalLines.push(`[${label}]\n${v.trim()}`);
+    }
+    const clinicianNotes = functionalLines.join("\n\n");
+
+    // Collateral summary — interviewee, role, and short notes per row.
+    const collateralSummary = collateralInterviews
+      .map((iv) => {
+        const parts = [`${iv.intervieweeName || "Informant"} (${iv.intervieweeRole || "role unspecified"}, ${iv.templateId})`];
+        const flat = Object.entries(iv.responses || {})
+          .map(([q, r]) => `Q: ${q}\nA: ${typeof r === "string" ? r : JSON.stringify(r)}`)
+          .join("\n");
+        if (flat) parts.push(flat);
+        if (iv.generalNotes) parts.push(`General notes: ${iv.generalNotes}`);
+        return parts.join("\n");
+      })
+      .join("\n\n---\n\n");
+
+    return {
+      diagnoses: diagnoses.length ? diagnoses : (client?.primary_diagnosis || ""),
+      collateral_summary: collateralSummary,
+      clinician_notes: clinicianNotes,
+      assessment_summary: assessmentSummary,
+      participant_first_name: firstName,
+      participant_pronouns: pronouns,
+    };
+  }, [assessments, client?.client_name, client?.primary_diagnosis, collateralInterviews, diagnoses, notes]);
+
+  const generateSpine = useCallback(async () => {
+    if (isGeneratingSpine) return;
+    setIsGeneratingSpine(true);
+    try {
+      const inputs = buildSpineInputsFromState();
+      const spine = await buildClinicalSpine(inputs);
+      const sourceHash = await computeSpineSourceHash({
+        ...notes,
+        __assessments__: assessments,
+        __diagnoses__: diagnoses,
+      } as any);
+      const entry = buildSpineCacheEntry(spine, sourceHash, "draft", null);
+      setSpineCache(entry);
+      toast.success("Clinical Spine generated. Review and approve to proceed.");
+    } catch (e: any) {
+      console.error("[clinical-spine] generation failed", e);
+      toast.error("Clinical Spine generation failed: " + (e?.message || "Unknown error"));
+    } finally {
+      setIsGeneratingSpine(false);
+    }
+  }, [assessments, buildSpineInputsFromState, diagnoses, isGeneratingSpine, notes]);
+
+  const approveSpine = useCallback(() => {
+    if (!spineCache) return;
+    setSpineCache({ ...spineCache, status: "approved", approved_at: new Date().toISOString() });
+    toast.success("Clinical Spine approved.");
+  }, [spineCache]);
 
   const SECTION_LABELS: Record<string, string> = {
     "reason-referral": "Section 1 - Reason for Referral",
@@ -418,6 +548,19 @@ export default function ClientEditor() {
               className="bg-accent text-accent-foreground hover:bg-accent/90"
               disabled={generatingReport}
               onClick={async () => {
+                // ── Stage 1.5 gate: full-report generation requires an
+                // approved Clinical Spine. Single-section regenerates
+                // remain ungated until Stage 2 wires the spine into
+                // per-section generation.
+                if (!spineCache || spineCache.status !== "approved") {
+                  toast.warning("Approve the Clinical Spine before generating the full report.");
+                  // Switch to report mode so the panel is visible, then scroll.
+                  if (mode !== "report") setMode("report");
+                  setTimeout(() => {
+                    spinePanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                  }, 50);
+                  return;
+                }
                 setGeneratingReport(true);
 
                 try {
@@ -1343,6 +1486,19 @@ export default function ClientEditor() {
               onUpdateInterviews={setCollateralInterviews}
             />
           ) : (
+            <div className="max-w-7xl mx-auto px-4 pt-4 space-y-4">
+              {/* Stage 1.5: Clinical Spine approval checkpoint */}
+              <ClinicalSpinePanel
+                cache={spineCache}
+                isGenerating={isGeneratingSpine}
+                onGenerate={generateSpine}
+                onApprove={approveSpine}
+                onRegenerate={generateSpine}
+                panelRef={spinePanelRef}
+              />
+            </div>
+          )}
+          {mode === "report" && (
             <ReportMode
               reportContent={reportContent}
               notes={notes}
