@@ -318,6 +318,101 @@ export default function ClientEditor() {
     setNotes((prev) => ({ ...prev, [sectionId]: value }));
   };
 
+  // ── Clinical Spine handlers (Stage 1.5) ──────────────────
+  // Builds the spine inputs from the same notes structures the
+  // generation pipeline reads. Keeps spine input parity with
+  // what Stage 2 will eventually inject into per-section calls.
+  const buildSpineInputsFromState = useCallback(() => {
+    const clientName = client?.client_name || "the participant";
+    const fullName = (notes["__participant__fullName"] as string) || clientName;
+    const firstName = String(fullName).split(/\s+/)[0] || String(fullName);
+    const pronouns = String((notes["__participant__pronouns"] as string) || "they/them");
+
+    // Assessment summary — name + classification + key scores per tool.
+    const assessmentSummary = assessments
+      .filter((a) => a?.scores && Object.keys(a.scores).length > 0)
+      .map((a) => {
+        try {
+          const summary = getInstanceScoreSummary(a);
+          const lines = [`${a.name || a.libraryId}`];
+          if (summary?.total) lines.push(`Total: ${summary.total}`);
+          if (summary?.classification) lines.push(`Classification: ${summary.classification}`);
+          if (summary?.subscales?.length) {
+            lines.push("Subscales:");
+            summary.subscales.forEach((s: any) =>
+              lines.push(`  - ${s.label || s.name}: ${s.score ?? ""} ${s.classification ? `(${s.classification})` : ""}`)
+            );
+          }
+          if (a.interpretation) lines.push(`Clinician notes: ${a.interpretation}`);
+          return lines.join("\n");
+        } catch {
+          return `${a.name || a.libraryId}: ${JSON.stringify(a.scores)}`;
+        }
+      })
+      .join("\n\n");
+
+    // Clinician functional notes — top-level + Section 12 raw rows.
+    const functionalLines: string[] = [];
+    for (const [k, v] of Object.entries(notes)) {
+      if (typeof v !== "string" || !v.trim()) continue;
+      if (k.startsWith("__")) continue;
+      if (k.endsWith("__rating")) continue;
+      const label = k.replace(/__/g, " · ").replace(/-/g, " ");
+      functionalLines.push(`[${label}]\n${v.trim()}`);
+    }
+    const clinicianNotes = functionalLines.join("\n\n");
+
+    // Collateral summary — interviewee, role, and short notes per row.
+    const collateralSummary = collateralInterviews
+      .map((iv) => {
+        const parts = [`${iv.intervieweeName || "Informant"} (${iv.intervieweeRole || "role unspecified"}, ${iv.templateId})`];
+        const flat = Object.entries(iv.responses || {})
+          .map(([q, r]) => `Q: ${q}\nA: ${typeof r === "string" ? r : JSON.stringify(r)}`)
+          .join("\n");
+        if (flat) parts.push(flat);
+        if (iv.generalNotes) parts.push(`General notes: ${iv.generalNotes}`);
+        return parts.join("\n");
+      })
+      .join("\n\n---\n\n");
+
+    return {
+      diagnoses: diagnoses.length ? diagnoses : (client?.primary_diagnosis || ""),
+      collateral_summary: collateralSummary,
+      clinician_notes: clinicianNotes,
+      assessment_summary: assessmentSummary,
+      participant_first_name: firstName,
+      participant_pronouns: pronouns,
+    };
+  }, [assessments, client?.client_name, client?.primary_diagnosis, collateralInterviews, diagnoses, notes]);
+
+  const generateSpine = useCallback(async () => {
+    if (isGeneratingSpine) return;
+    setIsGeneratingSpine(true);
+    try {
+      const inputs = buildSpineInputsFromState();
+      const spine = await buildClinicalSpine(inputs);
+      const sourceHash = await computeSpineSourceHash({
+        ...notes,
+        __assessments__: assessments,
+        __diagnoses__: diagnoses,
+      } as any);
+      const entry = buildSpineCacheEntry(spine, sourceHash, "draft", null);
+      setSpineCache(entry);
+      toast.success("Clinical Spine generated. Review and approve to proceed.");
+    } catch (e: any) {
+      console.error("[clinical-spine] generation failed", e);
+      toast.error("Clinical Spine generation failed: " + (e?.message || "Unknown error"));
+    } finally {
+      setIsGeneratingSpine(false);
+    }
+  }, [assessments, buildSpineInputsFromState, diagnoses, isGeneratingSpine, notes]);
+
+  const approveSpine = useCallback(() => {
+    if (!spineCache) return;
+    setSpineCache({ ...spineCache, status: "approved", approved_at: new Date().toISOString() });
+    toast.success("Clinical Spine approved.");
+  }, [spineCache]);
+
   const SECTION_LABELS: Record<string, string> = {
     "reason-referral": "Section 1 - Reason for Referral",
     "background": "Section 2 - Background Information",
