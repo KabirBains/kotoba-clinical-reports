@@ -13,7 +13,17 @@ import { type GoalInstance } from "@/components/editor/ParticipantGoals";
 import { type QueueItem, processQueue, setHashCacheReportId } from "@/ai/generationQueue";
 import { stripMarkdown, stableStringify } from "@/lib/utils";
 import { getTemplateGuidance, getRubricForSection, FUNCTIONAL_DOMAIN_GUIDANCE, ASSESSMENT_INTERPRETATION_GUIDANCE, RECOMMENDATION_GUIDANCE } from "@/ai/promptGuidance";
-import { SYNOPSIS_LIBRARY } from "@/ai/reportEngine";
+import { SYNOPSIS_LIBRARY, buildClinicalSpine } from "@/ai/reportEngine";
+import {
+  SPINE_CACHE_KEY,
+  buildSpineCacheEntry,
+  computeSpineSourceHash,
+  getSpineCache,
+  markSpineStaleIfNeeded,
+  type SpineCache,
+} from "@/ai/spineCache";
+import "@/ai/devSpineValidator"; // dev-only: window.__kotobaRunSpineOnReport
+import { ClinicalSpinePanel } from "@/components/editor/ClinicalSpinePanel";
 import { buildMethodologyText } from "@/components/editor/MethodologyAggregator";
 
 import { KotobaLogo } from "@/components/KotobaLogo";
