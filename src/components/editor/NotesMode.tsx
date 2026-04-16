@@ -214,14 +214,22 @@ export function NotesMode({ notes, onUpdateNote, assessments, onUpdateAssessment
         {TEMPLATE_SECTIONS.map((section) => (
           <div key={section.id}>
             {/* Assessments section */}
-            {section.id === "assessments" && (
-              <AssessmentsSection
-                assessments={assessments}
-                onUpdateAssessments={onUpdateAssessments}
-                participantName={notes["__participant__fullName"] || clientName}
-                participantFirstName={(notes["__participant__fullName"] || clientName || "").split(/\s+/)[0]}
-              />
-            )}
+            {section.id === "assessments" && (() => {
+              const rawGender = notes["__participant__genderIdentity"] || "";
+              const customGender = notes["__participant__genderCustom"] || "";
+              const sex = (rawGender === "Self-described" ? customGender : rawGender).trim();
+              const pronouns = (notes["__participant__pronouns"] || "").trim();
+              return (
+                <AssessmentsSection
+                  assessments={assessments}
+                  onUpdateAssessments={onUpdateAssessments}
+                  participantName={notes["__participant__fullName"] || clientName}
+                  participantFirstName={(notes["__participant__fullName"] || clientName || "").split(/\s+/)[0]}
+                  participantSex={sex || undefined}
+                  participantPronouns={pronouns || undefined}
+                />
+              );
+            })()}
 
             {/* Recommendations section */}
             {section.id === "recommendations" && (

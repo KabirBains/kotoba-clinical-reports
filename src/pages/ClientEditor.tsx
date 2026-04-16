@@ -427,7 +427,18 @@ export default function ClientEditor() {
                   // Extract participant names from structured details
                   const participantFullName = notes["__participant__fullName"] || clientName;
                   const participantFirstName = participantFullName.split(/\s+/)[0] || participantFullName;
-                  const nameFields = { participant_name: participantFullName, participant_first_name: participantFirstName };
+                  // Demographic context for the AI — drives pronoun consistency.
+                  // genderCustom takes precedence over the "Self-described" sentinel.
+                  const rawGender = notes["__participant__genderIdentity"] || "";
+                  const customGender = notes["__participant__genderCustom"] || "";
+                  const participantSex = (rawGender === "Self-described" ? customGender : rawGender).trim();
+                  const participantPronouns = (notes["__participant__pronouns"] || "").trim();
+                  const nameFields: Record<string, string> = {
+                    participant_name: participantFullName,
+                    participant_first_name: participantFirstName,
+                  };
+                  if (participantSex) nameFields.participant_sex = participantSex;
+                  if (participantPronouns) nameFields.participant_pronouns = participantPronouns;
                   const allNameWarnings: string[] = [];
 
                   // ── Collect top-level section notes ──
@@ -1046,6 +1057,8 @@ export default function ClientEditor() {
                           generated_sections: newContent,
                           participant_name: participantFullName,
                           participant_first_name: participantFirstName,
+                          ...(participantSex ? { participant_sex: participantSex } : {}),
+                          ...(participantPronouns ? { participant_pronouns: participantPronouns } : {}),
                           diagnoses_context: diagnosesText,
                           max_passes: 3,
                         },

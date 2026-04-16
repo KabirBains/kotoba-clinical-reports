@@ -35,6 +35,8 @@ interface AssessmentsSectionProps {
   onUpdateAssessments: (assessments: AssessmentInstance[]) => void;
   participantName?: string;
   participantFirstName?: string;
+  participantSex?: string;
+  participantPronouns?: string;
 }
 
 function AssessmentCard({
@@ -45,6 +47,8 @@ function AssessmentCard({
   onRemove,
   participantName,
   participantFirstName,
+  participantSex,
+  participantPronouns,
 }: {
   instance: AssessmentInstance;
   index: number;
@@ -53,6 +57,8 @@ function AssessmentCard({
   onRemove: () => void;
   participantName?: string;
   participantFirstName?: string;
+  participantSex?: string;
+  participantPronouns?: string;
 }) {
   const [open, setOpen] = useState(true);
   const [generating, setGenerating] = useState(false);
@@ -297,6 +303,8 @@ function AssessmentCard({
                         maxTokens: 1200,
                         ...(participantName ? { participant_name: participantName } : {}),
                         ...(participantFirstName ? { participant_first_name: participantFirstName } : {}),
+                        ...(participantSex ? { participant_sex: participantSex } : {}),
+                        ...(participantPronouns ? { participant_pronouns: participantPronouns } : {}),
                       },
                     });
                     if (error || !data?.text) {
@@ -324,7 +332,7 @@ function AssessmentCard({
   );
 }
 
-export function AssessmentsSection({ assessments, onUpdateAssessments, participantName, participantFirstName }: AssessmentsSectionProps) {
+export function AssessmentsSection({ assessments, onUpdateAssessments, participantName, participantFirstName, participantSex, participantPronouns }: AssessmentsSectionProps) {
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [customOpen, setCustomOpen] = useState(false);
   const [customName, setCustomName] = useState("");
@@ -413,6 +421,8 @@ export function AssessmentsSection({ assessments, onUpdateAssessments, participa
                 onRemove={() => removeAssessment(index)}
                 participantName={participantName}
                 participantFirstName={participantFirstName}
+                participantSex={participantSex}
+                participantPronouns={participantPronouns}
               />
             );
           })}

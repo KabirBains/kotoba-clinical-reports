@@ -286,7 +286,10 @@ Return a JSON object with a "threads" array. Identify NEW clinically meaningful 
 }
 
 // ── Pass 2 — WEAVE prompt ────────────────────────────────────
-function buildWeaveSystemPrompt(firstName: string): string {
+function buildWeaveSystemPrompt(firstName: string, pronouns?: string): string {
+  const pronounRule = pronouns
+    ? `\n\n9. PRONOUNS (critical): ${firstName} uses ${pronouns} pronouns. ALL pronoun references to ${firstName} — in inserted sentences AND in any minimal grammatical adjustments to existing prose — MUST use ${pronouns}. Do NOT introduce or retain any conflicting pronouns. If you encounter a conflicting pronoun in existing prose during weaving, leave it untouched (rule 2) — never replace existing facts — but ensure your inserted sentences use ${pronouns} exclusively.`
+    : "";
   return `You are a clinical report writer weaving cross-domain narrative connections into NDIS Functional Capacity Assessment sections. You must integrate the provided insertions into each section's existing prose with the LOWEST POSSIBLE editorial footprint.
 
 CORE RULES — violating any of these is a critical failure:
@@ -305,7 +308,7 @@ CORE RULES — violating any of these is a critical failure:
 
 7. PARTICIPANT NAME: Use "${firstName}" consistently. Never change name or pronoun usage in existing text.
 
-8. SIZE DISCIPLINE: The woven section should not grow by more than a few sentences total. If you find yourself wanting to expand heavily, you are doing too much — stop.
+8. SIZE DISCIPLINE: The woven section should not grow by more than a few sentences total. If you find yourself wanting to expand heavily, you are doing too much — stop.${pronounRule}
 
 OUTPUT FORMAT:
 Return valid JSON only. No markdown fences, no commentary. A JSON object mapping section keys to their updated text. Include every requested section.`;
@@ -415,6 +418,7 @@ serve(async (req) => {
       generated_sections,
       participant_name,
       participant_first_name,
+      participant_pronouns,
       diagnoses_context,
       max_passes = 2,
     } = body;
@@ -625,7 +629,7 @@ serve(async (req) => {
 
       // ── PASS 2: Weave ──
       console.log(`[THREAD] Pass 2.${iter}: Weaving ${autoWeave.length} threads into ${sectionsToWeave.length} sections...`);
-      const weaveSystem = buildWeaveSystemPrompt(firstName);
+      const weaveSystem = buildWeaveSystemPrompt(firstName, participant_pronouns);
       const weaveUser = buildWeaveUserPrompt(sectionsToWeave, insertionsBySection, currentSections);
       let weaveResult: { text: string; usage: Record<string, number> };
       try {

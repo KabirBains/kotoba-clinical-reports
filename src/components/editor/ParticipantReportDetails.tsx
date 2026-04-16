@@ -22,7 +22,43 @@ const PARTICIPANT_KEYS = {
   ndisNumber: "__participant__ndisNumber",
   address: "__participant__address",
   primaryContact: "__participant__primaryContact",
+  genderIdentity: "__participant__genderIdentity",
+  pronouns: "__participant__pronouns",
 } as const;
+
+// Pronoun preset options. "Self-described" routes to a free-text input.
+const PRONOUN_OPTIONS = [
+  "she/her",
+  "he/him",
+  "they/them",
+  "she/they",
+  "he/they",
+  "Self-described",
+] as const;
+
+const GENDER_OPTIONS = [
+  "Female",
+  "Male",
+  "Non-binary",
+  "Genderfluid",
+  "Agender",
+  "Prefer not to say",
+  "Self-described",
+] as const;
+
+// Best-effort default mapping from a common gender identity to pronouns.
+// Only used to PREFILL the pronoun field when it is still empty — never
+// to override an existing clinician-set value.
+function defaultPronounsForGender(gender: string): string {
+  switch (gender) {
+    case "Female": return "she/her";
+    case "Male": return "he/him";
+    case "Non-binary":
+    case "Genderfluid":
+    case "Agender": return "they/them";
+    default: return "";
+  }
+}
 
 const CLINICIAN_KEYS = {
   phoneEmail: "__clinician__phoneEmail",
@@ -76,6 +112,45 @@ function Field({
   );
 }
 
+function SelectField({
+  label,
+  value,
+  onChange,
+  options,
+  required = false,
+  half = false,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: readonly string[];
+  required?: boolean;
+  half?: boolean;
+}) {
+  return (
+    <div className={cn("min-w-0", half ? "flex-[1_1_48%] min-w-[200px]" : "flex-[1_1_100%]")}>
+      <label className="text-[10px] font-semibold text-muted-foreground flex items-center gap-1 mb-0.5">
+        {label}
+        {required && <span className="text-destructive text-[9px]">*</span>}
+      </label>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={cn(
+          "w-full px-2.5 py-[7px] rounded-md border text-xs text-foreground bg-background",
+          "focus:outline-none focus:ring-1 focus:ring-accent/50 focus:border-accent/50",
+          required && !value.trim() ? "border-destructive/40" : "border-border/60"
+        )}
+      >
+        <option value="">— Select —</option>
+        {options.map((opt) => (
+          <option key={opt} value={opt}>{opt}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 function SectionBlock({
   title,
   accent,
@@ -113,9 +188,35 @@ export function ParticipantReportDetails({
   const ndis = notes[PARTICIPANT_KEYS.ndisNumber] || ndisNumber || "";
   const address = notes[PARTICIPANT_KEYS.address] || "";
   const primaryContact = notes[PARTICIPANT_KEYS.primaryContact] || "";
+  const genderIdentity = notes[PARTICIPANT_KEYS.genderIdentity] || "";
+  const pronouns = notes[PARTICIPANT_KEYS.pronouns] || "";
   const phoneEmail = notes[CLINICIAN_KEYS.phoneEmail] || "";
   const dateOfAssessment = notes[CLINICIAN_KEYS.dateOfAssessment] || "";
   const dateOfReport = notes[CLINICIAN_KEYS.dateOfReport] || "";
+
+  // Determine whether to show the free-text inputs
+  const isCustomGender = genderIdentity === "Self-described";
+  const isPresetPronoun = (PRONOUN_OPTIONS as readonly string[]).includes(pronouns);
+  const showCustomPronouns = !!pronouns && !isPresetPronoun;
+  const customGenderValue = isCustomGender ? (notes["__participant__genderCustom"] || "") : "";
+
+  const handleGenderChange = (v: string) => {
+    onUpdateNote(PARTICIPANT_KEYS.genderIdentity, v);
+    // Auto-prefill pronouns ONLY if not already set by clinician
+    if (!pronouns.trim()) {
+      const suggested = defaultPronounsForGender(v);
+      if (suggested) onUpdateNote(PARTICIPANT_KEYS.pronouns, suggested);
+    }
+  };
+
+  const handlePronounSelectChange = (v: string) => {
+    if (v === "Self-described") {
+      // Clear so the custom field shows empty input
+      onUpdateNote(PARTICIPANT_KEYS.pronouns, "");
+    } else {
+      onUpdateNote(PARTICIPANT_KEYS.pronouns, v);
+    }
+  };
 
   const age = useMemo(() => {
     if (!dob) return "";
@@ -214,6 +315,38 @@ export function ParticipantReportDetails({
             placeholder="Auto-calculated"
             half
           />
+          <SelectField
+            label="Gender Identity"
+            value={isCustomGender ? "Self-described" : genderIdentity}
+            onChange={handleGenderChange}
+            options={GENDER_OPTIONS}
+            half
+          />
+          {isCustomGender && (
+            <Field
+              label="Self-described gender"
+              value={customGenderValue}
+              onChange={(v) => onUpdateNote("__participant__genderCustom", v)}
+              placeholder="e.g. Demigirl"
+              half
+            />
+          )}
+          <SelectField
+            label="Pronouns"
+            value={showCustomPronouns ? "Self-described" : pronouns}
+            onChange={handlePronounSelectChange}
+            options={PRONOUN_OPTIONS}
+            half
+          />
+          {(showCustomPronouns || (!pronouns && isCustomGender)) && (
+            <Field
+              label="Custom pronouns"
+              value={pronouns}
+              onChange={(v) => onUpdateNote(PARTICIPANT_KEYS.pronouns, v)}
+              placeholder="e.g. xe/xem"
+              half
+            />
+          )}
           <Field
             label="NDIS Number"
             value={ndis}
