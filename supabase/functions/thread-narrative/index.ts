@@ -629,7 +629,7 @@ serve(async (req) => {
 
       // ── PASS 2: Weave ──
       console.log(`[THREAD] Pass 2.${iter}: Weaving ${autoWeave.length} threads into ${sectionsToWeave.length} sections...`);
-      const weaveSystem = buildWeaveSystemPrompt(firstName);
+      const weaveSystem = buildWeaveSystemPrompt(firstName, participant_pronouns);
       const weaveUser = buildWeaveUserPrompt(sectionsToWeave, insertionsBySection, currentSections);
       let weaveResult: { text: string; usage: Record<string, number> };
       try {
