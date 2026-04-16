@@ -418,6 +418,7 @@ serve(async (req) => {
       generated_sections,
       participant_name,
       participant_first_name,
+      participant_pronouns,
       diagnoses_context,
       max_passes = 2,
     } = body;
