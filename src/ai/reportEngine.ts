@@ -477,3 +477,33 @@ export function getSynopsis(toolId: string): string | undefined {
   return SYNOPSIS_LIBRARY[toolId];
 }
 
+// ── 8. CLINICAL SPINE (Stage 1) ──────────────────────────────
+// Calls the Kotoba `build-clinical-spine` edge function and
+// returns the structured Spine. Stage 1 ONLY — the Spine is
+// stored + displayed for clinician approval but is NOT yet
+// injected into per-section generation (that lands in Stage 2).
+import type { ClinicalSpine } from "./spineCache";
+
+export interface SpineInput {
+  diagnoses: unknown;
+  collateral_summary: string;
+  clinician_notes: string;
+  assessment_summary: string;
+  participant_first_name: string;
+  participant_pronouns: string;
+}
+
+export async function buildClinicalSpine(input: SpineInput): Promise<ClinicalSpine> {
+  const { kotobaSupabase } = await import("@/integrations/supabase/kotobaClient");
+  const { data, error } = await kotobaSupabase.functions.invoke("build-clinical-spine", {
+    body: input,
+  });
+  if (error) {
+    throw new Error(`Clinical Spine generation failed: ${error.message || "Unknown error"}`);
+  }
+  if (!data?.success || !data?.spine) {
+    throw new Error(data?.error || "Clinical Spine generation returned no spine");
+  }
+  return data.spine as ClinicalSpine;
+}
+
