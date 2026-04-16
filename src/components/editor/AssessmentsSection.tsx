@@ -303,6 +303,8 @@ function AssessmentCard({
                         maxTokens: 1200,
                         ...(participantName ? { participant_name: participantName } : {}),
                         ...(participantFirstName ? { participant_first_name: participantFirstName } : {}),
+                        ...(participantSex ? { participant_sex: participantSex } : {}),
+                        ...(participantPronouns ? { participant_pronouns: participantPronouns } : {}),
                       },
                     });
                     if (error || !data?.text) {
