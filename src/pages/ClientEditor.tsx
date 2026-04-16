@@ -215,6 +215,19 @@ export default function ClientEditor() {
       if (Array.isArray(savedDismissedKeys)) {
         setDismissedIssueKeys(new Set(savedDismissedKeys));
       }
+      // Load Clinical Spine cache (Stage 1.5)
+      const loadedCache = getSpineCache((savedNotes as any) || {});
+      if (loadedCache) {
+        setSpineCache(loadedCache);
+        // Detect upstream drift and auto-flag stale (no auto-regenerate)
+        markSpineStaleIfNeeded((savedNotes as any) || {}).then(({ notes: nextNotes, changed }) => {
+          if (changed) {
+            const next = getSpineCache(nextNotes);
+            if (next) setSpineCache(next);
+            setNotes(nextNotes as Record<string, string>);
+          }
+        });
+      }
     }
   }, [report]);
 
