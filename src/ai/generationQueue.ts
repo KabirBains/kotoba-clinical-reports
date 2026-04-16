@@ -1,18 +1,25 @@
 // ============================================================
-// GENERATION QUEUE — Sequential, throttled AI generation
+// GENERATION QUEUE — Token-aware throttled AI generation
 // ============================================================
-// Prevents 429 rate limits by:
-// 1. Processing requests sequentially with a configurable delay
-// 2. Retrying once on 429 after a longer backoff
-// 3. Skipping items whose input hasn't changed (dirty-check)
-// 4. Preventing duplicate in-flight calls for the same key
+// Stays under Anthropic's per-minute input-token rate limit by:
+// 1. Maintaining a 60-second sliding-window token budget
+// 2. Reserving budget before every call; pausing when the window is full
+// 3. Exponential backoff + retry-after honouring on 429s
+// 4. Skipping items whose input hasn't changed (dirty-check)
+// 5. Preventing duplicate in-flight calls for the same key
 // ============================================================
 
 import { kotobaSupabase as supabase } from "@/integrations/supabase/kotobaClient";
 import { stripMarkdown } from "@/lib/utils";
 
-const INTER_REQUEST_DELAY = 12000; // ms between requests
-const RETRY_429_DELAY = 20000;     // ms to wait on 429 before single retry
+// ── Token budget (sliding window) ───────────────────────────
+// 90% of Anthropic's 30k input-tokens-per-minute rate limit for this org
+// leaves headroom for estimator error and cached-prefix variability.
+const TPM_LIMIT = 27000;
+const WINDOW_MS = 60_000;
+const CACHED_PREFIX_TOKENS = 9000; // 3 docx templates + rule blocks in generate-report
+const recentCalls: { at: number; tokens: number }[] = [];
+
 const STORAGE_KEY = "kotoba_input_hashes";
 
 // ── Report-scoped hash cache (localStorage-backed) ──────────
@@ -128,8 +135,6 @@ export interface QueueResult {
   success: boolean;
   text?: string;
   name_warnings?: string[];
-  refined?: boolean;
-  refineWarnings?: string[];
   skipped?: boolean;
   skipReason?: string;
   error?: string;
@@ -139,46 +144,58 @@ function sleep(ms: number): Promise<void> {
   return new Promise(r => setTimeout(r, ms));
 }
 
-// ── Refine a generated section ──────────────────────────────
-async function refineText(
-  generatedText: string,
-  sectionName: string,
-  participantName?: string,
-  participantFirstName?: string
-): Promise<{ refined_text: string; warnings?: string[] } | null> {
-  try {
-    console.log(`REFINE: calling refine-report for "${sectionName}"...`, {
-      generated_text_length: generatedText.length,
-      participant_name: participantName,
-      participant_first_name: participantFirstName,
-    });
-    const { data, error } = await supabase.functions.invoke("refine-report", {
-      method: "POST",
-      body: {
-        generated_text: generatedText,
-        section_name: sectionName,
-        ...(participantName ? { participant_name: participantName } : {}),
-        ...(participantFirstName ? { participant_first_name: participantFirstName } : {}),
-      },
-    });
-    console.log(`REFINE: response received for "${sectionName}"`, { data, error });
-    if (error) {
-      console.error(`REFINE: refine-report failed for "${sectionName}":`, error);
-      return null;
+// ── Token estimator ─────────────────────────────────────────
+// Rough estimator: cached prefix tokens + (dynamic body + prompt) / 4 chars-per-token.
+// Conservative enough to keep us under the per-minute cap without needing the
+// real tokenizer on the client.
+function estimateInputTokens(prompt: string, extraBody?: Record<string, any>): number {
+  const dynamicChars = JSON.stringify(extraBody || {}).length + (prompt?.length || 0);
+  return CACHED_PREFIX_TOKENS + Math.ceil(dynamicChars / 4);
+}
+
+// ── Reserve token budget in the sliding window ──────────────
+// Pauses until there is room in the last-60-seconds window for `tokens`.
+// Records the reservation once granted so subsequent callers see updated usage.
+async function reserveBudget(tokens: number, label?: string): Promise<void> {
+  while (true) {
+    const now = Date.now();
+    while (recentCalls.length && now - recentCalls[0].at > WINDOW_MS) {
+      recentCalls.shift();
     }
-    if (!data?.refined_text) {
-      console.error(`REFINE: refine-report returned no refined_text for "${sectionName}":`, data);
-      return null;
+    const inWindow = recentCalls.reduce((s, r) => s + r.tokens, 0);
+    if (inWindow + tokens <= TPM_LIMIT) {
+      recentCalls.push({ at: now, tokens });
+      return;
     }
-    return { refined_text: data.refined_text, warnings: data.warnings };
-  } catch (err) {
-    console.error(`REFINE: refine-report exception for "${sectionName}":`, err);
-    return null;
+    const oldest = recentCalls[0]?.at ?? now;
+    const waitMs = Math.max(1000, oldest + WINDOW_MS - now + 500);
+    console.log(
+      `[QUEUE] throttle${label ? ` "${label}"` : ""}: ${inWindow} tokens in window, ` +
+      `need ${tokens}, waiting ${waitMs}ms`
+    );
+    await sleep(waitMs);
   }
 }
 
-// ── Single invoke with 429 retry ────────────────────────────
-async function invokeWithRetry(prompt: string, maxTokens: number, label: string, extraBody?: Record<string, any>): Promise<{ success: boolean; text?: string; name_warnings?: string[]; error?: string }> {
+// ── Extract retry-after hint from error messages ────────────
+function parseRetryAfterMs(errMsg: string): number | null {
+  // Anthropic 429 responses sometimes include "retry after X seconds" in the body
+  // or a literal header value surfaced via the supabase client error.message.
+  const m = errMsg.match(/retry[- ]?after[:\s"]+(\d+(?:\.\d+)?)/i);
+  if (m) return Math.ceil(parseFloat(m[1]) * 1000);
+  return null;
+}
+
+// ── Single invoke with exponential backoff on 429 ───────────
+async function invokeWithRetry(
+  prompt: string,
+  maxTokens: number,
+  label: string,
+  extraBody?: Record<string, any>,
+): Promise<{ success: boolean; text?: string; name_warnings?: string[]; error?: string }> {
+  const BACKOFF_SCHEDULE = [5000, 15000, 30000]; // attempt 1 wait, attempt 2 wait, attempt 3 wait
+  const estimated = estimateInputTokens(prompt, extraBody);
+
   const doCall = async () => {
     const { data, error } = await supabase.functions.invoke("generate-report", {
       body: { prompt, max_tokens: maxTokens, ...extraBody },
@@ -200,24 +217,34 @@ async function invokeWithRetry(prompt: string, maxTokens: number, label: string,
     return { is429: false, data, error: null };
   };
 
-  // First attempt
-  const r1 = await doCall();
-  if (!r1.error) return { success: true, text: r1.data?.text, name_warnings: r1.data?.name_warnings };
+  let lastError = "";
+  for (let attempt = 0; attempt <= BACKOFF_SCHEDULE.length; attempt++) {
+    const r = await doCall();
+    if (!r.error) {
+      return { success: true, text: r.data?.text, name_warnings: r.data?.name_warnings };
+    }
+    lastError = r.error;
 
-  if (r1.is429) {
-    console.log(`[QUEUE] 429 rate limit for "${label}" — waiting ${RETRY_429_DELAY}ms before retry`);
-    await sleep(RETRY_429_DELAY);
-    console.log(`[QUEUE] Retrying "${label}" after 429 backoff`);
-    const r2 = await doCall();
-    if (!r2.error) return { success: true, text: r2.data?.text, name_warnings: r2.data?.name_warnings };
-    console.error(`[QUEUE] Retry failed for "${label}":`, r2.error);
-    return { success: false, error: r2.error || "Retry failed after 429" };
+    if (!r.is429 || attempt >= BACKOFF_SCHEDULE.length) {
+      return { success: false, error: r.error };
+    }
+
+    const retryAfter = parseRetryAfterMs(r.error);
+    const waitMs = retryAfter ?? BACKOFF_SCHEDULE[attempt];
+    console.log(
+      `[QUEUE] 429 for "${label}" — attempt ${attempt + 1}/${BACKOFF_SCHEDULE.length + 1}, ` +
+      `waiting ${waitMs}ms${retryAfter ? " (from retry-after)" : ""}`,
+    );
+    await sleep(waitMs);
+    // Re-reserve budget — the previous reservation has likely aged out, but this
+    // also accounts for the retry's own token cost in the sliding window.
+    await reserveBudget(estimated, `${label} retry`);
   }
 
-  return { success: false, error: r1.error };
+  return { success: false, error: lastError || "Retry failed after 429" };
 }
 
-// ── Process queue sequentially ──────────────────────────────
+// ── Process queue with token-aware throttling ───────────────
 export async function processQueue(
   items: QueueItem[],
   onProgress?: (step: number, total: number, label: string, status: string) => void,
@@ -236,7 +263,7 @@ export async function processQueue(
       continue;
     }
 
-    // 2. Check if input unchanged
+    // 2. Check if input unchanged (before reserving any budget)
     if (!hasInputChanged(item.key, item.inputForHash)) {
       console.log(`[QUEUE] SKIP (unchanged): "${item.label}"`);
       onProgress?.(i + 1, total, item.label, "skipped (unchanged)");
@@ -244,98 +271,55 @@ export async function processQueue(
       continue;
     }
 
-    // 3. Add inter-request delay (except for first item)
-    if (i > 0) {
-      await sleep(INTER_REQUEST_DELAY);
-    }
+    // 3. Reserve token budget before invoking
+    const estimated = estimateInputTokens(item.prompt, item.extraBody);
+    await reserveBudget(estimated, item.label);
 
     // 4. Mark in-flight and generate
     inFlight.add(item.key);
-    console.log(`[QUEUE] START (${i + 1}/${total}): "${item.label}"`);
+    console.log(`[QUEUE] START (${i + 1}/${total}): "${item.label}" (~${estimated} est tokens)`);
     onProgress?.(i + 1, total, item.label, "generating");
 
     try {
       const result = await invokeWithRetry(item.prompt, item.maxTokens, item.label, item.extraBody);
-      if (result.success && result.text) {
-        const sectionName = item.extraBody?.section_name || item.key;
-        const isDomainJson = item.key.startsWith("section12_");
 
-        let finalText = result.text;
-        let refined = false;
-        let refineWarnings: string[] | undefined;
+      if (result.success && result.text) {
+        const isDomainJson = item.key.startsWith("section12_");
+        let finalText: string;
 
         if (isDomainJson) {
-          // Domain sections return JSON with per-field keys.
-          // Refine each field value individually to preserve structure.
-          onProgress?.(i + 1, total, item.label, "refining");
+          // Domain sections return JSON with per-field keys. Parse and clean each
+          // field; fall back to plain stripMarkdown if parsing fails.
           try {
             const rawText = result.text.trim().replace(/^```json?\s*/i, "").replace(/```\s*$/, "");
             const parsed = JSON.parse(rawText) as Record<string, string>;
-            const refinedObj: Record<string, string> = {};
-            let anyRefined = false;
-            const allWarnings: string[] = [];
-
-            for (const [fieldKey, fieldText] of Object.entries(parsed)) {
-              if (!fieldText || fieldText.length < 20) {
-                refinedObj[fieldKey] = fieldText;
-                continue;
-              }
-              const fieldRefine = await refineText(
-                fieldText,
-                `${sectionName}_${fieldKey}`,
-                item.extraBody?.participant_name,
-                item.extraBody?.participant_first_name
-              );
-              if (fieldRefine?.refined_text) {
-                refinedObj[fieldKey] = stripMarkdown(fieldRefine.refined_text);
-                anyRefined = true;
-                if (fieldRefine.warnings?.length) allWarnings.push(...fieldRefine.warnings);
-              } else {
-                refinedObj[fieldKey] = stripMarkdown(fieldText);
-              }
-            }
-
-            finalText = JSON.stringify(refinedObj);
-            refined = anyRefined;
-            refineWarnings = allWarnings.length > 0 ? allWarnings : undefined;
+            const cleaned: Record<string, string> = {};
+            for (const [k, v] of Object.entries(parsed)) cleaned[k] = stripMarkdown(v || "");
+            finalText = JSON.stringify(cleaned);
           } catch (parseErr) {
-            console.warn(`[QUEUE] Domain JSON parse failed for refine, skipping per-field refinement`, parseErr);
-            // Fall back: refine as plain text (original behaviour)
-            const refineResult = await refineText(
-              result.text, sectionName,
-              item.extraBody?.participant_name,
-              item.extraBody?.participant_first_name
-            );
-            finalText = stripMarkdown(refineResult?.refined_text || result.text);
-            refined = !!refineResult?.refined_text;
-            refineWarnings = refineResult?.warnings;
+            console.warn(`[QUEUE] Domain JSON parse failed for "${item.label}"`, parseErr);
+            finalText = stripMarkdown(result.text);
           }
         } else {
-          // Non-domain sections: refine as a single block of text
-          onProgress?.(i + 1, total, item.label, "refining");
-          const refineResult = await refineText(
-            result.text, sectionName,
-            item.extraBody?.participant_name,
-            item.extraBody?.participant_first_name
-          );
-          finalText = stripMarkdown(refineResult?.refined_text || result.text);
-          refined = !!refineResult?.refined_text;
-          refineWarnings = refineResult?.warnings;
+          finalText = stripMarkdown(result.text);
         }
 
         markInputGenerated(item.key, item.inputForHash);
-        console.log(`[QUEUE] SUCCESS: "${item.label}" (${finalText.length} chars, refined: ${refined})`);
+        console.log(`[QUEUE] SUCCESS: "${item.label}" (${finalText.length} chars)`);
         results.push({
           key: item.key,
           success: true,
           text: finalText,
           name_warnings: result.name_warnings,
-          refined,
-          refineWarnings,
         });
       } else if (result.success) {
         markInputGenerated(item.key, item.inputForHash);
-        results.push({ key: item.key, success: true, text: result.text, name_warnings: result.name_warnings });
+        results.push({
+          key: item.key,
+          success: true,
+          text: result.text,
+          name_warnings: result.name_warnings,
+        });
       } else {
         console.error(`[QUEUE] FAILED: "${item.label}" — ${result.error}`);
         results.push({ key: item.key, success: false, error: result.error });
@@ -350,6 +334,3 @@ export async function processQueue(
 
   return results;
 }
-
-// Export refineText for use in individual section generators
-export { refineText };

@@ -879,11 +879,32 @@ export default function ClientEditor() {
                     prevent_hospitalisation: "Reduce risk of hospitalisation or crisis",
                   };
 
-                  // Concatenate all domain texts for generated_sections
-                  const concatenatedDomainTexts = domainEntries.map(d => {
-                    const existing = newContent[d.reportKey];
-                    return existing ? `${d.name}: ${existing}` : "";
-                  }).filter(Boolean).join("\n\n");
+                  // Keyword-based relevance map: for each domain, list terms that signal
+                  // "this recommendation is about this domain." Matched against the
+                  // recommendation's supportName + tasks. Prevents stuffing ALL 9 domain
+                  // texts into every rec prompt — that was pushing payloads over the
+                  // 30k-tokens-per-minute Anthropic rate limit.
+                  const DOMAIN_KEYWORDS: Record<string, string[]> = {
+                    section12_1: ["mobility", "walking", "wheelchair", "balance", "gait", "ambulat", "upper limb", "fine motor", "reach"],
+                    section12_2: ["transfer", "bed", "hoist", "sling", "pivot"],
+                    section12_3: ["hygiene", "shower", "bath", "dressing", "toilet", "groom", "self-care", "personal care", "continence", "eating", "feeding"],
+                    section12_4: ["cook", "clean", "laundry", "meal", "domestic", "household", "kitchen", "dish"],
+                    section12_5: ["shopping", "finance", "budget", "medication", "appointment", "transport", "plan", "schedule", "organis"],
+                    section12_6: ["memory", "cognit", "decision", "problem solv", "comprehen", "executive"],
+                    section12_7: ["communication", "speech", "language", "verbal", "non-verbal"],
+                    section12_8: ["social", "community", "participation", "group", "peer", "isolat", "friend", "relationship"],
+                    section12_9: ["sensory", "noise", "light", "visual", "auditory", "tactile", "regulation"],
+                  };
+
+                  function relevantDomainsFor(rec: { supportName?: string; tasks?: string[]; ndisCategory?: string }): string[] {
+                    const haystack = `${rec.supportName || ""} ${(rec.tasks || []).join(" ")}`.toLowerCase();
+                    const hits: string[] = [];
+                    for (const [reportKey, kws] of Object.entries(DOMAIN_KEYWORDS)) {
+                      if (kws.some(k => haystack.includes(k))) hits.push(reportKey);
+                    }
+                    // Cap at 3 to keep payloads predictable even on broad recommendations.
+                    return hits.slice(0, 3);
+                  }
 
                   const concatenatedAssessmentTexts = newContent["assessments"] || "";
 
@@ -912,10 +933,23 @@ export default function ClientEditor() {
                     if (collateralPayload.length > 0) {
                       extraBody.collateral_interviews = collateralPayload;
                     }
-                    if (storedSection6Text || concatenatedDomainTexts || concatenatedAssessmentTexts) {
+                    // Only include domain text from domains relevant to THIS recommendation.
+                    // All-9-domains concatenation used to push recommendation prompts to
+                    // ~36k input tokens — over the per-minute rate limit ceiling.
+                    const relevantKeys = relevantDomainsFor(r);
+                    const relevantDomainTexts = domainEntries
+                      .filter(d => relevantKeys.includes(d.reportKey))
+                      .map(d => {
+                        const existing = newContent[d.reportKey];
+                        return existing ? `${d.name}: ${existing}` : "";
+                      })
+                      .filter(Boolean)
+                      .join("\n\n");
+
+                    if (storedSection6Text || relevantDomainTexts || concatenatedAssessmentTexts) {
                       extraBody.generated_sections = {
                         ...(storedSection6Text ? { section6_collateral: storedSection6Text } : {}),
-                        ...(concatenatedDomainTexts ? { section13_domains: concatenatedDomainTexts } : {}),
+                        ...(relevantDomainTexts ? { section13_domains: relevantDomainTexts } : {}),
                         ...(concatenatedAssessmentTexts ? { section14_assessments: concatenatedAssessmentTexts } : {}),
                       };
                     }

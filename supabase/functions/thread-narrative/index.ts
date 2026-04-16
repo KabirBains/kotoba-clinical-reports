@@ -466,12 +466,22 @@ serve(async (req) => {
       const iterationStartSections: Record<string, string> = { ...currentSections };
       console.log(`[THREAD] ═══ Iteration ${iter} of ${maxPasses} ═══`);
 
-      // Build sections text from the CURRENT state (may include earlier weaves)
+      // Build sections text from the CURRENT state (may include earlier weaves).
+      // Per-section text is truncated to keep the combined identify prompt under
+      // the org's 30k-tokens-per-minute rate limit. The identify pass only needs
+      // to SEE observations to reference them across sections, not the full
+      // verbatim prose — so truncation does not materially affect thread recall.
+      const MAX_IDENTIFY_CHARS_PER_SECTION = 1800;
       const sectionEntries = Object.entries(currentSections).filter(
         ([, v]) => typeof v === "string" && (v as string).trim().length > 20,
       );
       const sectionsText = sectionEntries
-        .map(([key, text]) => `=== ${key} ===\n${text}`)
+        .map(([key, text]) => {
+          const truncated = text.length > MAX_IDENTIFY_CHARS_PER_SECTION
+            ? text.slice(0, MAX_IDENTIFY_CHARS_PER_SECTION) + "…[truncated]"
+            : text;
+          return `=== ${key} ===\n${truncated}`;
+        })
         .join("\n\n");
 
       // ── PASS 1: Identify threads ──
@@ -491,7 +501,9 @@ serve(async (req) => {
       console.log(`[THREAD] Pass 1.${iter}: Identifying threads across ${sectionEntries.length} sections...`);
       let identifyResult: { text: string; usage: Record<string, number> };
       try {
-        identifyResult = await callClaude(identifySystem, identifyUser, 8000);
+        // Lowered from 8000 → 4000 to stay under the 30k-tokens-per-minute cap.
+        // Identify output is just a JSON list of threads — 4k is plenty.
+        identifyResult = await callClaude(identifySystem, identifyUser, 4000);
       } catch (e) {
         console.error(`[THREAD] Identify call failed on iteration ${iter}:`, e);
         warnings.push(`Iteration ${iter} identify failed — loop stopped`);
@@ -629,7 +641,10 @@ serve(async (req) => {
       const weaveUser = buildWeaveUserPrompt(sectionsToWeave, insertionsBySection, currentSections);
       let weaveResult: { text: string; usage: Record<string, number> };
       try {
-        weaveResult = await callClaude(weaveSystem, weaveUser, 16000);
+        // Lowered from 16000 → 8000 to stay under the 30k-tokens-per-minute cap.
+        // Weave output is JSON mapping section keys to modified prose — 8k is
+        // sufficient for the 2-5 sections typically woven per iteration.
+        weaveResult = await callClaude(weaveSystem, weaveUser, 8000);
       } catch (e) {
         console.error(`[THREAD] Weave call failed on iteration ${iter}:`, e);
         warnings.push(`Iteration ${iter} weave failed — loop stopped`);

@@ -1,10 +1,9 @@
 import { useState } from "react";
 import { generateSection, qualityCheck, assembleReportContext } from "@/ai/reportEngine";
-import { refineText } from "@/ai/generationQueue";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, CheckCircle2, AlertTriangle, Info, RotateCcw, Pencil, Sparkles } from "lucide-react";
+import { Loader2, CheckCircle2, AlertTriangle, Info, RotateCcw, Pencil } from "lucide-react";
 import { cn, stripMarkdown } from "@/lib/utils";
 
 interface ReportSectionGeneratorProps {
@@ -31,10 +30,8 @@ export default function ReportSectionGenerator({
   const [editableText, setEditableText] = useState("");
   const [flags, setFlags] = useState<string[]>([]);
   const [nameWarnings, setNameWarnings] = useState<string[]>([]);
-  const [refineWarnings, setRefineWarnings] = useState<string[]>([]);
   const [corrections, setCorrections] = useState<string[]>([]);
-  const [isRefined, setIsRefined] = useState(false);
-  const [status, setStatus] = useState<"idle" | "generating" | "refining" | "checking" | "ready" | "approved" | "error">("idle");
+  const [status, setStatus] = useState<"idle" | "generating" | "checking" | "ready" | "approved" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
   const [isEditing, setIsEditing] = useState(false);
 
@@ -43,9 +40,7 @@ export default function ReportSectionGenerator({
     setErrorMsg("");
     setFlags([]);
     setNameWarnings([]);
-    setRefineWarnings([]);
     setCorrections([]);
-    setIsRefined(false);
 
     try {
       const inputWithContext = { ...clinicianInput };
@@ -58,20 +53,9 @@ export default function ReportSectionGenerator({
       if (participantFirstName) extraBody.participant_first_name = participantFirstName;
 
       const result = await generateSection(sectionId, clientName, inputWithContext, Object.keys(extraBody).length > 0 ? extraBody : undefined);
-      let prose = result.text;
+      const prose = result.text;
       if (result.name_warnings && result.name_warnings.length > 0) {
         setNameWarnings(result.name_warnings);
-      }
-
-      // Refine the generated text
-      setStatus("refining");
-      const refineResult = await refineText(prose, sectionId, participantName, participantFirstName);
-      if (refineResult?.refined_text) {
-        prose = refineResult.refined_text;
-        setIsRefined(true);
-        if (refineResult.warnings && refineResult.warnings.length > 0) {
-          setRefineWarnings(refineResult.warnings);
-        }
       }
 
       setStatus("checking");
@@ -101,8 +85,6 @@ export default function ReportSectionGenerator({
     setEditableText("");
     setFlags([]);
     setCorrections([]);
-    setIsRefined(false);
-    setRefineWarnings([]);
     setStatus("generating");
     setTimeout(handleGenerate, 100);
   };
@@ -110,7 +92,6 @@ export default function ReportSectionGenerator({
   const statusLabel: Record<string, string> = {
     idle: "Ready to generate",
     generating: "Generating...",
-    refining: "Refining writing quality...",
     checking: "Quality checking...",
     ready: "Review and approve",
     approved: "Approved",
@@ -143,12 +124,6 @@ export default function ReportSectionGenerator({
           />
           <span className="text-[13px] font-semibold text-foreground">AI Report Writer</span>
           <span className="text-xs text-muted-foreground">{sectionName}</span>
-          {isRefined && (status === "ready" || status === "approved") && (
-            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-accent-foreground bg-accent px-1.5 py-0.5 rounded">
-              <Sparkles className="h-3 w-3" />
-              Refined
-            </span>
-          )}
         </div>
         <span className="text-[11px] text-muted-foreground">{statusLabel[status]}</span>
       </div>
@@ -167,14 +142,12 @@ export default function ReportSectionGenerator({
         )}
 
         {/* Loading */}
-        {(status === "generating" || status === "refining" || status === "checking") && (
+        {(status === "generating" || status === "checking") && (
           <div className="text-center py-6">
             <Loader2 className="h-6 w-6 animate-spin text-primary mx-auto mb-3" />
             <p className="text-[13px] text-muted-foreground">
               {status === "generating"
                 ? "Generating clinical prose from your observations..."
-                : status === "refining"
-                ? "Refining writing quality..."
                 : "Running quality rubric check..."}
             </p>
           </div>
@@ -206,19 +179,6 @@ export default function ReportSectionGenerator({
             <div>
               <strong>Name warnings:</strong>
               {nameWarnings.map((w, i) => (
-                <div key={i} className="mt-1">{w}</div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Refine warnings banner */}
-        {(status === "ready" || status === "approved") && refineWarnings.length > 0 && (
-          <div className="p-2 px-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-300/50 dark:border-amber-700/50 rounded-md mb-2.5 text-xs text-amber-800 dark:text-amber-200 flex items-start gap-2">
-            <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-            <div>
-              <strong>Refinement warnings:</strong>
-              {refineWarnings.map((w, i) => (
                 <div key={i} className="mt-1">{w}</div>
               ))}
             </div>

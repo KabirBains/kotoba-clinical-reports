@@ -620,9 +620,12 @@ serve(async (req: Request) => {
       } else if (section_name === "section8" || section_name === "section9") {
         const cc = extractCollateralForDomain(collateral_interviews, "Carer");
         if (cc) dynamicSuffix += "\n\n=== CARER COLLATERAL ===\n" + cc;
-      } else if (collateralContext) {
-        dynamicSuffix += "\n\n=== COLLATERAL AVAILABLE ===\n" + collateralContext;
       }
+      // Intentional: no default full-collateral dump. Sections that don't match
+      // one of the targeted branches above get NO collateral context — the full
+      // dump used to add 8-15k tokens to every call and push us over the
+      // 30k-tokens-per-minute rate limit. Routed extracts (domain, safety,
+      // carer) already cover the section-specific need.
     }
 
     // === RECOMMENDATIONS-SPECIFIC: PARTICIPANT-SPECIFIC CONSEQUENCE RULE ===
@@ -686,10 +689,22 @@ serve(async (req: Request) => {
       }
     }
 
-    // Lookback context
+    // Lookback context — truncated per section to stay under the per-minute
+    // token ceiling. Cross-references need the GIST of prior sections, not the
+    // full text. A 2000-char cap trims the typical recommendation call from
+    // ~10k to ~2k dynamic tokens with no observed quality loss.
     if (generated_sections && typeof generated_sections === "object") {
+      const MAX_LOOKBACK_CHARS = 2000;
       let lb = "\n\n=== PREVIOUS SECTIONS (cross-ref only) ===";
-      for (const [k, v] of Object.entries(generated_sections)) { if (v && (v as string).trim()) lb += `\n--- ${k} ---\n${v}\n`; }
+      for (const [k, v] of Object.entries(generated_sections)) {
+        if (v && (v as string).trim()) {
+          const text = (v as string).trim();
+          const truncated = text.length > MAX_LOOKBACK_CHARS
+            ? text.slice(0, MAX_LOOKBACK_CHARS) + "…[truncated]"
+            : text;
+          lb += `\n--- ${k} ---\n${truncated}\n`;
+        }
+      }
       dynamicSuffix += lb;
     }
 
@@ -701,6 +716,16 @@ serve(async (req: Request) => {
     ];
     if (dynamicSuffix) {
       systemBlocks.push({ type: "text", text: dynamicSuffix });
+    }
+
+    // Diagnostic: estimated input tokens (rough chars/4 heuristic). If this
+    // exceeds ~20k we're close to the 30k-per-minute rate-limit ceiling and
+    // should look for unnecessary context in the dynamic suffix.
+    const estTokens = Math.ceil((cachedPrefix.length + dynamicSuffix.length + (prompt?.length || 0)) / 4);
+    if (estTokens > 20000) {
+      console.warn(`[TOKEN ESTIMATE] section=${section_name ?? "unknown"} ~${estTokens} input tokens (cached+dynamic+user). Consider trimming context.`);
+    } else {
+      console.log(`[TOKEN ESTIMATE] section=${section_name ?? "unknown"} ~${estTokens} input tokens`);
     }
 
     const result = await callClaude(systemBlocks, prompt, max_tokens);
