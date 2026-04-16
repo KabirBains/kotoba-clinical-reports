@@ -421,6 +421,8 @@ export function AssessmentsSection({ assessments, onUpdateAssessments, participa
                 onRemove={() => removeAssessment(index)}
                 participantName={participantName}
                 participantFirstName={participantFirstName}
+                participantSex={participantSex}
+                participantPronouns={participantPronouns}
               />
             );
           })}
