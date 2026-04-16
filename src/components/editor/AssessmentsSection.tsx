@@ -35,6 +35,8 @@ interface AssessmentsSectionProps {
   onUpdateAssessments: (assessments: AssessmentInstance[]) => void;
   participantName?: string;
   participantFirstName?: string;
+  participantSex?: string;
+  participantPronouns?: string;
 }
 
 function AssessmentCard({
@@ -45,6 +47,8 @@ function AssessmentCard({
   onRemove,
   participantName,
   participantFirstName,
+  participantSex,
+  participantPronouns,
 }: {
   instance: AssessmentInstance;
   index: number;
@@ -53,6 +57,8 @@ function AssessmentCard({
   onRemove: () => void;
   participantName?: string;
   participantFirstName?: string;
+  participantSex?: string;
+  participantPronouns?: string;
 }) {
   const [open, setOpen] = useState(true);
   const [generating, setGenerating] = useState(false);
