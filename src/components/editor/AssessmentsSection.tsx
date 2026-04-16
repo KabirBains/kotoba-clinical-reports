@@ -332,7 +332,7 @@ function AssessmentCard({
   );
 }
 
-export function AssessmentsSection({ assessments, onUpdateAssessments, participantName, participantFirstName }: AssessmentsSectionProps) {
+export function AssessmentsSection({ assessments, onUpdateAssessments, participantName, participantFirstName, participantSex, participantPronouns }: AssessmentsSectionProps) {
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [customOpen, setCustomOpen] = useState(false);
   const [customName, setCustomName] = useState("");
