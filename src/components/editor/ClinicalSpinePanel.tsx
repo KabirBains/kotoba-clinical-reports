@@ -200,7 +200,7 @@ export function ClinicalSpinePanel({
 
   // ── State 2/3: draft or stale ──
   return (
-    <Card ref={panelRef} className={isStale ? "border-amber-500/60" : ""}>
+    <Card ref={panelRef} className={isStale ? "border-destructive/60" : ""}>
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-2">
