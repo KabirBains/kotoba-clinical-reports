@@ -22,7 +22,43 @@ const PARTICIPANT_KEYS = {
   ndisNumber: "__participant__ndisNumber",
   address: "__participant__address",
   primaryContact: "__participant__primaryContact",
+  genderIdentity: "__participant__genderIdentity",
+  pronouns: "__participant__pronouns",
 } as const;
+
+// Pronoun preset options. "Self-described" routes to a free-text input.
+const PRONOUN_OPTIONS = [
+  "she/her",
+  "he/him",
+  "they/them",
+  "she/they",
+  "he/they",
+  "Self-described",
+] as const;
+
+const GENDER_OPTIONS = [
+  "Female",
+  "Male",
+  "Non-binary",
+  "Genderfluid",
+  "Agender",
+  "Prefer not to say",
+  "Self-described",
+] as const;
+
+// Best-effort default mapping from a common gender identity to pronouns.
+// Only used to PREFILL the pronoun field when it is still empty — never
+// to override an existing clinician-set value.
+function defaultPronounsForGender(gender: string): string {
+  switch (gender) {
+    case "Female": return "she/her";
+    case "Male": return "he/him";
+    case "Non-binary":
+    case "Genderfluid":
+    case "Agender": return "they/them";
+    default: return "";
+  }
+}
 
 const CLINICIAN_KEYS = {
   phoneEmail: "__clinician__phoneEmail",
