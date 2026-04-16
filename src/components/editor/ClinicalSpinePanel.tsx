@@ -222,7 +222,7 @@ export function ClinicalSpinePanel({
           </div>
         </div>
         {isStale ? (
-          <div className="flex items-start gap-2 mt-3 p-2 rounded-md bg-amber-500/10 border border-amber-500/30 text-xs text-amber-900 dark:text-amber-200">
+          <div className="flex items-start gap-2 mt-3 p-2 rounded-md bg-destructive/10 border border-destructive/30 text-xs text-destructive">
             <AlertTriangle className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
             <span>
               Upstream clinical data has changed (diagnoses, assessments, or functional notes).
