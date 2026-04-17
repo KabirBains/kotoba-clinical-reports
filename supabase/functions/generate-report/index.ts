@@ -519,6 +519,12 @@ serve(async (req: Request) => {
       // output against ~8-10 high-impact rubric criteria. Default false
       // to preserve backward compatibility and existing per-call cost.
       self_check,
+      // Clinical Spine — pre-computed structured reasoning backbone.
+      // When present, injected into the dynamic suffix so Claude can
+      // reference anchor impairments, recurring consequences, and
+      // cross-domain links when writing each section. Produced by the
+      // clinical-spine edge function before the generation queue starts.
+      clinical_spine,
     } = body;
     if (!prompt) return new Response(JSON.stringify({ success: false, error: "No prompt" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
@@ -579,6 +585,32 @@ serve(async (req: Request) => {
     // Note: ANTI_REDUNDANCY, ASSESSMENT_SCORING_RULES and SUB_AREA_RULES
     // are now part of the cached prefix above (added by PR A: prompt
     // caching). Do not append them here again.
+
+    // === CLINICAL SPINE ===
+    // When the clinical-spine edge function has pre-computed a reasoning
+    // backbone, inject it so the model can reference anchor impairments
+    // and cross-domain links when writing this section. The spine is
+    // participant-level context (not section-specific) so it goes before
+    // collateral routing.
+    if (clinical_spine && typeof clinical_spine === "object") {
+      const spineJson = JSON.stringify(clinical_spine, null, 2);
+      dynamicSuffix += `\n\n=== CLINICAL SPINE (reasoning backbone — use to inform this section) ===
+The following Clinical Spine was derived from the participant's diagnoses, assessment scores, clinician notes, and collateral information. It identifies the anchor impairments, recurring consequences, and cross-domain links that should thread through the report.
+
+USE THE SPINE TO:
+- Reference the specific anchor impairments relevant to THIS section's domain
+- Connect observations to the recurring consequences identified in the spine
+- Use the diagnosis-function chains to link clinical findings back to named diagnoses
+- Ensure your prose is consistent with the cross-domain links (if the spine says an impairment affects this domain, address it)
+
+DO NOT:
+- Copy the spine text verbatim — it is a reasoning scaffold, not report prose
+- Invent new impairments or consequences not in the spine
+- Contradict the spine's clinical reasoning
+
+${spineJson}
+`;
+    }
 
     // === COLLATERAL ROUTING ===
     let collateralContext = ""; let domainCollateral = ""; let safetySummary = ""; let hasSafetyAlerts = false;

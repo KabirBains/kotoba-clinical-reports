@@ -544,10 +544,57 @@ export default function ClientEditor() {
                     collateralContext = `\n\nCOLLATERAL INTERVIEW DATA:\nThe following collateral information was gathered from stakeholder interviews. Reference and corroborate relevant observations where they support clinical findings. Attribute every reference by informant name and role (e.g. "Jane Smith, daily support worker, reported that ...").\n\n${summaries}`;
                   }
 
+                  // ── Clinical Spine (pre-generation reasoning backbone) ──
+                  // Calls the clinical-spine edge function to derive a structured
+                  // map of anchor impairments, recurring consequences, and cross-
+                  // domain links BEFORE any section is generated. The spine JSON
+                  // is then passed to every generate-report call so Claude can
+                  // reference it when writing each section, producing a cohesive
+                  // clinical narrative rather than isolated domain paragraphs.
+                  let clinicalSpine: Record<string, unknown> | null = null;
+                  try {
+                    setGenerateProgress({ current: 0, total: 1, label: "Deriving clinical spine..." });
+                    const diagnosesText = diagnoses.map(d => `${d.name} (ICD-10: ${d.icd10})`).join("; ") || diagnosis;
+                    const clinicianNotesText = topLevelEntries.map(([k, v]) => `${k}: ${v}`).join("\n") +
+                      "\n" + domainEntries.map(d => d.rowData.map(r => `${d.name} - ${r.label}: ${r.rating} — ${r.observation}`).join("\n")).join("\n");
+                    const assessmentSummaryText = scoredAssessments.map(a => {
+                      const summary = getInstanceScoreSummary(a);
+                      return `${a.name}: Total ${summary.total || "N/A"}, Classification: ${summary.classification || "N/A"}`;
+                    }).join("\n");
+
+                    const { data: spineData, error: spineError } = await supabase.functions.invoke("clinical-spine", {
+                      method: "POST",
+                      body: {
+                        participant_first_name: participantFirstName,
+                        participant_pronouns: notes["__participant__pronouns"] || "",
+                        diagnoses: diagnosesText,
+                        clinician_notes: clinicianNotesText,
+                        assessment_summary: assessmentSummaryText,
+                        collateral_summary: collateralContext || "",
+                      },
+                    });
+
+                    if (spineError) {
+                      console.warn("Clinical spine generation failed (non-fatal):", spineError);
+                    } else if (spineData?.success && spineData?.spine) {
+                      clinicalSpine = spineData.spine;
+                      console.log(`[SPINE] Generated: ${spineData.spine.anchor_impairments?.length || 0} anchors, ${spineData.spine.cross_domain_links?.length || 0} links`);
+                    }
+                  } catch (err) {
+                    console.warn("Clinical spine error (non-fatal):", err);
+                  }
+
                   // ── Build queue items ──
                   // PHASE 1: Sections 1–5 + Section 6 (methodology/collateral)
                   const phase1Items: QueueItem[] = [];
                   const newContent: Record<string, string> = { ...reportContent };
+
+                  // Base extraBody fields shared across ALL generate-report calls.
+                  // Includes participant naming + clinical spine (when available).
+                  const baseExtra: Record<string, unknown> = {
+                    ...nameFields,
+                    ...(clinicalSpine ? { clinical_spine: clinicalSpine } : {}),
+                  };
 
                   // Sections that benefit from collateral context in prompt
                   // ─── SECTION NAME MAP (Liaise Phase 1 fix) ───────────────
@@ -591,7 +638,7 @@ export default function ClientEditor() {
                     // double-injection. The only thing we pass in the user prompt
                     // is the clinician's own observations.
                     const prompt = `Write a section of an NDIS Functional Capacity Assessment for ${clientName}.\n\nSECTION: ${sectionId}\n\n${templateGuidance ? templateGuidance + "\n\n" : ""}CLINICIAN OBSERVATIONS (transform these into formal clinical prose):\n${observations}\n\nDIAGNOSIS CONTEXT: ${diagnosis || "[Not provided]"}\n\n${rubric}\n\nWrite 2-3 paragraphs of formal NDIS report prose. Use observation → impact → support need structure. Person-first language, third-person active voice. No bullet points, no markdown. Output only the section text.`;
-                    const extraBody: Record<string, any> = { ...nameFields };
+                    const extraBody: Record<string, any> = { ...baseExtra };
                     // Liaise Phase 1: pass section_name so the edge function's
                     // section-aware collateral routing fires correctly.
                     const mappedSectionName = SECTION_NAME_MAP[sectionId];
@@ -666,7 +713,7 @@ export default function ClientEditor() {
                       inputForHash,
                       label: `Collateral: ${informantLabel}`,
                       extraBody: {
-                        ...nameFields,
+                        ...baseExtra,
                         section_name: "section6_informant",
                         collateral_interviews: singlePayload,
                       },
@@ -687,7 +734,7 @@ export default function ClientEditor() {
                       inputForHash: methodologyInput + JSON.stringify(scoredAssessments.map(a => a.name)),
                       label: "Section: Methodology",
                       extraBody: {
-                        ...nameFields,
+                        ...baseExtra,
                         section_name: "section7",
                       },
                     });
@@ -852,7 +899,7 @@ export default function ClientEditor() {
                     const prompt = `You are writing the '${domain.name}' subsection of Section 12 (Functional Capacity) of an NDIS Functional Capacity Assessment for ${clientName}.\n\n${FUNCTIONAL_DOMAIN_GUIDANCE}\n\nDOMAIN: ${domain.name}\n\nIMPORTANT: This domain contains multiple distinct rows/subdomains. Treat EACH row below as a separate item. Do not merge rows, do not repeat content across rows, and do not mention details from one row inside another row's output.\n\nROW-BY-ROW INPUT:\n${rowLines}\n\nDIAGNOSIS CONTEXT: ${diagnosis || "[Not specified]"}\n\n${domainRubric}\n\nTASK:\n- For EACH row, write 1-2 sentences of formal NDIS clinical prose for that row only.\n- Each JSON value must discuss only that row's label, support level, and observations.\n- Never mention another row's task inside a given row's output.\n- Do not combine multiple rows into one paragraph.\n- Do not copy or slightly reword the same paragraph across multiple keys.\n- Person-first language, third-person active voice, no bullet points, no markdown.\n\nReturn valid JSON only — no markdown, no code fences.\nUse exactly these keys and no others: ${JSON.stringify(fieldKeys)}\nEach value must be a plain string of clinical prose for that key only.\n\nExample: {"bed": "Mr X requires full physical assistance to complete bed transfers safely due to impaired balance and lower limb weakness."}`;
 
                     const extraBody: Record<string, any> = {
-                      ...nameFields,
+                      ...baseExtra,
                       section_name: domain.reportKey.replace("section12_", "section13_"),
                       domain_hint: DOMAIN_HINT_MAP[domain.reportKey] || domain.name,
                     };
@@ -878,7 +925,7 @@ export default function ClientEditor() {
                     const prompt = `Write the interpretation for ${aName} in Section 15 (Standardised Assessments) of an NDIS Functional Capacity Assessment for ${clientName}.\n\n${ASSESSMENT_INTERPRETATION_GUIDANCE}\n\nASSESSMENT TOOL: ${aName}\nDATE ADMINISTERED: ${typeof assessment.dateAdministered === "string" ? assessment.dateAdministered : "Not recorded"}\n\nTOTAL SCORE: ${scoreSummary.total || "Not calculated"}\nCLASSIFICATION: ${scoreSummary.classification || "Not classified"}\n\nDOMAIN/SUBSCALE SCORES:\n${scoresText}\n\nCLINICIAN NOTES:\n${typeof assessment.interpretation === "string" && assessment.interpretation ? assessment.interpretation : "No clinician notes provided"}\n\n${assessRubric}\n\nWrite 2 paragraphs following the interpretation rules above. Do NOT include a synopsis — it is displayed separately. Person-first language, no markdown. Output only the interpretation text.`;
 
                     const inputHash = `${scoreSummary.total}|${scoreSummary.classification}|${assessment.interpretation || ""}`;
-                    phase2Items.push({ key: `assessment_${assessment.id}`, prompt, maxTokens: 1500, inputForHash: inputHash, label: `Assessment: ${aName}`, extraBody: { ...nameFields } });
+                    phase2Items.push({ key: `assessment_${assessment.id}`, prompt, maxTokens: 1500, inputForHash: inputHash, label: `Assessment: ${aName}`, extraBody: { ...baseExtra } });
                   }
 
                   // 4. Recommendations — include full generated_sections for later sections
@@ -919,7 +966,7 @@ export default function ClientEditor() {
                     const inputHash = `${r.supportName}|${r.justification || ""}|${r.consequence || ""}|${(r.tasks || []).join(",")}`;
 
                     const extraBody: Record<string, any> = {
-                      ...nameFields,
+                      ...baseExtra,
                       section_name: "section17",
                     };
                     if (collateralPayload.length > 0) {
