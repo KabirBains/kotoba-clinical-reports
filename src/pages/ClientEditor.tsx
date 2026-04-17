@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { kotobaSupabase } from "@/integrations/supabase/kotobaClient";
 import { useAuth } from "@/hooks/useAuth";
 import { TEMPLATE_SECTIONS } from "@/lib/constants";
 import { type AssessmentInstance, ASSESSMENT_LIBRARY } from "@/lib/assessment-library";
@@ -11,19 +10,8 @@ import { type RecommendationInstance } from "@/lib/recommendations-library";
 import { type DiagnosisInstance } from "@/lib/diagnosis-library";
 import { type GoalInstance } from "@/components/editor/ParticipantGoals";
 import { type QueueItem, processQueue, setHashCacheReportId } from "@/ai/generationQueue";
-import { stripMarkdown, stableStringify } from "@/lib/utils";
 import { getTemplateGuidance, getRubricForSection, FUNCTIONAL_DOMAIN_GUIDANCE, ASSESSMENT_INTERPRETATION_GUIDANCE, RECOMMENDATION_GUIDANCE } from "@/ai/promptGuidance";
-import { SYNOPSIS_LIBRARY, buildClinicalSpine } from "@/ai/reportEngine";
-import {
-  SPINE_CACHE_KEY,
-  buildSpineCacheEntry,
-  computeSpineSourceHash,
-  getSpineCache,
-  markSpineStaleIfNeeded,
-  type SpineCache,
-} from "@/ai/spineCache";
-import "@/ai/devSpineValidator"; // dev-only: window.__kotobaRunSpineOnReport
-import { ClinicalSpinePanel } from "@/components/editor/ClinicalSpinePanel";
+import { SYNOPSIS_LIBRARY } from "@/ai/reportEngine";
 import { buildMethodologyText } from "@/components/editor/MethodologyAggregator";
 
 import { KotobaLogo } from "@/components/KotobaLogo";
@@ -70,35 +58,14 @@ interface ThreadIterationStat {
   converged: boolean;
 }
 
-function normalizeHashValue(value: unknown): unknown {
-  if (typeof value === "string") {
-    return value.replace(/\r\n?/g, "\n").trim();
-  }
-  if (Array.isArray(value)) {
-    return value.map(normalizeHashValue);
-  }
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>).map(([key, nestedValue]) => [key, normalizeHashValue(nestedValue)])
-    );
-  }
-  return value;
-}
-
-function buildHashInput(value: unknown): string {
-  return stableStringify(normalizeHashValue(value));
-}
-
 export default function ClientEditor() {
   const { clientId } = useParams<{ clientId: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
-
-  if (clientId) {
-    setHashCacheReportId(clientId);
-  }
-
   const queryClient = useQueryClient();
+  // Scope the generation hash cache to this client so unchanged sections
+  // are skipped even after page refresh (persisted in localStorage).
+  if (clientId) setHashCacheReportId(clientId);
   const [mode, setMode] = useState<"notes" | "report" | "liaise">("notes");
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [assessments, setAssessments] = useState<AssessmentInstance[]>([]);
@@ -130,12 +97,6 @@ export default function ClientEditor() {
   const [threadContradictions, setThreadContradictions] = useState<ThreadMapEntry[]>([]);
   const [threadWarnings, setThreadWarnings] = useState<string[]>([]);
   const [isThreading, setIsThreading] = useState(false);
-  // ── Clinical Spine state (Stage 1.5) ──
-  // Mirror of reports.notes.__clinical_spine__ for fast UI reads.
-  // Persisted via the existing autosave path (saveToCloud).
-  const [spineCache, setSpineCache] = useState<SpineCache | null>(null);
-  const [isGeneratingSpine, setIsGeneratingSpine] = useState(false);
-  const spinePanelRef = useRef<HTMLDivElement>(null);
   const saveTimerRef = useRef<ReturnType<typeof setInterval>>();
   const mainRef = useRef<HTMLElement>(null);
 
@@ -215,19 +176,6 @@ export default function ClientEditor() {
       if (Array.isArray(savedDismissedKeys)) {
         setDismissedIssueKeys(new Set(savedDismissedKeys));
       }
-      // Load Clinical Spine cache (Stage 1.5)
-      const loadedCache = getSpineCache((savedNotes as any) || {});
-      if (loadedCache) {
-        setSpineCache(loadedCache);
-        // Detect upstream drift and auto-flag stale (no auto-regenerate)
-        markSpineStaleIfNeeded((savedNotes as any) || {}).then(({ notes: nextNotes, changed }) => {
-          if (changed) {
-            const next = getSpineCache(nextNotes);
-            if (next) setSpineCache(next);
-            setNotes(nextNotes as Record<string, string>);
-          }
-        });
-      }
     }
   }, [report]);
 
@@ -269,18 +217,7 @@ export default function ClientEditor() {
 
   const saveToCloud = useCallback(async () => {
     if (!report?.id) return;
-    const notesWithAssessments: Record<string, any> = {
-      ...notes,
-      __assessments__: assessments as any,
-      __recommendations__: recommendations as any,
-      __diagnoses__: diagnoses as any,
-      __goals__: goals as any,
-      __nilGoals__: nilGoals as any,
-    };
-    // Persist Clinical Spine cache (Stage 1.5) under its dedicated key.
-    if (spineCache) {
-      notesWithAssessments[SPINE_CACHE_KEY] = spineCache;
-    }
+    const notesWithAssessments = { ...notes, __assessments__: assessments as any, __recommendations__: recommendations as any, __diagnoses__: diagnoses as any, __goals__: goals as any, __nilGoals__: nilGoals as any };
     const updatePayload: Record<string, any> = {
       notes: notesWithAssessments,
       report_content: reportContent || null,
@@ -299,7 +236,7 @@ export default function ClientEditor() {
       setLastSaved(new Date());
       if (clientId) localStorage.setItem(`kotoba-notes-${clientId}`, JSON.stringify(notes));
     }
-  }, [report?.id, notes, assessments, recommendations, diagnoses, goals, nilGoals, reportContent, clientId, scorecard, issueStatuses, dismissedIssueKeys, spineCache]);
+  }, [report?.id, notes, assessments, recommendations, diagnoses, goals, nilGoals, reportContent, clientId, scorecard, issueStatuses, dismissedIssueKeys]);
 
   // Autosave every 30 seconds
   useEffect(() => {
@@ -317,96 +254,6 @@ export default function ClientEditor() {
   const updateNote = (sectionId: string, value: string) => {
     setNotes((prev) => ({ ...prev, [sectionId]: value }));
   };
-
-  // ── Clinical Spine handlers (Stage 1.5) ──────────────────
-  // Builds the spine inputs from the same notes structures the
-  // generation pipeline reads. Keeps spine input parity with
-  // what Stage 2 will eventually inject into per-section calls.
-  const buildSpineInputsFromState = useCallback(() => {
-    const clientName = client?.client_name || "the participant";
-    const fullName = (notes["__participant__fullName"] as string) || clientName;
-    const firstName = String(fullName).split(/\s+/)[0] || String(fullName);
-    const pronouns = String((notes["__participant__pronouns"] as string) || "they/them");
-
-    // Assessment summary — name + raw scores + clinician interpretation per tool.
-    const assessmentSummary = assessments
-      .filter((a) => a?.scores && Object.keys(a.scores).length > 0)
-      .map((a) => {
-        const lines = [`${a.name || (a as any).libraryId || "Assessment"}`];
-        try {
-          const summary: any = getInstanceScoreSummary(a);
-          if (summary?.total) lines.push(`Total: ${summary.total}`);
-          if (summary?.classification) lines.push(`Classification: ${summary.classification}`);
-        } catch {
-          // fall through to raw scores
-        }
-        lines.push(`Raw scores: ${JSON.stringify(a.scores)}`);
-        if (a.interpretation) lines.push(`Clinician notes: ${a.interpretation}`);
-        return lines.join("\n");
-      })
-      .join("\n\n");
-
-    // Clinician functional notes — top-level + Section 12 raw rows.
-    const functionalLines: string[] = [];
-    for (const [k, v] of Object.entries(notes)) {
-      if (typeof v !== "string" || !v.trim()) continue;
-      if (k.startsWith("__")) continue;
-      if (k.endsWith("__rating")) continue;
-      const label = k.replace(/__/g, " · ").replace(/-/g, " ");
-      functionalLines.push(`[${label}]\n${v.trim()}`);
-    }
-    const clinicianNotes = functionalLines.join("\n\n");
-
-    // Collateral summary — interviewee, role, and short notes per row.
-    const collateralSummary = collateralInterviews
-      .map((iv) => {
-        const parts = [`${iv.intervieweeName || "Informant"} (${iv.intervieweeRole || "role unspecified"}, ${iv.templateId})`];
-        const flat = Object.entries(iv.responses || {})
-          .map(([q, r]) => `Q: ${q}\nA: ${typeof r === "string" ? r : JSON.stringify(r)}`)
-          .join("\n");
-        if (flat) parts.push(flat);
-        if (iv.generalNotes) parts.push(`General notes: ${iv.generalNotes}`);
-        return parts.join("\n");
-      })
-      .join("\n\n---\n\n");
-
-    return {
-      diagnoses: diagnoses.length ? diagnoses : (client?.primary_diagnosis || ""),
-      collateral_summary: collateralSummary,
-      clinician_notes: clinicianNotes,
-      assessment_summary: assessmentSummary,
-      participant_first_name: firstName,
-      participant_pronouns: pronouns,
-    };
-  }, [assessments, client?.client_name, client?.primary_diagnosis, collateralInterviews, diagnoses, notes]);
-
-  const generateSpine = useCallback(async () => {
-    if (isGeneratingSpine) return;
-    setIsGeneratingSpine(true);
-    try {
-      const inputs = buildSpineInputsFromState();
-      const spine = await buildClinicalSpine(inputs);
-      const sourceHash = await computeSpineSourceHash({
-        ...notes,
-        __assessments__: assessments,
-        __diagnoses__: diagnoses,
-      } as any);
-      const entry = buildSpineCacheEntry(spine, sourceHash, "draft", null);
-      setSpineCache(entry);
-      toast.success("Clinical Spine generated. Review and approve to proceed.");
-    } catch (e: any) {
-      console.error("[clinical-spine] generation failed", e);
-      toast.error("Clinical Spine generation failed: " + (e?.message || "Unknown error"));
-    } finally {
-      setIsGeneratingSpine(false);
-    }
-  }, [assessments, buildSpineInputsFromState, diagnoses, isGeneratingSpine, notes]);
-
-  const approveSpine = useCallback(() => {
-    if (!spineCache) return;
-    setSpineCache({ ...spineCache, status: "approved", approved_at: new Date().toISOString() });
-    toast.success("Clinical Spine approved.");
-  }, [spineCache]);
 
   const SECTION_LABELS: Record<string, string> = {
     "reason-referral": "Section 1 - Reason for Referral",
@@ -442,7 +289,7 @@ export default function ClientEditor() {
         .filter(([, text]) => text && text.trim())
         .map(([key, text]) => `=== ${SECTION_LABELS[key] || key} ===\n${text}`)
         .join("\n\n");
-      const { data, error } = await kotobaSupabase.functions.invoke("review-report", {
+      const { data, error } = await supabase.functions.invoke("review-report", {
         body: { reportText, participantName: client?.client_name || "" },
       });
       if (error) throw error;
@@ -548,19 +395,6 @@ export default function ClientEditor() {
               className="bg-accent text-accent-foreground hover:bg-accent/90"
               disabled={generatingReport}
               onClick={async () => {
-                // ── Stage 1.5 gate: full-report generation requires an
-                // approved Clinical Spine. Single-section regenerates
-                // remain ungated until Stage 2 wires the spine into
-                // per-section generation.
-                if (!spineCache || spineCache.status !== "approved") {
-                  toast.warning("Approve the Clinical Spine before generating the full report.");
-                  // Switch to report mode so the panel is visible, then scroll.
-                  if (mode !== "report") setMode("report");
-                  setTimeout(() => {
-                    spinePanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-                  }, 50);
-                  return;
-                }
                 setGeneratingReport(true);
 
                 try {
@@ -570,18 +404,7 @@ export default function ClientEditor() {
                   // Extract participant names from structured details
                   const participantFullName = notes["__participant__fullName"] || clientName;
                   const participantFirstName = participantFullName.split(/\s+/)[0] || participantFullName;
-                  // Demographic context for the AI — drives pronoun consistency.
-                  // genderCustom takes precedence over the "Self-described" sentinel.
-                  const rawGender = notes["__participant__genderIdentity"] || "";
-                  const customGender = notes["__participant__genderCustom"] || "";
-                  const participantSex = (rawGender === "Self-described" ? customGender : rawGender).trim();
-                  const participantPronouns = (notes["__participant__pronouns"] || "").trim();
-                  const nameFields: Record<string, string> = {
-                    participant_name: participantFullName,
-                    participant_first_name: participantFirstName,
-                  };
-                  if (participantSex) nameFields.participant_sex = participantSex;
-                  if (participantPronouns) nameFields.participant_pronouns = participantPronouns;
+                  const nameFields = { participant_name: participantFullName, participant_first_name: participantFirstName };
                   const allNameWarnings: string[] = [];
 
                   // ── Collect top-level section notes ──
@@ -623,7 +446,6 @@ export default function ClientEditor() {
                         }
                       }
                     }
-                    rowData.sort((a, b) => a.fieldId.localeCompare(b.fieldId));
                     if (rowData.length > 0) domainEntries.push({ ...domain, rowData });
                   }
 
@@ -636,6 +458,13 @@ export default function ClientEditor() {
                   }
 
                   // ── Build collateral payload for edge function ──
+                  // Liaise V2 stores multi-select checklist responses as
+                  // JSON-encoded arrays (e.g. '["Walking stick","Walker"]').
+                  // The edge function's collateral formatter doesn't yet
+                  // know how to decode those (that's PR B), so we flatten
+                  // them to comma-separated strings here before shipping.
+                  // Open questions and single-select checklists pass
+                  // through unchanged via flattenStoredResponse.
                   const flattenResponseMap = (r: Record<string, string>): Record<string, string> => {
                     const out: Record<string, string> = {};
                     for (const [k, v] of Object.entries(r || {})) {
@@ -654,11 +483,30 @@ export default function ClientEditor() {
                     generalNotes: i.generalNotes || '',
                   }));
 
-                  // ── Build collateral context summary (legacy) ──
+                  // ── Build collateral context summary (legacy user-prompt inlining) ──
+                  // NOTE (Liaise Phase 1 fix): This block used to produce opaque
+                  // raw-key summaries like "daily_functioning_0: response text"
+                  // which were meaningless to the AI without question text.
+                  // The edge function (generate-report) already has a
+                  // sophisticated formatCollateralForPrompt routine that
+                  // correctly uses question text and routes by section. As of
+                  // Phase 1, we pass section_name on every call so the edge
+                  // function's routing fires, and we no longer inline collateral
+                  // in the user prompt at all (see COLLATERAL_SECTIONS handling
+                  // below — the inclusion flag is now disabled by default).
+                  //
+                  // This summary is retained ONLY as a fallback for diagnostic
+                  // logs and for any future prompt that might want a compact
+                  // overview. It now uses proper question text via LIAISE_TEMPLATES.
                   let collateralContext = "";
                   if (collateralInterviews.length > 0) {
                     const summaries = collateralInterviews.map(iv => {
+                      // Look up in V2 first, fall back to V1 legacy templates.
+                      // Both template types have .domains[].questions[] but V1
+                      // questions are plain strings while V2 questions are
+                      // {type, text, ...} objects — getQuestionText() normalises.
                       const template = LIAISE_TEMPLATES_V2[iv.templateId] ?? LIAISE_TEMPLATES[iv.templateId];
+                      // Group responses by domain name (not ID) for readability
                       const qaByDomain: Record<string, string[]> = {};
                       for (const [key, val] of Object.entries(iv.responses || {})) {
                         if (!val || !String(val).trim()) continue;
@@ -669,11 +517,13 @@ export default function ClientEditor() {
                         const domain = template?.domains.find(d => d.id === domainId);
                         const questionText = getQuestionText(domain?.questions[qIdx]) || `Q${qIdx + 1}`;
                         const domainName = domain?.name ?? domainId;
+                        // Flatten JSON-array multi-select values into readable prose.
                         const displayVal = flattenStoredResponse(String(val));
                         (qaByDomain[domainName] = qaByDomain[domainName] || []).push(
                           `  Q: ${questionText}\n  A: ${displayVal}`
                         );
                       }
+                      // Include custom questions per domain (previously dropped)
                       for (const [domainId, customs] of Object.entries(iv.customQuestions || {})) {
                         if (!Array.isArray(customs)) continue;
                         for (const cq of customs) {
@@ -695,15 +545,33 @@ export default function ClientEditor() {
                   }
 
                   // ── Build queue items ──
+                  // PHASE 1: Sections 1–5 + Section 6 (methodology/collateral)
                   const phase1Items: QueueItem[] = [];
                   const newContent: Record<string, string> = { ...reportContent };
 
+                  // Sections that benefit from collateral context in prompt
+                  // ─── SECTION NAME MAP (Liaise Phase 1 fix) ───────────────
+                  // Maps the client's string section IDs to the edge function's
+                  // expected section_name values. The edge function's
+                  // generate-report routes collateral (and other context) based
+                  // on section_name — section2 gets safety+full collateral,
+                  // section8/9 get carer-specific collateral, section12 gets
+                  // safety+risk collateral, etc.
+                  //
+                  // Before this fix, phase 1 calls passed no section_name, so
+                  // the edge function's sophisticated section-aware routing was
+                  // entirely bypassed and collateral was dumped generically.
+                  //
+                  // NOTE: these section numbers use the v5.1 template scheme
+                  // (section6 = Collateral Information, section7 = Methodology).
+                  // Section 6 is handled separately below.
                   const SECTION_NAME_MAP: Record<string, string> = {
                     "reason-referral": "section1",
                     "background": "section2",
                     "participant-goals": "section3",
                     "diagnoses": "section4",
                     "ot-case-history": "section5",
+                    // "methodology" is handled separately below (section6/section7)
                     "informal-supports": "section8",
                     "home-environment": "section9",
                     "social-environment": "section10",
@@ -711,7 +579,7 @@ export default function ClientEditor() {
                     "risk-safety": "section12",
                   };
 
-                  // 1. Top-level text sections
+                  // 1. Top-level text sections (excluding methodology — handled separately as section 6)
                   for (const [sectionId, observations] of topLevelEntries) {
                     if (sectionId === "methodology") continue; // handled in phase as section6
                     const templateGuidance = getTemplateGuidance(sectionId);
@@ -733,16 +601,7 @@ export default function ClientEditor() {
                     if (collateralPayload.length > 0) {
                       extraBody.collateral_interviews = collateralPayload;
                     }
-                    const inputForHash = buildHashInput({
-                      sectionId,
-                      observations,
-                      clientName,
-                      diagnosis: diagnosis || "",
-                      participantName: participantFullName,
-                      participantFirstName,
-                      collateralInterviews: collateralPayload,
-                    });
-                    phase1Items.push({ key: sectionId, prompt, maxTokens: 2000, inputForHash, label: `Section: ${sectionId}`, extraBody: Object.keys(extraBody).length > 0 ? extraBody : undefined });
+                    phase1Items.push({ key: sectionId, prompt, maxTokens: 2000, inputForHash: observations, label: `Section: ${sectionId}`, extraBody: Object.keys(extraBody).length > 0 ? extraBody : undefined });
                   }
 
                   // ─── SECTION 6 — Collateral Information (Liaise Phase 2 fix) ───────────
@@ -798,7 +657,7 @@ export default function ClientEditor() {
                     const rubric = getRubricForSection("text");
                     const prompt = `Write a formal attributed collateral summary paragraph for Section 6.2 (Collateral Interview Summaries) of an NDIS Functional Capacity Assessment for ${clientName}.\n\nINFORMANT: ${informantLabel}\nROLE / RELATIONSHIP: ${informantRole}\nINTERVIEW METHOD: ${iv.method || "[Not specified]"}\nINTERVIEW DATE: ${iv.date || "[Not specified]"}\n\nDIAGNOSIS CONTEXT: ${diagnosis || "[Not provided]"}\n\n${rubric}\n\nTASK:\n- Write 1-2 paragraphs (no more) that summarise THIS informant's contribution only.\n- Open with a formal introduction of the informant by name and role (e.g. "${informantLabel}, ${informantRole}, reported that ...").\n- Every clinical statement must be explicitly attributed to the informant using phrases like "reported", "described", "observed", "stated", "noted".\n- Do NOT write in the participant's voice or the clinician's voice. This is a second-hand account.\n- Do NOT reference other informants — this summary concerns ${informantLabel} only.\n- Cover the main functional themes this informant raised (daily functioning, ADLs, cognition, behaviour, social, risk/safety, carer capacity) but only where the informant actually commented.\n- Person-first language. Third-person active voice. No bullet points, no markdown, no headings.\n- Output only the summary paragraph(s). No preamble, no trailing notes.`;
 
-                    const inputForHash = `${iv.id}|${iv.intervieweeName}|${iv.intervieweeRole}|${iv.method}|${iv.date}|${stableStringify(iv.responses || {})}|${stableStringify(iv.customQuestions || {})}|${iv.generalNotes || ''}`;
+                    const inputForHash = `${iv.id}|${iv.intervieweeName}|${iv.intervieweeRole}|${iv.method}|${iv.date}|${JSON.stringify(iv.responses || {})}|${JSON.stringify(iv.customQuestions || {})}|${iv.generalNotes || ''}`;
 
                     phase1Items.push({
                       key,
@@ -1194,14 +1053,12 @@ export default function ClientEditor() {
 
                     try {
                       const diagnosesText = diagnoses.map(d => d.name).join(", ") || diagnosis;
-                      const { data: threadData, error: threadError } = await kotobaSupabase.functions.invoke("thread-narrative", {
+                      const { data: threadData, error: threadError } = await supabase.functions.invoke("thread-narrative", {
                         method: "POST",
                         body: {
                           generated_sections: newContent,
                           participant_name: participantFullName,
                           participant_first_name: participantFirstName,
-                          ...(participantSex ? { participant_sex: participantSex } : {}),
-                          ...(participantPronouns ? { participant_pronouns: participantPronouns } : {}),
                           diagnoses_context: diagnosesText,
                           max_passes: 3,
                         },
@@ -1213,7 +1070,7 @@ export default function ClientEditor() {
                         // Replace newContent with threaded versions
                         for (const [key, text] of Object.entries(threadData.threaded_sections)) {
                           if (typeof text === "string" && text.trim()) {
-                            newContent[key] = stripMarkdown(text);
+                            newContent[key] = text;
                           }
                         }
                         setThreadMap(threadData.thread_map || []);
@@ -1251,8 +1108,6 @@ export default function ClientEditor() {
                     }
                   }
 
-                  // ── WHOLE-REPORT REFINEMENT STEP ──
-                  // Refine all generated sections in a single API call.
                   setReportContent(newContent);
                   setMode("report");
 
@@ -1486,19 +1341,6 @@ export default function ClientEditor() {
               onUpdateInterviews={setCollateralInterviews}
             />
           ) : (
-            <div className="max-w-7xl mx-auto px-4 pt-4 space-y-4">
-              {/* Stage 1.5: Clinical Spine approval checkpoint */}
-              <ClinicalSpinePanel
-                cache={spineCache}
-                isGenerating={isGeneratingSpine}
-                onGenerate={generateSpine}
-                onApprove={approveSpine}
-                onRegenerate={generateSpine}
-                panelRef={spinePanelRef}
-              />
-            </div>
-          )}
-          {mode === "report" && (
             <ReportMode
               reportContent={reportContent}
               notes={notes}
@@ -1614,7 +1456,7 @@ export default function ClientEditor() {
                         suggestedFix: issue.suggestedFix, description: issue.description,
                       };
                     });
-                  const { data, error } = await kotobaSupabase.functions.invoke("correct-report", {
+                  const { data, error } = await supabase.functions.invoke("correct-report", {
                     body: { corrections: acceptedFixes },
                   });
                   if (error) throw error;
