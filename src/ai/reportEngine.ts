@@ -478,10 +478,11 @@ export function getSynopsis(toolId: string): string | undefined {
 }
 
 // ── 8. CLINICAL SPINE (Stage 1) ──────────────────────────────
-// Calls the Kotoba `build-clinical-spine` edge function and
-// returns the structured Spine. Stage 1 ONLY — the Spine is
-// stored + displayed for clinician approval but is NOT yet
-// injected into per-section generation (that lands in Stage 2).
+// Calls the default Lovable Cloud `build-clinical-spine` edge
+// function and returns the structured Spine. Stage 1 ONLY — the
+// Spine is stored + displayed for clinician approval but is NOT
+// yet injected into per-section generation (that lands in Stage 2).
+import { supabase } from "@/integrations/supabase/client";
 import type { ClinicalSpine } from "./spineCache";
 
 export interface SpineInput {
@@ -494,8 +495,7 @@ export interface SpineInput {
 }
 
 export async function buildClinicalSpine(input: SpineInput): Promise<ClinicalSpine> {
-  const { kotobaSupabase } = await import("@/integrations/supabase/kotobaClient");
-  const { data, error } = await kotobaSupabase.functions.invoke("build-clinical-spine", {
+  const { data, error } = await supabase.functions.invoke("build-clinical-spine", {
     body: input,
   });
   if (error) {
