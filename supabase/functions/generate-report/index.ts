@@ -624,6 +624,59 @@ Correct: pair each finding with the diagnosis most causally linked to it. Exampl
 RULE: Consistent parent/carer reference form.
 Why: Switching between "Mo", "his mother Mo", "John's mother", and "the mother" within a single report reads as careless and creates ambiguity.
 Convention: at first mention of the parent/carer in any given section, use their name and relationship in full ("his mother, Mo") — but only on the FIRST mention in that section. After that, use just the first name ("Mo") for the rest of the section. Do not switch to "his mother" or "John's mother" later. Across sections, each section can re-introduce ("his mother, Mo") on its first mention and then use just the name.
+
+=== ENFORCEABLE QUALITY RULES (count before returning) ===
+
+RULE: INTENSIFIER BUDGET.
+Why: A scan of a real generated report found ~80 intensifier occurrences in 23 paragraphs. This reads as AI pattern-matching, not clinical observation. Clinical authority comes from specifics, not adverbs.
+Hard caps per section (count before returning your output):
+- "significantly" / "significant" (combined): max 2 per section
+- "profound" / "profoundly" (combined): max 1 per section
+- "severe" / "severely" (combined): max 2 per section, AND the word "severe" as part of a diagnosis name (e.g. "Severe Intellectual Disability") does NOT count toward this cap
+- "markedly" / "marked": max 1 per section
+- "substantially" / "substantial": max 1 per section
+- "complete" / "completely": max 2 per section
+If you find yourself exceeding any cap, rewrite the sentence to use a concrete anchor instead. Example rewrites:
+  "severely impaired attention span" → "attention span of 2-3 seconds"
+  "significantly limits his ability to" → "prevents him from" OR "eliminates his capacity to"
+  "profound social withdrawal" → "lies on the stage during group activities and does not respond to peer overtures"
+  "complete dependence on his mother" → "his mother provides all [specific task]"
+If your output has the intensifier before a quantified fact (number, frequency, time), DELETE the intensifier. The number carries the weight. Examples:
+  WRONG: "markedly impaired memory, becoming consistently lost"
+  RIGHT: "memory impairment — consistently becomes lost in familiar places, with the exception of his home"
+
+RULE: SPECULATION MUST BE ATTRIBUTED.
+Why: A scan found 6 instances of "apparent/appears/seems" asserting internal states as fact, and 0 uses of clinical-opinion attribution. Asserting inferred mental states as observation is a clinical methodology error.
+Trigger words (treat these as REQUIRING either attribution or rewrite):
+  apparent, apparently, appears, appears to, seems, seemingly, clearly [verb], evidently, obviously, demonstrates enjoyment of, demonstrates preference for, finds [X] [adjective], is [uncomfortable/comfortable] with, dislikes, prefers, enjoys (except when directly reported by participant/carer)
+Two acceptable treatments:
+  (A) REWRITE as observable behaviour. "apparent disinterest in social interaction" → "does not initiate social contact and does not respond to peer overtures without intensive prompting"
+  (B) ATTRIBUTE to assessor opinion. "In the assessor's clinical opinion, [name] presents as [state], evidenced by [observable behaviour]."
+Use (A) whenever possible. Use (B) only when the inference is clinically necessary and cannot be expressed as pure behaviour.
+Forbidden pattern: "[name] appears [adjective]" or "[name]'s [noun] appears [adjective]" stated as fact without either rewrite or attribution.
+
+RULE: CROSS-SECTION CITATION WHEN REFERENCING INFORMATION FROM ANOTHER SECTION.
+Why: A scan found 0 cross-section references in 30KB of prose. When a section cites "collateral information from the Positive Behaviour Support Practitioner" but doesn't say WHICH section the collateral lives in, the reader cannot trace the evidence.
+Rule: When you reference information whose primary source lives in a different section of the report, cite it by section name or number:
+  Collateral → "(see Section 6 — Collateral Information)" or "as documented in Section 6"
+  Standardised assessment scores → "(see Section 14/15 — Standardised Assessments)"
+  Safety/risk incidents → "(see Section 12 — Risk and Safety Profile)"
+  Functional capacity findings → "(see Section 13 — Functional Capacity)"
+  Diagnoses (when mentioned outside Section 4) → "(see Section 4 — Diagnoses)"
+Do NOT apply to: observations made directly within the current section; the clinician's own observations during assessment (those don't need citation because the current section IS the source).
+Example: "John's mother reported he experiences medication aversion (see Section 6, Collateral Summary)." Not: "John's mother reported he experiences medication aversion."
+
+RULE: NO GENERIC CLOSING BOILERPLATE.
+Why: Closings like "without intervention he faces continued isolation and missed opportunities for meaningful participation" are pattern-matchable AI filler. An experienced NDIS reviewer recognises them on sight.
+Banned in closing sentences (last sentence or last paragraph of any section):
+  "missed opportunities for [generic noun]"
+  "continued [isolation/withdrawal/deterioration]" without a specific named cause
+  "improved quality of life through [anything generic]"
+  "meaningful [participation/engagement/connection]" when not tied to a specific documented activity
+  "associated mental health risks" (unless mental health HAS been clinically established in this section)
+  "ongoing monitoring to prevent [generic outcome]"
+Rule: The closing sentence of each section must name at least ONE concrete finding, consequence, or intervention from this section's own content. If the section documented "fell twice last month in bathroom", close with a bathroom-fall-specific consequence. If the section documented "carer burnout in a 72-year-old mother with T2DM", close with an age-and-health-specific sustainability consequence.
+Test before finalising: does this closing sentence make sense if pasted into a different section of a different participant's report? If YES, it's boilerplate — rewrite it with section-specific content.
 `;
 
     // === CLINICAL SPINE ===
