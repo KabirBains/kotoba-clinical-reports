@@ -1,48 +1,37 @@
 
 ## Goal
 
-Add 6 new clinical writing rules to `supabase/functions/generate-report/index.ts` so Claude stops emitting markdown headings, fake "Evidence:" lines, invented demographics, repeated formal introductions, scattershot diagnosis attribution, and inconsistent carer references.
+Add 4 new countable, enforceable clinical writing rules to the dynamic section-writing rules block in `supabase/functions/generate-report/index.ts` — same `=== SECTION-WRITING DISCIPLINE ===` location used by the previous 6 rules.
 
-## Where the rules live
+## Where the rules go
 
-- **Cached prefix** (lines 544–552): static rule constants (`ANTI_REDUNDANCY`, `ASSESSMENT_SCORING_RULES`, `SUB_AREA_RULES`) — reused across calls via Anthropic prompt caching. Per the user's instruction, I will NOT touch this.
-- **Dynamic suffix** (initialized line 556, `let dynamicSuffix = ""`): built fresh per call. This is where the new rules belong.
+- **File**: `supabase/functions/generate-report/index.ts`
+- **Block**: `dynamicSuffix` (the `=== SECTION-WRITING DISCIPLINE ===` block appended in the last turn)
+- **Action**: Append a new sub-block `=== ENFORCEABLE QUALITY RULES (count before returning) ===` immediately after rule 6 (carer references) and before the Clinical Spine injection
+- **Cached prefix**: untouched
 
-## Insertion point
+## Rules being added (verbatim from spec, with rationale + examples preserved)
 
-Add a single new `=== SECTION-WRITING DISCIPLINE ===` block immediately after the participant/pronoun lines (after line 584) and before the Clinical Spine block (line 589). This places the rules early in the dynamic suffix where the model encounters them before any per-section routing.
-
-## What gets added
-
-A single `dynamicSuffix += "..."` block containing all 6 rules verbatim from the user's spec — each with its **RULE / Why / Forbidden / Correct (or Convention)** structure preserved so Claude understands the rationale, not just the constraint:
-
-1. No in-prose section headings or numbering
-2. No template "Evidence: As per..." citation blocks
-3. No inferred/invented demographic details
-4. Formal first-mention introduction restricted to Section 1 or 2
-5. Diagnosis attribution: single most causally relevant, not all
-6. Consistent parent/carer reference form (full at first mention per section, first-name thereafter)
+1. **Intensifier budget** — hard caps with concrete rewrite examples; diagnosis-name "Severe" excluded from cap; intensifier-before-quantified-fact must be deleted
+2. **Speculation must be attributed** — explicit trigger word list; rewrite (preferred) or attribute to assessor opinion
+3. **Cross-section citation** — section-number reference format for collateral / assessments / risks / FC / diagnoses; exclusion for in-section observations
+4. **No generic closing boilerplate** — banned phrase list + the "paste-into-different-report" test
 
 ## What is NOT changed
 
-- `CLAUDE_API_KEY` handling
-- Storage / docs loading
-- Cached prefix constants (`ANTI_REDUNDANCY`, `ASSESSMENT_SCORING_RULES`, `SUB_AREA_RULES`)
-- Clinical Spine injection
-- Collateral routing (sections 6, 6_informant, 2, 12, 13, 16/17/18, 8/9)
-- Section 17 consequence statement requirement
-- Safety concerns routing
-- Lookback context
-- Any existing rule — append-only
+- Cached prefix (`ANTI_REDUNDANCY`, `ASSESSMENT_SCORING_RULES`, `SUB_AREA_RULES`)
+- CLAUDE_API_KEY, storage, clinical spine, collateral routing, threading
+- Any existing rule (append-only)
+- Section 17 consequence requirement, safety routing, lookback context
 
 ## Deployment
 
-After the edit, deploy `generate-report` via `supabase--deploy_edge_functions` so the next generation picks up the new rules. No frontend changes required.
+After edit, deploy `generate-report` via `supabase--deploy_edge_functions`. No frontend changes.
 
-## Verification path
+## Verification
 
-Generate one section after deploy and confirm:
-- No `##` or `**12.1**` style headings in output
-- No literal `Evidence:` lines
-- Sections 3+ open with "John presents..." not "Mr. John Smith (referred to as John...)"
-- Diagnosis attribution varies per finding rather than concatenating all diagnoses
+User generates a section and confirms:
+- Intensifier counts under caps (`significantly` ≤2, `profound` ≤1, `severe` ≤2 excluding diagnosis, etc.)
+- No bare "appears [adjective]" / "apparent [noun]" without rewrite or assessor attribution
+- Cross-section references include section number ("see Section 6")
+- Closing sentences contain a section-specific concrete fact, no generic "missed opportunities" / "associated mental health risks" filler
