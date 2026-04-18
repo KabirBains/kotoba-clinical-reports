@@ -483,6 +483,195 @@ function detectBannedPhrases(text: string): BannedPhraseHit[] {
   return hits;
 }
 
+// ── DETERMINISTIC POST-PROCESSING ────────────────────────────
+// The v5.3 prompt rules block catches a lot of quality issues, but the
+// v1-vs-v2 audit showed that some patterns are consistently ignored by
+// the model:
+//   • `**Section Name**` markdown headings re-declared in prose
+//   • `**12.1 Subheading**` numbered sub-headings in prose
+//   • `Evidence: As per standardised assessment...` literal template leak
+//   • `Mr. Jane Doe (referred to as Jane for the remainder of the report)`
+//     formula appearing in sections other than 1/2
+//   • Hallucinated demographic details ("younger brother" when notes don't
+//     specify birth order)
+//   • Speculation stated as fact ("apparent disinterest", "appears disoriented")
+//     without "In the assessor's clinical opinion" attribution
+//   • "mental health risks" closers in sections where mental health
+//     was never established
+//
+// This function runs server-side AFTER Claude responds but BEFORE sub-area
+// parsing and banned-phrase detection. Everything here is deterministic
+// regex work — no extra Claude calls, no extra tokens, no cost.
+//
+// Order of operations matters:
+//   1. Strip whole-line markdown headings FIRST (removes lines entirely)
+//   2. Strip Evidence block (whole line)
+//   3. Strip first-mention formula (only outside Section 1/2)
+//   4. Rewrite hallucinated demographics (in-place word substitution)
+//   5. Auto-attribute speculation (sentence-level prefix)
+//   6. Strip hallucinated "mental health risks" from closings
+//   7. Strip residual `**bold**` markers (keep the text inside)
+//   8. Collapse the multiple-blank-lines introduced by the above steps
+
+const SPECULATION_TRIGGERS = /\b(?:apparent(?:ly)?|appears?(?: to)?|seem(?:s|ingly)?|clearly prefers|demonstrates (?:enjoyment|preference)|profound disinterest|apparent disinterest)\b/i;
+
+function postProcessClaudeOutput(
+  rawText: string,
+  sectionName: string | undefined,
+  participantFirstName?: string,
+  participantFullName?: string,
+): string {
+  if (!rawText || typeof rawText !== "string") return rawText;
+  let text = rawText;
+
+  // Build a set of "first words" that should keep their initial capital
+  // when we prepend "In the assessor's clinical opinion, " to a sentence.
+  // These are proper nouns (participant names) the AI is likely to lead a
+  // sentence with — we shouldn't lowercase them to "john's presentation".
+  const keepCapitals = new Set<string>();
+  if (participantFirstName) keepCapitals.add(participantFirstName.toLowerCase());
+  if (participantFullName) {
+    for (const part of participantFullName.split(/\s+/)) {
+      if (part) keepCapitals.add(part.toLowerCase());
+    }
+  }
+
+  // 1. Strip `**Section Name**` whole-line markdown headings.
+  // Matches lines like `**Social Environment**`, `**Informal Supports**`,
+  // `**12. Risk & Safety Profile**` — standalone lines only, so we don't
+  // catch legitimate inline bold (which we'll also strip later anyway).
+  text = text.replace(/^\s*\*\*[^*\n]+\*\*\s*$/gm, "");
+
+  // 2. Strip `**12.1 Subheading**` numbered markdown sub-headings.
+  // Belt-and-braces for Risk & Safety which uses numbered subsections.
+  // (Already caught by rule 1 since it's whole-line, but explicit for safety.)
+  text = text.replace(/^\s*\*\*\d+\.\d+[^*\n]+\*\*\s*$/gm, "");
+
+  // 3. Strip the `Evidence: As per standardised assessment...` template leak.
+  // This is a v5.3 template marker that Claude keeps emitting as literal prose.
+  text = text.replace(/^\s*Evidence:\s*As per standardised[^\n]*\n?/gim, "");
+
+  // 4. Strip the first-mention formula ("Mr. X (referred to as Y for the
+  // remainder of the report)") when appearing OUTSIDE Section 1/2.
+  // Sections 1 and 2 are where the formal introduction legitimately belongs.
+  const isFirstMentionAllowed = sectionName === "section1" || sectionName === "section2";
+  if (!isFirstMentionAllowed) {
+    // Match: Title First Last (referred to as First for the remainder of the report)
+    // Then some optional connector (comma, space, "is", etc.)
+    // Preserve the first name by capturing it and reinserting.
+    text = text.replace(
+      /(?:Mr\.?|Ms\.?|Mrs\.?|Miss|Mx\.?)\s+[A-Z][A-Za-z'\-]+(?:\s+[A-Z][A-Za-z'\-]+)*\s*\(referred to as ([A-Z][A-Za-z'\-]+)\s+for the remainder of the report\)\s*/g,
+      "$1 ",
+    );
+  }
+
+  // 5. Rewrite hallucinated birth-order demographics.
+  // The AI invents "younger brother", "older sister" etc. when the notes
+  // don't specify birth order. Collapse to just the relationship.
+  text = text.replace(/\b(?:younger|older|elder)\s+(brother|sister|sibling)\b/gi, "$1");
+
+  // 6. Auto-attribute speculation. For any sentence containing a speculation
+  // trigger word that is not already attributed with "in the assessor's
+  // clinical opinion" (case-insensitive), prepend the attribution phrase.
+  //
+  // We split into sentences by `. ` / `? ` / `! ` boundaries (simple but
+  // effective for clinical prose; the AI rarely uses multi-sentence blocks
+  // without standard punctuation). For each sentence we test the triggers
+  // and check whether the phrase is already present anywhere in the
+  // sentence — if not, we prepend.
+  //
+  // We deliberately DO NOT rewrite the trigger word itself because the
+  // rewording is context-dependent and would risk bad grammar. Attribution
+  // is enough to flag the claim as inferred rather than observed.
+  text = text.replace(/([^.!?\n]+[.!?])(\s+|$)/g, (match, sentence, trailing) => {
+    const s = sentence as string;
+    const t = trailing as string;
+    if (!SPECULATION_TRIGGERS.test(s)) return match;
+    // Already attributed somewhere in this sentence?
+    if (/in the assessor['']s (?:clinical )?(?:opinion|view|judgement)/i.test(s)) {
+      return match;
+    }
+    // Prepend the attribution. Lowercase the first letter so the grammar
+    // reads naturally: "In the assessor's clinical opinion, he appears
+    // disoriented..." — UNLESS the first word is a proper noun (like the
+    // participant's name), in which case we keep its capital: "In the
+    // assessor's clinical opinion, John's presentation indicates...".
+    const lead = s.trimStart();
+    const firstWordMatch = lead.match(/^([A-Za-z'\-]+)/);
+    const firstWord = firstWordMatch ? firstWordMatch[1] : "";
+    // Strip a trailing possessive "'s" for the lookup so "John's" matches "john".
+    const firstWordBase = firstWord.replace(/['']s$/i, "").toLowerCase();
+    const isProperNoun = keepCapitals.has(firstWordBase);
+    const firstChar = lead.charAt(0);
+    const rest = lead.slice(1);
+    const adjusted = !isProperNoun && firstChar === firstChar.toUpperCase() && /[A-Za-z]/.test(firstChar)
+      ? firstChar.toLowerCase() + rest
+      : lead;
+    return `In the assessor's clinical opinion, ${adjusted}${t}`;
+  });
+
+  // 7. Strip hallucinated "mental health risks" from closings.
+  // The AI's default closer pattern keeps inserting this even when mental
+  // health has not been clinically established in the section. We only
+  // remove the clause when the rest of the section does NOT mention
+  // "mental health" at all — keeping legitimate mental-health references
+  // untouched.
+  const hasMentalHealthContext = /mental health/i.test(text.replace(/mental health risks?/gi, ""));
+  if (!hasMentalHealthContext) {
+    // Strip a range of closer patterns that add "mental health risks"
+    // without context — sentence-level only.
+    text = text.replace(/[^.!?\n]*\bmental health risks?\b[^.!?\n]*[.!?]\s*/gi, "");
+    // Also strip a common phrase fragment: "and its associated mental health risks"
+    text = text.replace(/,?\s*and its associated mental health risks?/gi, "");
+  }
+
+  // 8. Strip residual `**bold**` markers that aren't whole-line headings.
+  // Runs twice to catch adjacent bold blocks. This is the same pattern
+  // from stripMarkdown() in the client utils — we apply it here too so
+  // the server-side output is already clean.
+  text = text.replace(/\*{1,3}([^*]+)\*{1,3}/g, "$1");
+  text = text.replace(/\*{1,3}([^*]+)\*{1,3}/g, "$1");
+  text = text.replace(/\*{2,}/g, "");
+
+  // 9. Collapse multiple blank lines that the strips may have created.
+  text = text.replace(/\n{3,}/g, "\n\n").trim();
+
+  return text;
+}
+
+// Apply post-processing to a single JSON-domain response. Domain sections
+// return structured JSON where each value is a string of per-field prose;
+// we post-process each value in-place and return a re-serialised JSON
+// string so the client sees cleaned text.
+function postProcessDomainJson(
+  rawText: string,
+  sectionName: string | undefined,
+  participantFirstName?: string,
+  participantFullName?: string,
+): string {
+  try {
+    let cleaned = rawText.trim().replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/i, "").trim();
+    const firstBrace = cleaned.indexOf("{");
+    const lastBrace = cleaned.lastIndexOf("}");
+    if (firstBrace > 0 || lastBrace < cleaned.length - 1) {
+      if (firstBrace >= 0 && lastBrace > firstBrace) {
+        cleaned = cleaned.slice(firstBrace, lastBrace + 1);
+      }
+    }
+    const parsed = JSON.parse(cleaned) as Record<string, unknown>;
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(parsed)) {
+      out[k] = typeof v === "string"
+        ? postProcessClaudeOutput(v, sectionName, participantFirstName, participantFullName)
+        : String(v ?? "");
+    }
+    return JSON.stringify(out);
+  } catch {
+    // Not JSON — treat as text.
+    return postProcessClaudeOutput(rawText, sectionName, participantFirstName, participantFullName);
+  }
+}
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
@@ -829,6 +1018,22 @@ ${spineJson}
     }
 
     const result = await callClaude(systemBlocks, prompt, max_tokens);
+
+    // === POST-PROCESSING: Deterministic cleanup ===
+    // Strip markdown headings, template leaks, first-mention formula outside
+    // Section 1/2, demographic hallucinations, and auto-attribute speculation.
+    // See postProcessClaudeOutput() doc block above for the full list of rules
+    // and why they live here rather than in the prompt.
+    //
+    // Domain JSON responses (e.g. Mobility, Personal ADLs) have per-field
+    // values that each need cleaning, so we route those through a JSON-aware
+    // wrapper that parses, cleans each value, and re-serialises.
+    const isDomainSection = !!section_name && /^section(12|13)_\d+$/.test(section_name);
+    if (isDomainSection) {
+      result.text = postProcessDomainJson(result.text, section_name, firstName, fullName);
+    } else {
+      result.text = postProcessClaudeOutput(result.text, section_name, firstName, fullName);
+    }
 
     // === POST-PROCESSING: Parse sub-areas if present ===
     let parsedSubAreas: Record<string, string> | null = null;
