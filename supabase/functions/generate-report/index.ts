@@ -586,6 +586,46 @@ serve(async (req: Request) => {
     // are now part of the cached prefix above (added by PR A: prompt
     // caching). Do not append them here again.
 
+    // === SECTION-WRITING DISCIPLINE ===
+    // Six clinical writing rules with rationale. Placed early in the
+    // dynamic suffix so the model encounters them before per-section
+    // routing. Each rule preserves the RULE / Why / Forbidden / Correct
+    // structure so Claude understands the rationale, not just the
+    // constraint.
+    dynamicSuffix += `
+
+=== SECTION-WRITING DISCIPLINE ===
+
+RULE: No in-prose section headings or numbering.
+Why: The document renderer adds all section titles and numbering. When the AI emits "## Informal Supports" or "**12.1 Health Risks**" or "## Social Environment" inside its prose, those appear as visible markdown in the final report because the renderer already has a heading above.
+Forbidden: emitting any of these inside your output — "## [anything]", "**Section [anything]**", "**[section title]**", "12.1", "12.2", "13.3" or similar numbered sub-section references, any line that restates the section name you were asked to write.
+Correct: start directly with the first clinical sentence. Example for a Risk & Safety section: start with "John presents with significant nutritional risks..." — do NOT start with "## Risk & Safety Profile" or "**12.1 Health Risks**".
+
+RULE: Do not emit template evidence-citation blocks.
+Why: The v5.3 prompt template contains an "Evidence: As per standardised assessment; as evident in functional assessment and observations; as evident in interviews; collateral information; reviewed reports." line as a template marker. This is documentation, not something to print.
+Forbidden: emitting the string "Evidence: As per standardised assessment" or any variant starting with "Evidence:" as a literal line in your prose.
+Correct: weave evidence sources into sentences naturally — e.g. "John's support coordinator reported..." or "Observations during the home visit revealed..." — but never as a bulleted or labelled "Evidence:" line.
+
+RULE: Do not infer or invent demographic details.
+Why: Anything the AI invents becomes a clinical claim the assessor is professionally accountable for. Invented details can misrepresent the family and create legal/ethical risk.
+Forbidden inferences: birth order ("younger brother", "older sister") unless explicitly stated; ages of family members not supplied; employment status of family members not supplied; marital/relationship history not supplied; reason someone stopped working; whether a sibling is adult or child unless their age is given; whether parents are together or separated unless stated.
+Correct: if the notes say "lives with mother, father, and brother", write "resides in the family home with his mother, father, and brother" — NOT "resides with his parents and younger brother".
+
+RULE: The formal first-mention introduction belongs only in Section 1 or 2.
+Why: Repeating "Mr. John Smith (referred to as John for the remainder of the report)" at the start of every section is noise — the reader already knows who John is after Section 1.
+Forbidden: opening Sections 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, or any functional domain sub-section with the full "Mr. [Full Name] (referred to as [First])" formula.
+Correct: use the first name directly — "John presents with...", "John attends his respite centre...", etc. The ONLY place the formal introduction appears is in Section 1 (Reason for Referral) or, if Section 1 doesn't introduce him, Section 2 (Background).
+
+RULE: Attribute to the single most causally relevant diagnosis, not all of them.
+Why: Writing "secondary to his Autism Spectrum Disorder Level 3 and Severe Intellectual Disability" after every single observation is clinically imprecise and reads as boilerplate. An assessor wants to see that the clinician has thought about WHICH diagnosis drives WHICH deficit.
+Forbidden: listing every supplied diagnosis for every limitation ("secondary to his ASD Level 3 and Severe Intellectual Disability" used 10+ times in a single report).
+Correct: pair each finding with the diagnosis most causally linked to it. Examples: non-speaking presentation → "secondary to his Autism Spectrum Disorder Level 3"; inability to operate a washing machine → "secondary to his Severe Intellectual Disability"; restricted food preferences → "characteristic of his Autism Spectrum Disorder"; lack of safety awareness in community → "secondary to his Severe Intellectual Disability". If a finding is genuinely driven by both, then both is appropriate — but the default should be one.
+
+RULE: Consistent parent/carer reference form.
+Why: Switching between "Mo", "his mother Mo", "John's mother", and "the mother" within a single report reads as careless and creates ambiguity.
+Convention: at first mention of the parent/carer in any given section, use their name and relationship in full ("his mother, Mo") — but only on the FIRST mention in that section. After that, use just the first name ("Mo") for the rest of the section. Do not switch to "his mother" or "John's mother" later. Across sections, each section can re-introduce ("his mother, Mo") on its first mention and then use just the name.
+`;
+
     // === CLINICAL SPINE ===
     // When the clinical-spine edge function has pre-computed a reasoning
     // backbone, inject it so the model can reference anchor impairments
