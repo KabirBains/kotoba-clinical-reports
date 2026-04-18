@@ -48,6 +48,10 @@ export function stripMarkdown(text: string): string {
     .replace(/^---+$/gm, "")
     // Remove blockquote markers
     .replace(/^>\s?/gm, "")
+    // Remove residual <<SUB_AREA:>> delimiter artifacts
+    .replace(/^<>\s*Support level:\s*[^\n]+\n?/gm, "")
+    .replace(/^<>?\s*/gm, "")
+    .replace(/<<>>/g, "")
     // Collapse multiple blank lines into one
     .replace(/\n{3,}/g, "\n\n")
     // Strip trailing Section 34 boilerplate that the AI sometimes appends
