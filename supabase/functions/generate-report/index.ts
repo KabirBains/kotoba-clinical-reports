@@ -681,38 +681,44 @@ interface CitationRule {
   trigger: RegExp; // sentence-level match
 }
 
+// Citation targets use section NAMES, not numbers. The user's Lovable
+// source-of-truth re-orders and renames sections, so number-based
+// citations would become wrong the moment the template migrates. Name-
+// based citations remain correct across any renumbering.
+//
+// Collateral attribution ("mother reported", "support worker observed")
+// is INTENTIONALLY excluded from citation insertion. In the new Lovable
+// SoT there is no dedicated Collateral Information section — collateral
+// data lives inside "Methodology and Assessments used". Rather than cite
+// the methodology section for every attributed sentence, we let the
+// attribution stand on its own (the informant's name/role in the
+// sentence is already the evidence trail).
 const CITATION_RULES: CitationRule[] = [
   {
-    target: "(see Section 6 — Collateral Information)",
-    skipIfSectionStartsWith: ["section6"],
-    // Match attribution phrases that indicate collateral information. The
-    // verb list includes both past tense ("reported") and present tense
-    // ("reports") — the AI uses both depending on reporting style.
-    trigger: /\b(?:(?:his|her|their|the participant[''']s|the client[''']s)?\s*(?:mother|father|parent|carer|guardian|support worker|support coordinator|Positive Behaviour Support Practitioner|PBSP|allied health (?:professional|practitioner))\s+(?:report(?:ed|s)?|stat(?:ed|es)?|not(?:ed|es)?|confirm(?:ed|s)?|observ(?:ed|es)?|indicat(?:ed|es)?|describ(?:ed|es)?|document(?:ed|s)?)|collateral information from|as reported by|as noted by)/i,
-  },
-  {
-    target: "(see Section 14 — Standardised Assessments)",
+    target: "(as documented in the Assessments section)",
     skipIfSectionStartsWith: ["section14", "section15"],
     // Assessment tool names. These are unambiguous — if WHODAS or DASS
-    // appears in prose outside Section 14/15, it's a cross-reference.
+    // appears in prose outside the Assessments section, it's a cross-
+    // reference that should point the reader there.
     trigger: /\b(?:WHODAS(?:[\s-]?2\.0)?|DASS[\s-]?42|LSP[\s-]?16|FRAT\b|Lawton(?:\s+IADL)?|\bCANS\b|Zarit(?:[\s-]?22)?|Vineland(?:[\s-]?3)?|Sensory Profile|standardised assessment(?:\s+scores?)?)\b/i,
   },
   {
-    target: "(see Section 12 — Risk & Safety Profile)",
+    target: "(as documented in the Risk & Safety Profile section)",
     skipIfSectionStartsWith: ["section12"],
-    // Specific safety-incident language that the AI uses when referring back
-    // to established risks. Deliberately narrow — generic words like "risk"
-    // would false-positive. "Identified" was removed because it false-
-    // positives on negation ("no safety concerns identified during
-    // assessment") which reads backwards as a citation.
+    // Specific safety-incident language that the AI uses when referring
+    // back to established risks. Deliberately narrow — generic words like
+    // "risk" would false-positive. "Identified" was removed because it
+    // false-positives on negation ("no safety concerns identified during
+    // assessment").
     trigger: /\b(?:previous choking incident|documented (?:falls|choking|absconding|self[\s-]?harm)|history of (?:falls|absconding|self[\s-]?harm|hospitalisations?)|critical incident (?:documented|reported)|safety (?:concerns?|risks?|vulnerabilit(?:y|ies)) (?:described|documented) (?:in|elsewhere))/i,
   },
   {
-    target: "(see Section 13 — Functional Capacity)",
+    target: "(as documented in the Functional Capacity section)",
     skipIfSectionStartsWith: ["section12_", "section13"],
     // Functional findings written about outside the functional-capacity
-    // sections. Guards against section12_N / section13_N (the domain
-    // sub-sections themselves).
+    // sub-sections. Guards against section12_N / section13_N (the domain
+    // sub-sections themselves) which ARE Functional Capacity and shouldn't
+    // self-cite.
     trigger: /\b(?:(?:his|her|their) mobility limitations|(?:his|her|their) cognitive (?:deficits|limitations|impairments?)|(?:his|her|their) communication (?:impairments?|difficulties)|functional (?:capacity )?findings described|as (?:documented|established) in the functional capacity)/i,
   },
 ];
