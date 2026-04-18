@@ -8,7 +8,7 @@
 // 4. Preventing duplicate in-flight calls for the same key
 // ============================================================
 
-import { supabase } from "@/integrations/supabase/client";
+import { kotobaSupabase } from "@/integrations/supabase/kotobaClient";
 
 const INTER_REQUEST_DELAY = 12000; // ms between requests (12s to stay under 30K TPM rate limit)
 const RETRY_429_DELAY = 20000;    // ms to wait on 429 before single retry (20s to let the rate window reset)
@@ -122,7 +122,7 @@ async function refineText(
       participant_name: participantName,
       participant_first_name: participantFirstName,
     });
-    const { data, error } = await supabase.functions.invoke("refine-report", {
+    const { data, error } = await kotobaSupabase.functions.invoke("refine-report", {
       method: "POST",
       body: {
         generated_text: generatedText,
@@ -150,7 +150,7 @@ async function refineText(
 // ── Single invoke with 429 retry ────────────────────────────
 async function invokeWithRetry(prompt: string, maxTokens: number, label: string, extraBody?: Record<string, any>): Promise<{ success: boolean; text?: string; name_warnings?: string[]; error?: string }> {
   const doCall = async () => {
-    const { data, error } = await supabase.functions.invoke("generate-report", {
+      const { data, error } = await kotobaSupabase.functions.invoke("generate-report", {
       body: { prompt, max_tokens: maxTokens, ...extraBody },
     });
     if (error) {
