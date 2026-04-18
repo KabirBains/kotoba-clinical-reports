@@ -636,7 +636,135 @@ function postProcessClaudeOutput(
   // 9. Collapse multiple blank lines that the strips may have created.
   text = text.replace(/\n{3,}/g, "\n\n").trim();
 
+  // 10. Insert cross-section citations. Runs LAST so it operates on already-
+  // cleaned prose (no markdown artefacts to confuse the sentence splitter).
+  // See insertCrossSectionCitations() for the trigger table and self-
+  // citation guards. Skipped entirely when the caller didn't supply a
+  // sectionName (we can't guard against self-citation without it).
+  if (sectionName) {
+    text = insertCrossSectionCitations(text, sectionName);
+  }
+
   return text;
+}
+
+// ── Cross-section citation insertion ─────────────────────────
+// The prompt rule asking the AI to cite other sections is ignored in
+// practice (v1, v2, v3 simulations all produced 0 citations). This
+// post-processor scans the output for reliable trigger phrases and
+// inserts `(see Section N — [Name])` at the end of the matched sentence.
+//
+// Four categories of trigger:
+//   • Collateral attributions (mother/parent/carer/support worker reported)
+//     → Section 6 — Collateral Information
+//   • Standardised assessment names (WHODAS, DASS, LSP-16, etc.)
+//     → Section 14 — Standardised Assessments
+//   • Safety incident references (documented falls, choking, absconding)
+//     → Section 12 — Risk & Safety Profile
+//   • Functional findings from another domain (mobility limitations,
+//     cognitive deficits when written OUTSIDE the relevant domain section)
+//     → Section 13 — Functional Capacity
+//
+// Self-citation guards prevent a section from citing itself:
+//   • Section 6* guards skip collateral citations
+//   • Section 12* / 13* guards skip risk/functional citations
+//   • Section 14*/15* guards skip assessment citations
+//
+// Guardrails:
+//   • Max 4 citations per section (clutter protection)
+//   • Never cite a sentence that already has a citation (idempotency)
+//   • Insert at end-of-sentence, before terminal punctuation (grammar safety)
+
+interface CitationRule {
+  target: string; // the citation text to insert
+  skipIfSectionStartsWith: string[]; // self-citation guard prefixes
+  trigger: RegExp; // sentence-level match
+}
+
+const CITATION_RULES: CitationRule[] = [
+  {
+    target: "(see Section 6 — Collateral Information)",
+    skipIfSectionStartsWith: ["section6"],
+    // Match attribution phrases that indicate collateral information. The
+    // verb list includes both past tense ("reported") and present tense
+    // ("reports") — the AI uses both depending on reporting style.
+    trigger: /\b(?:(?:his|her|their|the participant[''']s|the client[''']s)?\s*(?:mother|father|parent|carer|guardian|support worker|support coordinator|Positive Behaviour Support Practitioner|PBSP|allied health (?:professional|practitioner))\s+(?:report(?:ed|s)?|stat(?:ed|es)?|not(?:ed|es)?|confirm(?:ed|s)?|observ(?:ed|es)?|indicat(?:ed|es)?|describ(?:ed|es)?|document(?:ed|s)?)|collateral information from|as reported by|as noted by)/i,
+  },
+  {
+    target: "(see Section 14 — Standardised Assessments)",
+    skipIfSectionStartsWith: ["section14", "section15"],
+    // Assessment tool names. These are unambiguous — if WHODAS or DASS
+    // appears in prose outside Section 14/15, it's a cross-reference.
+    trigger: /\b(?:WHODAS(?:[\s-]?2\.0)?|DASS[\s-]?42|LSP[\s-]?16|FRAT\b|Lawton(?:\s+IADL)?|\bCANS\b|Zarit(?:[\s-]?22)?|Vineland(?:[\s-]?3)?|Sensory Profile|standardised assessment(?:\s+scores?)?)\b/i,
+  },
+  {
+    target: "(see Section 12 — Risk & Safety Profile)",
+    skipIfSectionStartsWith: ["section12"],
+    // Specific safety-incident language that the AI uses when referring back
+    // to established risks. Deliberately narrow — generic words like "risk"
+    // would false-positive. "Identified" was removed because it false-
+    // positives on negation ("no safety concerns identified during
+    // assessment") which reads backwards as a citation.
+    trigger: /\b(?:previous choking incident|documented (?:falls|choking|absconding|self[\s-]?harm)|history of (?:falls|absconding|self[\s-]?harm|hospitalisations?)|critical incident (?:documented|reported)|safety (?:concerns?|risks?|vulnerabilit(?:y|ies)) (?:described|documented) (?:in|elsewhere))/i,
+  },
+  {
+    target: "(see Section 13 — Functional Capacity)",
+    skipIfSectionStartsWith: ["section12_", "section13"],
+    // Functional findings written about outside the functional-capacity
+    // sections. Guards against section12_N / section13_N (the domain
+    // sub-sections themselves).
+    trigger: /\b(?:(?:his|her|their) mobility limitations|(?:his|her|their) cognitive (?:deficits|limitations|impairments?)|(?:his|her|their) communication (?:impairments?|difficulties)|functional (?:capacity )?findings described|as (?:documented|established) in the functional capacity)/i,
+  },
+];
+
+// Regex matching a complete sentence — anything up to the next ., !, or ?
+// followed by whitespace or end-of-text. Used to split-and-rebuild the text
+// without changing the surrounding formatting.
+const SENTENCE_SPLIT = /([^.!?\n]+[.!?])(\s+|$)/g;
+
+function insertCrossSectionCitations(text: string, sectionName: string): string {
+  if (!text || !sectionName) return text;
+
+  // Decide which rules apply for THIS section (self-citation guards).
+  const applicableRules = CITATION_RULES.filter(
+    (rule) => !rule.skipIfSectionStartsWith.some((prefix) => sectionName.startsWith(prefix)),
+  );
+  if (applicableRules.length === 0) return text;
+
+  let citationCount = 0;
+  const MAX_CITATIONS_PER_SECTION = 4;
+
+  const rebuilt = text.replace(SENTENCE_SPLIT, (match, sentence: string, trailing: string) => {
+    if (citationCount >= MAX_CITATIONS_PER_SECTION) return match;
+    const s = sentence;
+
+    // Skip if this sentence already contains ANY citation. Prevents
+    // double-citation when the AI already obeyed the prompt rule for part
+    // of the output or when a previous iteration added one.
+    if (/\(see Section\s+\d+/i.test(s)) return match;
+
+    // Skip if the sentence is a NEGATION. Regex triggers can't tell "X was
+    // documented" from "no X was documented" — both match the same keyword.
+    // If the sentence asserts absence rather than reference, don't cite.
+    // Matches leading "No ", "Without ", "Nil ", "None ", or mid-sentence
+    // "no [trigger]" / "without [trigger]" phrasing.
+    if (/^\s*(?:No|Without|Nil|None|No evidence of|No history of|No documented)\b/i.test(s.trimStart())) return match;
+    if (/\b(?:without|no|nil|none|no evidence of|no documented|no history of)\s+(?:safety|behavioural|cognitive|mobility|communication|self[\s-]?harm|aggression|falls?|choking|absconding)\b/i.test(s)) return match;
+
+    // Find the first applicable rule whose trigger matches this sentence.
+    for (const rule of applicableRules) {
+      if (rule.trigger.test(s)) {
+        // Insert the citation before the terminal punctuation.
+        const terminal = s.slice(-1); // ".", "!", or "?"
+        const body = s.slice(0, -1);
+        citationCount++;
+        return `${body} ${rule.target}${terminal}${trailing}`;
+      }
+    }
+    return match;
+  });
+
+  return rebuilt;
 }
 
 // Apply post-processing to a single JSON-domain response. Domain sections
