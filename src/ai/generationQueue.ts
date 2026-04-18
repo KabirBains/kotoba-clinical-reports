@@ -9,6 +9,7 @@
 // ============================================================
 
 import { kotobaSupabase } from "@/integrations/supabase/kotobaClient";
+import { stripJsonFences } from "@/lib/utils";
 
 const INTER_REQUEST_DELAY = 12000; // ms between requests (12s to stay under 30K TPM rate limit)
 const RETRY_429_DELAY = 20000;    // ms to wait on 429 before single retry (20s to let the rate window reset)
@@ -239,8 +240,10 @@ export async function processQueue(
           // Refine each field value individually to preserve structure.
           onProgress?.(i + 1, total, item.label, "refining");
           try {
-            const rawText = result.text.trim().replace(/^```json?\s*/i, "").replace(/```\s*$/, "");
-            const parsed = JSON.parse(rawText) as Record<string, string>;
+            // Use the shared stripJsonFences helper. The previous inline
+            // regex had a subtle bug (`json?` matches "jso" or "json") and
+            // didn't handle preamble/postamble prose around the JSON.
+            const parsed = JSON.parse(stripJsonFences(result.text)) as Record<string, string>;
             const refinedObj: Record<string, string> = {};
             let anyRefined = false;
             const allWarnings: string[] = [];

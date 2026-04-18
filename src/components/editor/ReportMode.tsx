@@ -6,7 +6,7 @@ import { getWhodasDomainBreakdown } from "./WHODASScoring";
 import { getDass42ScoreSummary } from "./DASS42Scoring";
 import { buildMethodologyText } from "./MethodologyAggregator";
 import { PARTICIPANT_KEYS, CLINICIAN_KEYS } from "./ParticipantReportDetails";
-import { cn } from "@/lib/utils";
+import { cn, stripJsonFences } from "@/lib/utils";
 import { TEMPLATE_SECTIONS } from "@/lib/constants";
 import { FileText, ShieldCheck, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -304,7 +304,11 @@ interface RecommendationEntryStored {
 function tryParseJson<T = unknown>(content: string): Record<string, T> | null {
   if (!content || typeof content !== "string" || !content.trim()) return null;
   try {
-    const parsed = JSON.parse(content);
+    // Strip markdown fences / preamble before parsing. Without this, AI
+    // output wrapped in ```json ... ``` fails silently and the raw blob
+    // (fences and all) leaks into the rendered report. See the simulation
+    // audit for the original failure mode.
+    const parsed = JSON.parse(stripJsonFences(content));
     return parsed && typeof parsed === "object" ? (parsed as Record<string, T>) : null;
   } catch {
     return null;
@@ -717,10 +721,12 @@ export function ReportMode(props: ReportModeProps) {
                     const raw = reportContent[domain.reportKey];
                     if (!raw?.trim()) return null;
 
-                    // Try to parse as structured per-row JSON
+                    // Try to parse as structured per-row JSON. stripJsonFences
+                    // handles AI output wrapped in ```json ... ``` fences or
+                    // prefixed with preamble like "Here is the JSON:".
                     let structured: Record<string, { text: string; rating: string; label: string }> | null = null;
                     try {
-                      structured = JSON.parse(raw);
+                      structured = JSON.parse(stripJsonFences(raw));
                     } catch {
                       // Not JSON — legacy single-block prose
                     }
@@ -787,7 +793,8 @@ export function ReportMode(props: ReportModeProps) {
                 interpretation: string;
               }> | null = null;
               try {
-                perAssessment = JSON.parse(rawContent);
+                // stripJsonFences handles AI output wrapped in ```json ... ```
+                perAssessment = JSON.parse(stripJsonFences(rawContent));
               } catch {
                 // Legacy: plain text blob
               }
@@ -916,7 +923,8 @@ export function ReportMode(props: ReportModeProps) {
 
               let perCard: Record<string, { text: string; supportName: string; category: string; currentHours: string; recommendedHours: string; ratio: string; estimatedCost: string; isCapital: boolean }> | null = null;
               try {
-                perCard = JSON.parse(rawContent);
+                // stripJsonFences handles AI output wrapped in ```json ... ```
+                perCard = JSON.parse(stripJsonFences(rawContent));
               } catch {
                 // Legacy: plain text blob
               }
