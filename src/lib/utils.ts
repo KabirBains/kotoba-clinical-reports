@@ -58,3 +58,44 @@ export function stripMarkdown(text: string): string {
     .replace(/\s*This support is considered reasonable and necessary under Section 34 of the NDIS Act 2013\.?\s*$/gi, "")
     .trim();
 }
+
+/**
+ * Strip markdown code fences and preamble/postamble from a JSON-like string.
+ *
+ * The AI occasionally wraps its JSON output in ```json ... ``` fences, or
+ * prepends a natural-language preamble ("Here is the JSON:"), or adds
+ * trailing commentary. Passing raw output straight to JSON.parse fails
+ * silently in those cases, which causes the downstream UI to render the
+ * entire blob (fences and all) as literal prose — this is the "raw JSON
+ * leaking into the report" bug seen when domain sections return
+ * ```json\n{...}\n``` wrapped output.
+ *
+ * This helper handles:
+ *  - Leading/trailing whitespace
+ *  - ```json, ```JSON, or bare ``` fences (with optional newline)
+ *  - Leading prose before the first `{` (brace-bounded fallback)
+ *  - Trailing prose after the last `}` (brace-bounded fallback)
+ *
+ * Pass the result to JSON.parse. If parse still fails, the string was
+ * genuinely malformed, not just fenced.
+ */
+export function stripJsonFences(raw: string): string {
+  if (!raw || typeof raw !== "string") return raw;
+  let cleaned = raw.trim();
+  // Remove leading ```json / ```JSON / ``` (with optional trailing newline)
+  cleaned = cleaned.replace(/^```(?:json|JSON)?\s*\n?/i, "");
+  // Remove trailing ``` (with optional leading newline)
+  cleaned = cleaned.replace(/\n?```\s*$/i, "");
+  cleaned = cleaned.trim();
+  // Brace-bounded fallback: if there's non-JSON text surrounding a JSON
+  // object, extract the {...} region. Handles cases like the AI prepending
+  // "Here is the JSON:" or appending "Hope this helps!".
+  const firstBrace = cleaned.indexOf("{");
+  const lastBrace = cleaned.lastIndexOf("}");
+  if (firstBrace > 0 || (firstBrace >= 0 && lastBrace < cleaned.length - 1)) {
+    if (firstBrace >= 0 && lastBrace > firstBrace) {
+      cleaned = cleaned.slice(firstBrace, lastBrace + 1);
+    }
+  }
+  return cleaned;
+}
