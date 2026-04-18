@@ -8,69 +8,46 @@
 // 4. Preventing duplicate in-flight calls for the same key
 // ============================================================
 
-import { kotobaSupabase as supabase } from "@/integrations/supabase/kotobaClient";
-import { stripMarkdown } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
 
-const INTER_REQUEST_DELAY = 4000; // ms between requests (was 12000; 429 retry handles rate limits)
-const RETRY_429_DELAY = 20000;     // ms to wait on 429 before single retry
+const INTER_REQUEST_DELAY = 12000; // ms between requests (12s to stay under 30K TPM rate limit)
+const RETRY_429_DELAY = 20000;    // ms to wait on 429 before single retry (20s to let the rate window reset)
+
+// ── In-flight tracking ──────────────────────────────────────
+const inFlight = new Set<string>();
+
+// ── Input hash cache (key → hash of last generated input) ───
+// Persisted to localStorage so unchanged sections are skipped even after
+// page refresh. The cache is scoped per-report via a report-id prefix
+// that callers set with setHashCacheReportId(). Without a report id the
+// cache still works but falls back to in-memory only.
 const STORAGE_KEY = "kotoba_input_hashes";
-
-// ── Report-scoped hash cache (localStorage-backed) ──────────
-let currentReportId: string | null = null;
-
-export function setHashCacheReportId(reportId: string): void {
-  currentReportId = reportId;
-}
-
-function prefixKey(key: string): string {
-  return currentReportId ? `${currentReportId}:${key}` : key;
-}
-
-function normalizeHashInput(input: string): string {
-  return input.replace(/\r\n?/g, "\n").trim();
-}
+let currentReportId = "";
 
 function loadCache(): Map<string, string> {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return new Map();
-    return new Map(Object.entries(JSON.parse(raw)));
-  } catch {
-    return new Map();
-  }
+    if (raw) return new Map(Object.entries(JSON.parse(raw)));
+  } catch { /* corrupt or unavailable — start fresh */ }
+  return new Map();
 }
 
 function saveCache(cache: Map<string, string>): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(Object.fromEntries(cache)));
-  } catch {
-    // storage full or unavailable — ignore
-  }
+  } catch { /* localStorage full or unavailable — silent fail */ }
 }
 
-function getCachedHash(cache: Map<string, string>, key: string): string | undefined {
-  const scopedKey = prefixKey(key);
-  const scopedValue = cache.get(scopedKey);
-  if (scopedValue !== undefined) {
-    return scopedValue;
-  }
+const inputHashCache = loadCache();
 
-  if (!currentReportId) {
-    return undefined;
-  }
-
-  const legacyValue = cache.get(key);
-  if (legacyValue !== undefined) {
-    cache.set(scopedKey, legacyValue);
-    cache.delete(key);
-    saveCache(cache);
-  }
-
-  return legacyValue;
+function prefixKey(key: string): string {
+  return currentReportId ? `${currentReportId}:${key}` : key;
 }
 
-// ── In-flight tracking ──────────────────────────────────────
-const inFlight = new Set<string>();
+/** Set the active report id so hash keys are scoped per-report. */
+export function setHashCacheReportId(reportId: string): void {
+  currentReportId = reportId;
+}
 
 function simpleHash(str: string): string {
   let hash = 0;
@@ -83,34 +60,27 @@ function simpleHash(str: string): string {
 }
 
 export function hasInputChanged(key: string, input: string): boolean {
-  const cache = loadCache();
-  const hash = simpleHash(normalizeHashInput(input));
-  const prev = getCachedHash(cache, key);
-  return prev !== hash;
+  const hash = simpleHash(input);
+  const prev = inputHashCache.get(prefixKey(key));
+  if (prev === hash) return false;
+  return true;
 }
 
 export function markInputGenerated(key: string, input: string): void {
-  const cache = loadCache();
-  cache.set(prefixKey(key), simpleHash(normalizeHashInput(input)));
-  if (currentReportId) {
-    cache.delete(key);
-  }
-  saveCache(cache);
+  inputHashCache.set(prefixKey(key), simpleHash(input));
+  saveCache(inputHashCache);
 }
 
 export function clearInputCache(): void {
-  if (!currentReportId) {
-    localStorage.removeItem(STORAGE_KEY);
-    return;
-  }
-  const cache = loadCache();
-  const prefix = `${currentReportId}:`;
-  for (const k of Array.from(cache.keys())) {
-    if (k.startsWith(prefix)) {
-      cache.delete(k);
+  if (currentReportId) {
+    // Only clear entries for the current report, not all reports.
+    for (const k of [...inputHashCache.keys()]) {
+      if (k.startsWith(`${currentReportId}:`)) inputHashCache.delete(k);
     }
+  } else {
+    inputHashCache.clear();
   }
-  saveCache(cache);
+  saveCache(inputHashCache);
 }
 
 // ── Queue item type ─────────────────────────────────────────
@@ -137,6 +107,44 @@ export interface QueueResult {
 
 function sleep(ms: number): Promise<void> {
   return new Promise(r => setTimeout(r, ms));
+}
+
+// ── Refine a generated section ──────────────────────────────
+async function refineText(
+  generatedText: string,
+  sectionName: string,
+  participantName?: string,
+  participantFirstName?: string
+): Promise<{ refined_text: string; warnings?: string[] } | null> {
+  try {
+    console.log(`REFINE: calling refine-report for "${sectionName}"...`, {
+      generated_text_length: generatedText.length,
+      participant_name: participantName,
+      participant_first_name: participantFirstName,
+    });
+    const { data, error } = await supabase.functions.invoke("refine-report", {
+      method: "POST",
+      body: {
+        generated_text: generatedText,
+        section_name: sectionName,
+        ...(participantName ? { participant_name: participantName } : {}),
+        ...(participantFirstName ? { participant_first_name: participantFirstName } : {}),
+      },
+    });
+    console.log(`REFINE: response received for "${sectionName}"`, { data, error });
+    if (error) {
+      console.error(`REFINE: refine-report failed for "${sectionName}":`, error);
+      return null;
+    }
+    if (!data?.refined_text) {
+      console.error(`REFINE: refine-report returned no refined_text for "${sectionName}":`, data);
+      return null;
+    }
+    return { refined_text: data.refined_text, warnings: data.warnings };
+  } catch (err) {
+    console.error(`REFINE: refine-report exception for "${sectionName}":`, err);
+    return null;
+  }
 }
 
 // ── Single invoke with 429 retry ────────────────────────────
@@ -219,20 +227,81 @@ export async function processQueue(
     try {
       const result = await invokeWithRetry(item.prompt, item.maxTokens, item.label, item.extraBody);
       if (result.success && result.text) {
-        // Return raw generated text — refinement happens as a single
-        // whole-report call after all sections are generated (see
-        // refineWholeReport in reportEngine.ts). This replaces the
-        // previous per-section and per-field refinement that triggered
-        // 46+ API calls per report.
-        const finalText = stripMarkdown(result.text);
+        const sectionName = item.extraBody?.section_name || item.key;
+        const isDomainJson = item.key.startsWith("section12_");
+
+        let finalText = result.text;
+        let refined = false;
+        let refineWarnings: string[] | undefined;
+
+        if (isDomainJson) {
+          // Domain sections return JSON with per-field keys.
+          // Refine each field value individually to preserve structure.
+          onProgress?.(i + 1, total, item.label, "refining");
+          try {
+            const rawText = result.text.trim().replace(/^```json?\s*/i, "").replace(/```\s*$/, "");
+            const parsed = JSON.parse(rawText) as Record<string, string>;
+            const refinedObj: Record<string, string> = {};
+            let anyRefined = false;
+            const allWarnings: string[] = [];
+
+            for (const [fieldKey, fieldText] of Object.entries(parsed)) {
+              if (!fieldText || fieldText.length < 20) {
+                refinedObj[fieldKey] = fieldText;
+                continue;
+              }
+              const fieldRefine = await refineText(
+                fieldText,
+                `${sectionName}_${fieldKey}`,
+                item.extraBody?.participant_name,
+                item.extraBody?.participant_first_name
+              );
+              if (fieldRefine?.refined_text) {
+                refinedObj[fieldKey] = fieldRefine.refined_text;
+                anyRefined = true;
+                if (fieldRefine.warnings?.length) allWarnings.push(...fieldRefine.warnings);
+              } else {
+                refinedObj[fieldKey] = fieldText;
+              }
+            }
+
+            finalText = JSON.stringify(refinedObj);
+            refined = anyRefined;
+            refineWarnings = allWarnings.length > 0 ? allWarnings : undefined;
+          } catch (parseErr) {
+            console.warn(`[QUEUE] Domain JSON parse failed for refine, skipping per-field refinement`, parseErr);
+            // Fall back: refine as plain text (original behaviour)
+            const refineResult = await refineText(
+              result.text, sectionName,
+              item.extraBody?.participant_name,
+              item.extraBody?.participant_first_name
+            );
+            finalText = refineResult?.refined_text || result.text;
+            refined = !!refineResult?.refined_text;
+            refineWarnings = refineResult?.warnings;
+          }
+        } else {
+          // Non-domain sections: refine as a single block of text
+          onProgress?.(i + 1, total, item.label, "refining");
+          const refineResult = await refineText(
+            result.text, sectionName,
+            item.extraBody?.participant_name,
+            item.extraBody?.participant_first_name
+          );
+          finalText = refineResult?.refined_text || result.text;
+          refined = !!refineResult?.refined_text;
+          refineWarnings = refineResult?.warnings;
+        }
 
         markInputGenerated(item.key, item.inputForHash);
-        console.log(`[QUEUE] SUCCESS: "${item.label}" (${finalText.length} chars)`);
+        console.log(`[QUEUE] SUCCESS: "${item.label}" (${finalText.length} chars, refined: ${refined})`);
         results.push({
           key: item.key,
           success: true,
           text: finalText,
           name_warnings: result.name_warnings,
+          refined,
+          refineWarnings,
         });
       } else if (result.success) {
         markInputGenerated(item.key, item.inputForHash);
@@ -251,3 +320,6 @@ export async function processQueue(
 
   return results;
 }
+
+// Export refineText for use in individual section generators
+export { refineText };
