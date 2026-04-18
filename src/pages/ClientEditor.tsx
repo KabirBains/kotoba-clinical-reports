@@ -1160,11 +1160,35 @@ export default function ClientEditor() {
 
                   const skippedCount = allResults.filter(r => r.skipped).length;
                   const failedCount = allResults.filter(r => !r.success && !r.skipped).length;
-                  let msg = `Generated ${successCount}/${totalQueueItems} sections.`;
-                  if (skippedCount > 0) msg += ` ${skippedCount} skipped (unchanged).`;
-                  if (failedCount > 0) msg += ` ${failedCount} failed.`;
-                  setGenerateProgress(prev => ({ ...prev, current: prev.total, label: "Report generation complete!" }));
-                  toast.success(msg);
+
+                  // ── Surface infrastructure failures clearly ──
+                  // If EVERY non-skipped item failed, the queue is hitting a
+                  // systemic backend problem (most commonly: required .docx
+                  // templates missing from the report-documents storage
+                  // bucket, which causes generate-report to return 500
+                  // "Doc load failed" on every call). Show the actual error
+                  // text so the clinician can act, instead of a silent
+                  // "0 sections generated".
+                  const nonSkippedTotal = totalQueueItems - skippedCount;
+                  if (nonSkippedTotal > 0 && successCount === 0 && failedCount === nonSkippedTotal) {
+                    const sampleErr = allResults.find(r => !r.success && !r.skipped)?.error || "Unknown error";
+                    const isDocLoad = /doc load|load failed|\.docx/i.test(sampleErr);
+                    const detail = isDocLoad
+                      ? "The 'report-documents' storage bucket is missing the required template files (OT_FCA_Template_v5.1.docx, OT_AI_Prompt_Templates_v5.3.docx, OT_Report_Quality_Rubric_v5.3.docx). Upload them in your backend Storage to enable generation."
+                      : sampleErr;
+                    toast.error(`Generation failed for all ${nonSkippedTotal} sections. ${detail}`, { duration: 20000 });
+                    console.error("[GENERATE] All sections failed. Sample error:", sampleErr);
+                  } else {
+                    let msg = `Generated ${successCount}/${totalQueueItems} sections.`;
+                    if (skippedCount > 0) msg += ` ${skippedCount} skipped (unchanged).`;
+                    if (failedCount > 0) msg += ` ${failedCount} failed.`;
+                    setGenerateProgress(prev => ({ ...prev, current: prev.total, label: "Report generation complete!" }));
+                    toast.success(msg);
+                    if (failedCount > 0) {
+                      const firstErr = allResults.find(r => !r.success && !r.skipped)?.error;
+                      if (firstErr) console.error("[GENERATE] First failure reason:", firstErr);
+                    }
+                  }
 
                   // Show name warnings if any
                   const uniqueWarnings = [...new Set(allNameWarnings)];
