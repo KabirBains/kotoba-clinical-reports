@@ -1,78 +1,45 @@
 
 
-## Stages 1 & 1.5 — Final Plan (Approved with Clarifications)
+User reports: ran "Generate Full Report", saw the generation sequence run, but Report Mode shows no generated content. Need to investigate the pipeline.
 
-### Confirmation: Edge function routing
+Key observations from context:
+1. Runtime error: `Edge function returned 500: Error, {"success":false,"error":"Doc load failed","details":"Load failed: OT_FCA_Template_v5.1.docx"}` — but this is from `assemble-report` (docx download), NOT `generate-report`. So that's a separate issue (download .docx failing because template missing in storage).
+2. Edge function logs for `generate-report` only show boots/shutdowns — no actual invocations visible. That's suspicious. Either nothing called it, or logs are stale.
+3. Stages 1/1.5 just landed: a generation gate was added blocking `handleGenerateFullReport` if Spine isn't approved. The user may have hit the gate (toast shown, queue never started) but interpreted it as "ran the sequence with no output".
+4. Alternatively — the queue ran, sections returned, but writes to `report_content` aren't landing because of a state bug.
 
-`src/integrations/supabase/kotobaClient.ts` already exists and points to `https://rxczgtazoyvbdtlwnidu.supabase.co`. All existing AI edge functions (`generate-report`, `thread-narrative`, etc.) are invoked via `kotobaSupabase.functions.invoke(...)`. **`build-clinical-spine` will follow the same pattern** — deployed to Kotoba project, called via `kotobaSupabase`. The default `supabase` client (Loveable project) is used only for DB/auth and will not be touched.
+I need to investigate before proposing a fix. Let me lay out what I'll inspect.
 
-### Stage 1: Spine Foundation
+### Investigation plan
 
-**1.1 Edge function: `supabase/functions/build-clinical-spine/index.ts` (Kotoba)**
-- Single Claude call (low temp, ~4k output tokens), strict JSON output.
-- Input: `{ diagnoses, collateral_summary, clinician_notes, assessment_summary, participant_first_name, participant_pronouns }`.
-- System prompt enforces pronoun + first-name consistency: every `evidence`, `chain`, and `label` field must use `{participant_first_name}` and `{participant_pronouns}` — never "the participant", never mixed pronouns.
-- Output schema: `anchor_impairments[]`, `recurring_consequences[]`, `cross_domain_links[]`, `diagnosis_function_chains[]`, `generated_at`.
-- CORS + JWT verify-in-code, matching existing Kotoba functions.
+1. Read `src/pages/ClientEditor.tsx` `handleGenerateFullReport` to see exactly what the gate does and whether it silently aborts vs runs the queue.
+2. Read `src/ai/generationQueue.ts` to confirm how generated section text is written into `report_content`.
+3. Read `src/ai/reportEngine.ts` (the section that handles `generate-report` invoke + result handling) to confirm whether the section results are correctly persisted.
+4. Read `src/components/editor/ReportMode.tsx` to confirm how it reads `report_content` for display.
+5. Check `supabase/functions/generate-report/index.ts` for any recent changes that might have broken response shape.
+6. Check edge function logs for `generate-report` (live invocations) and any errors.
+7. Confirm whether `__clinical_spine__` approval status is what blocked generation (most likely cause given Stage 1.5 just shipped).
 
-**1.2 Cache shape in `reports.notes` JSONB under `__clinical_spine__`**
-```json
-{
-  "spine": { ... },
-  "status": "draft" | "approved" | "stale",
-  "approved_at": "ISO" | null,
-  "source_hash": "sha256-hex"
-}
-```
+### Likely root causes (ranked)
 
-**1.3 Hash helper: `src/ai/spineCache.ts`**
-- `canonicalize(value)` — recursive: sort object keys, normalise `null`/`undefined`, trim string whitespace, stable array order preservation.
-- `computeSpineSourceHash(notes)` — extracts only spine-relevant inputs (diagnoses, assessment scores for DASS/WHODAS/LSP-16/FRAT/CANS/Lawton/Zarit/Sensory, Section 12 raw functional notes, collateral interview content), canonicalises, then SHA-256 via `crypto.subtle.digest`. Returns hex.
-- `isSpineStale(notes)` — compares cached `source_hash` to fresh hash.
-- `markSpineStaleIfNeeded(notes)` — pure helper used on report load.
-- Excludes: recommendations, goals, formatting fields, the spine cache itself.
+**A. Spine approval gate fired and aborted the run silently** — most likely. The user "saw the generation sequence" might actually be the progress UI flickering then exiting. Or the gate's toast was missed.
 
-**1.4 reportEngine helper: `buildClinicalSpine(notes, participantContext)`**
-- Calls Kotoba edge function via `kotobaSupabase.functions.invoke('build-clinical-spine', ...)`.
-- Stores result with `status: "draft"` + current `source_hash`.
-- Returns spine for immediate UI display.
+**B. generate-report response shape mismatch** — if Stage 1/1.5 changes accidentally touched generation, sections may return but the queue can't extract `.section_text` to write to `report_content`.
 
-**1.5 Dev-only validation helper: `src/ai/devSpineValidator.ts`**
-- Not wired to UI. Exports `runSpineOnExistingReport(reportId)` callable from browser console.
-- Loads a completed report from DB, derives spine inputs, calls `buildClinicalSpine`, logs the result side-by-side with the existing final report content for manual quality comparison.
-- Documented in code comments only.
+**C. Persisted to wrong key** — possible regression where generated content writes to `notes.__clinical_spine__` location or similar instead of `report_content`.
 
-### Stage 1.5: Approval Checkpoint UI
+**D. The .docx Doc load failure is unrelated** — that's `assemble-report` failing because `OT_FCA_Template_v5.1.docx` isn't in the `report-documents` storage bucket. This blocks .docx download, not in-app display.
 
-**1.5.1 New component: `src/components/editor/ClinicalSpinePanel.tsx`**
+### Fix plan (after investigation, will adjust)
 
-Read-only display + action buttons. States:
-- **No spine**: "Generate Clinical Spine" button → invokes builder, shows loading.
-- **Draft**: Structured read-only render of all four spine arrays. Buttons: "Approve and proceed" / "Regenerate Spine".
-- **Stale**: Same as Draft + amber banner "Upstream clinical data has changed. Re-approval required."
-- **Approved**: Collapsed by default, badge "Approved · {timestamp}". Expandable. "Regenerate Spine" button.
+1. **Confirm gate behavior**: ensure the Spine gate shows a clear, prominent toast and scrolls to the panel. If the user's report has no Spine generated yet, the gate is the cause and we just need clearer UX (toast persistent + auto-open panel + visible "Approve Spine" CTA at top of Report Mode).
+2. **Add diagnostic logging** to `generationQueue.ts` and the section-write path so future runs are traceable in console.
+3. **Verify queue → report_content write path** is intact and unaffected by Stage 1/1.5 changes.
+4. **Separate fix for the .docx template**: surface a clear error to the user about the missing template (out of scope for this turn unless related).
 
-Mounted in Report Mode, above report content, below toolbar. No editor inputs in this stage.
+### What I'll deliver after approval
 
-**1.5.2 Gate in `ClientEditor.tsx`**
-- Modify ONLY `handleGenerateFullReport`: if spine missing or `status !== "approved"`, show toast and scroll to spine panel; abort.
-- Single-section regenerates remain ungated (per clarification — spine isn't wired into per-section generation until Stage 2).
-- On report load, run `markSpineStaleIfNeeded` to auto-flag stale spines.
-
-### Files
-
-```text
-NEW    supabase/functions/build-clinical-spine/index.ts   (Kotoba project)
-NEW    src/ai/spineCache.ts                               (canonicalise + SHA-256 + stale detection)
-NEW    src/ai/devSpineValidator.ts                        (dev-only console helper)
-EDIT   src/ai/reportEngine.ts                             (buildClinicalSpine helper via kotobaSupabase)
-NEW    src/components/editor/ClinicalSpinePanel.tsx       (read-only display + approve/regenerate)
-EDIT   src/pages/ClientEditor.tsx                         (mount panel, gate full-report generation, stale detection on load)
-NEW    mem://features/clinical-spine                      (concept, gate scope, invalidation rules, hash method)
-EDIT   mem://index.md                                     (add reference)
-```
-
-### Out of scope (deferred)
-
-Stages 2–5: spine injection into generation, per-section summaries, thread-narrative tuning, full editor UI, coverage metric, regeneration scope logic. No changes to `generate-report`, `thread-narrative`, `generationQueue.ts`, or single-section regenerate flows in this pass.
+- Targeted code edits to `ClientEditor.tsx` (gate UX), `generationQueue.ts` (logging + verify write), and `reportEngine.ts` if a regression is found.
+- A console.log breadcrumb trail so the next run pinpoints exactly where the pipeline drops content.
+- No changes to the Spine itself unless the gate is the confirmed culprit and needs UX clarification.
 
