@@ -31,9 +31,12 @@ export function stripMarkdown(text: string): string {
   return text
     // Remove headings (##, ###, etc.)
     .replace(/^#{1,6}\s+/gm, "")
-    // Remove bold/italic markers
+    // Remove bold/italic markers — run twice to catch nested/adjacent bold
+    .replace(/\*{1,3}([^*]+)\*{1,3}/g, "$1")
     .replace(/\*{1,3}([^*]+)\*{1,3}/g, "$1")
     .replace(/_{1,3}([^_]+)_{1,3}/g, "$1")
+    // Remove any remaining stray ** or __ markers the above missed
+    .replace(/\*{2,}/g, "")
     // Remove inline code
     .replace(/`([^`]+)`/g, "$1")
     // Remove markdown links [text](url) → text
@@ -46,6 +49,12 @@ export function stripMarkdown(text: string): string {
     .replace(/^---+$/gm, "")
     // Remove blockquote markers
     .replace(/^>\s?/gm, "")
+    // Remove residual sub-area delimiter fragments (<> or <<>>)
+    .replace(/^<>?\s*/gm, "")
+    .replace(/<<>>/g, "")
+    // Remove duplicate "Support level:" lines that appear when the sub-area
+    // header already shows the support level and the AI also states it in prose
+    .replace(/^<>\s*Support level:\s*[^\n]+\n?/gm, "")
     // Collapse multiple blank lines into one
     .replace(/\n{3,}/g, "\n\n")
     // Strip trailing Section 34 boilerplate that the AI sometimes appends
