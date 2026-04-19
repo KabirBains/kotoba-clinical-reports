@@ -129,7 +129,6 @@ export const SUBSECTION_FIELDS: SubsectionConfig[] = [
     fields: [
       { id: "expressive", label: "Expressive communication", placeholder: "Verbal/non-verbal/AAC, word output, ability to communicate needs", ratingOptions: COMMUNICATION_RATINGS },
       { id: "receptive", label: "Receptive communication", placeholder: "Instruction understanding, complexity tolerated, processing speed", ratingOptions: COMMUNICATION_RATINGS },
-      { id: "pragmatics", label: "Pragmatics", placeholder: "Turn-taking, topic maintenance, social appropriateness, reading social cues", ratingOptions: COMMUNICATION_RATINGS },
     ],
   },
   {
@@ -139,7 +138,6 @@ export const SUBSECTION_FIELDS: SubsectionConfig[] = [
       { id: "group", label: "Group settings", placeholder: "Engagement, triggers for disengagement, distress observed", ratingOptions: SOCIAL_RATINGS },
       { id: "behaviour-reg", label: "Behaviour regulation", placeholder: "Dysregulation frequency, triggers, strategies, incidents", ratingOptions: SOCIAL_RATINGS },
       { id: "emotional-reg", label: "Emotional regulation", placeholder: "Adaptive and maladaptive coping, self-harm, withdrawal", ratingOptions: SOCIAL_RATINGS },
-      { id: "theory-of-mind", label: "Theory of mind / Empathy", placeholder: "Understanding others perspectives, emotions, social contexts", ratingOptions: SOCIAL_RATINGS },
     ],
   },
 ];
