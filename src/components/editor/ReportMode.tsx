@@ -6,7 +6,7 @@ import { getWhodasDomainBreakdown } from "./WHODASScoring";
 import { getDass42ScoreSummary } from "./DASS42Scoring";
 import { buildMethodologyText } from "./MethodologyAggregator";
 import { PARTICIPANT_KEYS, CLINICIAN_KEYS } from "./ParticipantReportDetails";
-import { cn, stripJsonFences } from "@/lib/utils";
+import { cn, stripJsonFences, stripMarkdown } from "@/lib/utils";
 import { TEMPLATE_SECTIONS } from "@/lib/constants";
 import { FileText, ShieldCheck, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -748,7 +748,7 @@ export function ReportMode(props: ReportModeProps) {
                                   className="prose prose-sm max-w-none text-foreground/90"
                                   contentEditable
                                   suppressContentEditableWarning
-                                  dangerouslySetInnerHTML={{ __html: entry.text }}
+                                  dangerouslySetInnerHTML={{ __html: stripMarkdown(entry.text) }}
                                 />
                               </div>
                             );
@@ -766,7 +766,7 @@ export function ReportMode(props: ReportModeProps) {
                           className="prose prose-sm max-w-none text-foreground/90"
                           contentEditable
                           suppressContentEditableWarning
-                          dangerouslySetInnerHTML={{ __html: proseText }}
+                          dangerouslySetInnerHTML={{ __html: stripMarkdown(proseText) }}
                         />
                       </div>
                     );
