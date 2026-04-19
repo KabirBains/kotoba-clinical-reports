@@ -29,8 +29,6 @@ export default function Dashboard() {
   const [newClient, setNewClient] = useState({
     client_name: "",
     ndis_number: "",
-    primary_diagnosis: "",
-    referral_reason: "",
   });
 
   const { data: clients, isLoading } = useQuery({
@@ -65,7 +63,7 @@ export default function Dashboard() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["clients"] });
       setNewClientOpen(false);
-      setNewClient({ client_name: "", ndis_number: "", primary_diagnosis: "", referral_reason: "" });
+      setNewClient({ client_name: "", ndis_number: "" });
       toast.success("Client created");
       navigate(`/client/${data.id}`);
     },
@@ -145,22 +143,6 @@ export default function Dashboard() {
                     value={newClient.ndis_number}
                     onChange={(e) => setNewClient({ ...newClient, ndis_number: e.target.value })}
                     placeholder="e.g. 431 234 567"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Primary diagnosis</Label>
-                  <Input
-                    value={newClient.primary_diagnosis}
-                    onChange={(e) => setNewClient({ ...newClient, primary_diagnosis: e.target.value })}
-                    placeholder="e.g. Autism Spectrum Disorder"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Referral reason</Label>
-                  <Input
-                    value={newClient.referral_reason}
-                    onChange={(e) => setNewClient({ ...newClient, referral_reason: e.target.value })}
-                    placeholder="e.g. Functional capacity assessment"
                   />
                 </div>
                 <Button type="submit" className="w-full" disabled={createClient.isPending}>
