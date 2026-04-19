@@ -20,6 +20,7 @@ const TRANSFER_RATINGS = [
 
 const PADL_RATINGS = [
   "Independent",
+  "Supervision Required",
   "Prompting Required",
   "Assistance Required",
   "Fully Dependent",
@@ -55,6 +56,14 @@ const SOCIAL_RATINGS = [
   "Mildly Impaired",
   "Significantly Impaired",
   "Avoidant",
+  "Unable to Determine",
+];
+
+const REGULATION_RATINGS = [
+  "Self-Regulates",
+  "Occasional Dysregulation",
+  "Frequent Dysregulation",
+  "Pervasive Dysregulation",
   "Unable to Determine",
 ];
 
@@ -136,8 +145,8 @@ export const SUBSECTION_FIELDS: SubsectionConfig[] = [
     fields: [
       { id: "one-on-one", label: "1:1 interactions", placeholder: "Comfort, anxiety, avoidance, coping strategies", ratingOptions: SOCIAL_RATINGS },
       { id: "group", label: "Group settings", placeholder: "Engagement, triggers for disengagement, distress observed", ratingOptions: SOCIAL_RATINGS },
-      { id: "behaviour-reg", label: "Behaviour regulation", placeholder: "Dysregulation frequency, triggers, strategies, incidents", ratingOptions: SOCIAL_RATINGS },
-      { id: "emotional-reg", label: "Emotional regulation", placeholder: "Adaptive and maladaptive coping, self-harm, withdrawal", ratingOptions: SOCIAL_RATINGS },
+      { id: "behaviour-reg", label: "Behaviour regulation", placeholder: "Dysregulation frequency, triggers, strategies, incidents", ratingOptions: REGULATION_RATINGS },
+      { id: "emotional-reg", label: "Emotional regulation", placeholder: "Adaptive and maladaptive coping, self-harm, withdrawal", ratingOptions: REGULATION_RATINGS },
     ],
   },
 ];
