@@ -34,6 +34,7 @@ import { getCansScoreSummary } from "@/components/editor/CANSScoring";
 import { getLawtonScoreSummary } from "@/components/editor/LawtonIADLScoring";
 import { getSensoryProfileScoreSummary } from "@/components/editor/SensoryProfileScoring";
 import { getDass42ScoreSummary } from "@/components/editor/DASS42Scoring";
+import { getK10ScoreSummary } from "@/components/editor/K10Scoring";
 
 /**
  * Dispatch a score-summary call to the appropriate scoring component.
@@ -63,6 +64,8 @@ export function getAssessmentScoreSummary(
       return getSensoryProfileScoreSummary(scores);
     case "dass-42":
       return getDass42ScoreSummary(scores);
+    case "k10":
+      return getK10ScoreSummary(scores);
     default: {
       // Fallback for tools that use the assessment-library subscales (e.g.
       // katz-adl) or for custom tools. The library functions return 0 / ""
