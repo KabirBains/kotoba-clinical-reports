@@ -208,7 +208,6 @@ function buildDocumentBody(input: ReportInput): string {
     ["13.6 Cognition", "section13_6"],
     ["13.7 Communication", "section13_7"],
     ["13.8 Social Functioning", "section13_8"],
-    ["13.9 Sensory Profile", "section13_9"],
   ];
   for (const [title, key] of domains) {
     parts.push(headingXml(title, 2));

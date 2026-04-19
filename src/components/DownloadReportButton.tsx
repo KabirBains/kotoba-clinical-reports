@@ -18,7 +18,7 @@ export default function DownloadReportButton({ reportData }: DownloadReportButto
     "section6", "section7", "section8", "section9", "section10",
     "section11", "section12_1", "section12_2", "section12_3",
     "section12_4", "section12_5", "section12_6", "section12_7",
-    "section12_8", "section12_9", "section13", "section14",
+    "section12_8", "section13", "section14",
     "section15", "section16", "section17", "section18", "section19",
   ];
 
@@ -64,7 +64,6 @@ export default function DownloadReportButton({ reportData }: DownloadReportButto
             section12_6: reportData.section12_6 || "",
             section12_7: reportData.section12_7 || "",
             section12_8: reportData.section12_8 || "",
-            section12_9: reportData.section12_9 || "",
             section13: reportData.section13 || "",
             section14: reportData.section14 || "",
             section15: reportData.section15 || "",

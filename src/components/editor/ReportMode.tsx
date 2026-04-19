@@ -491,7 +491,6 @@ function buildReportData(props: ReportModeProps): ReportData {
     section12_6: flattenDomainJson(s("cognition", "section12_6")),
     section12_7: flattenDomainJson(s("communication", "section12_7")),
     section12_8: flattenDomainJson(s("social-functioning", "section12_8")),
-    section12_9: flattenDomainJson(s("sensory-profile", "section12_9")),
     section13: flattenAssessmentsJson(s("assessments")),
     section14: s("limitations-barriers"),
     section15: s("functional-impact"),
@@ -695,7 +694,6 @@ export function ReportMode(props: ReportModeProps) {
                 { reportKey: "section12_6", noteId: "cognition", label: "14.6 Cognition" },
                 { reportKey: "section12_7", noteId: "communication", label: "14.7 Communication" },
                 { reportKey: "section12_8", noteId: "social-functioning", label: "14.8 Social Functioning" },
-                { reportKey: "section12_9", noteId: "sensory-profile", label: "14.9 Sensory Profile" },
               ];
 
               const hasAnyDomainProse = DOMAIN_MAP.some(d => {
