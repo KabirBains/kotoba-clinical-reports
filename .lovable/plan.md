@@ -1,37 +1,55 @@
 
+
 ## Goal
 
-Add 4 new countable, enforceable clinical writing rules to the dynamic section-writing rules block in `supabase/functions/generate-report/index.ts` — same `=== SECTION-WRITING DISCIPLINE ===` location used by the previous 6 rules.
+Two targeted edits to `src/lib/subsection-fields.ts`:
 
-## Where the rules go
+1. Add **"Supervision Required"** to the PADL ratings (used by 14.3 Personal ADLs and 14.4 Domestic IADLs since `DOMESTIC_IADL_RATINGS = PADL_RATINGS`).
+2. Replace the inappropriate dropdown for **Behaviour regulation** and **Emotional regulation** in 14.8 with clinically meaningful options (frequency/severity of dysregulation rather than "Adequate / Avoidant").
 
-- **File**: `supabase/functions/generate-report/index.ts`
-- **Block**: `dynamicSuffix` (the `=== SECTION-WRITING DISCIPLINE ===` block appended in the last turn)
-- **Action**: Append a new sub-block `=== ENFORCEABLE QUALITY RULES (count before returning) ===` immediately after rule 6 (carer references) and before the Clinical Spine injection
-- **Cached prefix**: untouched
+## Change 1 — PADL ratings (affects 14.3 + 14.4)
 
-## Rules being added (verbatim from spec, with rationale + examples preserved)
+Updated `PADL_RATINGS`:
+```
+Independent
+Supervision Required        ← NEW (sits between Independent and Prompting)
+Prompting Required
+Assistance Required
+Fully Dependent
+```
 
-1. **Intensifier budget** — hard caps with concrete rewrite examples; diagnosis-name "Severe" excluded from cap; intensifier-before-quantified-fact must be deleted
-2. **Speculation must be attributed** — explicit trigger word list; rewrite (preferred) or attribute to assessor opinion
-3. **Cross-section citation** — section-number reference format for collateral / assessments / risks / FC / diagnoses; exclusion for in-section observations
-4. **No generic closing boilerplate** — banned phrase list + the "paste-into-different-report" test
+Order rationale: "Supervision Required" reflects the participant performing the task themselves but needing someone present for safety — a lighter level of support than verbal prompting, so it slots in second.
+
+## Change 2 — 14.8 Behaviour & Emotional regulation
+
+These two fields currently use `SOCIAL_RATINGS` (`Adequate / Mildly Impaired / Significantly Impaired / Avoidant / Unable to Determine`), which doesn't describe dysregulation well — "Avoidant" is meaningless for emotional regulation, and "Adequate" understates clinical relevance.
+
+Introduce a new shared scale, `REGULATION_RATINGS`, applied to both fields:
+
+```
+Self-Regulates
+Occasional Dysregulation
+Frequent Dysregulation
+Pervasive Dysregulation
+Unable to Determine
+```
+
+Rationale per option:
+- **Self-Regulates** — participant manages internal state / behaviour without external support
+- **Occasional Dysregulation** — episodes are infrequent, recover independently or with minimal prompting
+- **Frequent Dysregulation** — recurring episodes, requires external co-regulation strategies
+- **Pervasive Dysregulation** — near-constant dysregulation, requires full external regulation / behaviour support plan
+- **Unable to Determine** — preserved for consistency with other scales
+
+The "1:1 interactions" and "Group settings" fields in 14.8 keep `SOCIAL_RATINGS` — that scale fits social engagement appropriately.
 
 ## What is NOT changed
 
-- Cached prefix (`ANTI_REDUNDANCY`, `ASSESSMENT_SCORING_RULES`, `SUB_AREA_RULES`)
-- CLAUDE_API_KEY, storage, clinical spine, collateral routing, threading
-- Any existing rule (append-only)
-- Section 17 consequence requirement, safety routing, lookback context
-
-## Deployment
-
-After edit, deploy `generate-report` via `supabase--deploy_edge_functions`. No frontend changes.
+- No other subsections, no field IDs, no labels, no placeholders.
+- No changes to AI prompts, edge functions, report assembly, or stored data.
+- Existing reports with old values (e.g. "Adequate") still display correctly — they just won't match a new dropdown option until re-selected.
 
 ## Verification
 
-User generates a section and confirms:
-- Intensifier counts under caps (`significantly` ≤2, `profound` ≤1, `severe` ≤2 excluding diagnosis, etc.)
-- No bare "appears [adjective]" / "apparent [noun]" without rewrite or assessor attribution
-- Cross-section references include section number ("see Section 6")
-- Closing sentences contain a section-specific concrete fact, no generic "missed opportunities" / "associated mental health risks" filler
+Open a client → Notes mode → 14.3, 14.4, 14.8 → confirm the new dropdown options appear and the regulation fields read sensibly.
+
