@@ -252,10 +252,6 @@ async function runLightRubricCheck(
 
   if (isDomainSection) {
     criteriaList.push({
-      id: "D2_support_level_declarations",
-      description: "Every sub-area opens with an explicit 'Support level: [level]' statement before the narrative paragraph.",
-    });
-    criteriaList.push({
       id: "A18a_evidence_citation",
       description: "The section opens with the evidence citation block: 'Evidence: As per standardised assessment; as evident in functional assessment and observations; as evident in interviews; collateral information; reviewed reports.'",
     });
@@ -345,15 +341,14 @@ When writing a functional domain that contains MULTIPLE sub-areas (e.g., Laundry
 1. Write SEPARATE, UNIQUE content for EACH sub-area. Each sub-area gets its OWN paragraph(s) that discuss ONLY that specific sub-area.
 2. Use the delimiter <<SUB_AREA: [Name]>> before each sub-area's content. Example:
    <<SUB_AREA: Laundry>>
-   Support level: Assistance Required
    [Paragraph about laundry ONLY]
    <<SUB_AREA: Shopping>>
-   Support level: Fully Dependent
    [Paragraph about shopping ONLY]
 3. NEVER combine multiple sub-areas into one paragraph. NEVER write about shopping in the laundry section or vice versa.
 4. Each sub-area MUST contain ONLY observations relevant to THAT specific sub-area.
 5. If the clinician provided the same observation text for multiple sub-areas, write DIFFERENT prose for each — extract only the relevant parts.
 6. The content under each <<SUB_AREA>> delimiter must be completely self-contained and make sense on its own.
+7. DO NOT write "Support level: ..." anywhere in your prose. The support level is rendered separately by the UI as a label above each paragraph. Including it in the prose creates a duplicate that the clinician must manually remove.
 
 For Communication domains with Receptive and Expressive sub-areas:
 - Receptive content discusses ONLY understanding, comprehension, processing information.
@@ -365,19 +360,20 @@ The frontend post-processor uses the regex /<<SUB_AREA:\\s*([^>]+)>>/g to split 
 
 WRONG (markdown bold — DO NOT EMIT):
 **Ambulation and Balance**
-Support level: Assistance Required
+[paragraph]
 
 WRONG (markdown heading — DO NOT EMIT):
 ## Ambulation and Balance
-Support level: Assistance Required
+[paragraph]
 
-WRONG (plain heading — DO NOT EMIT):
-Ambulation and Balance:
-Support level: Assistance Required
-
-RIGHT (the literal delimiter — ALWAYS EMIT THIS):
+WRONG (echoes support level — DO NOT EMIT):
 <<SUB_AREA: Ambulation and Balance>>
 Support level: Assistance Required
+[paragraph]
+
+RIGHT (literal delimiter, no support-level echo — ALWAYS EMIT THIS):
+<<SUB_AREA: Ambulation and Balance>>
+[paragraph beginning directly with clinical prose]
 
 The string "<<SUB_AREA:" appears NOWHERE in your other output. It is ONLY used as the sub-area delimiter. If you find yourself writing markdown bold or heading syntax for a sub-area name, STOP and replace it with <<SUB_AREA: [Name]>>.
 

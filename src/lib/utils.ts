@@ -48,8 +48,8 @@ export function stripMarkdown(text: string): string {
     .replace(/^---+$/gm, "")
     // Remove blockquote markers
     .replace(/^>\s?/gm, "")
-    // Remove residual <<SUB_AREA:>> delimiter artifacts
-    .replace(/^<>\s*Support level:\s*[^\n]+\n?/gm, "")
+    // Remove residual <<SUB_AREA:>> delimiter artifacts and any leaked "Support level: ..." lines
+    .replace(/^[\s<>]*support level\s*:\s*[^\n]*\n?/gim, "")
     .replace(/^<>?\s*/gm, "")
     .replace(/<<>>/g, "")
     // Collapse multiple blank lines into one

@@ -748,7 +748,7 @@ export function ReportMode(props: ReportModeProps) {
                                   className="prose prose-sm max-w-none text-foreground/90"
                                   contentEditable
                                   suppressContentEditableWarning
-                                  dangerouslySetInnerHTML={{ __html: entry.text }}
+                                  dangerouslySetInnerHTML={{ __html: stripMarkdown(entry.text) }}
                                 />
                               </div>
                             );
@@ -766,7 +766,7 @@ export function ReportMode(props: ReportModeProps) {
                           className="prose prose-sm max-w-none text-foreground/90"
                           contentEditable
                           suppressContentEditableWarning
-                          dangerouslySetInnerHTML={{ __html: proseText }}
+                          dangerouslySetInnerHTML={{ __html: stripMarkdown(proseText) }}
                         />
                       </div>
                     );
