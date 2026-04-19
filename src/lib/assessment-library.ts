@@ -183,6 +183,20 @@ export const ASSESSMENT_LIBRARY: AssessmentDefinition[] = [
     classifications: [],
   },
   {
+    id: "k10",
+    name: "Kessler Psychological Distress Scale (K10)",
+    shortName: "K10",
+    synopsis: "The Kessler Psychological Distress Scale (K10; Kessler et al., 2002) is a 10-item self-report measure of psychological distress experienced over the past 4 weeks. Each item is rated 1 (None of the time) to 5 (All of the time), producing a total score /50. Australian classification bands (per ABS): <20 likely well, 20–24 mild distress, 25–29 moderate distress, 30–50 severe distress. Used in NDIS psychosocial disability assessments to quantify mental health symptom burden.",
+    subscales: [],
+    scoringMethod: "sum",
+    classifications: [
+      { min: 10, max: 19, label: "Likely to be well" },
+      { min: 20, max: 24, label: "Mild psychological distress" },
+      { min: 25, max: 29, label: "Moderate psychological distress" },
+      { min: 30, max: 50, label: "Severe psychological distress" },
+    ],
+  },
+  {
     id: "katz-adl",
     name: "Katz Index of Independence in ADLs",
     shortName: "Katz ADL",

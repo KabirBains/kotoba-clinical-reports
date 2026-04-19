@@ -1292,6 +1292,7 @@ export function ReportMode(props: ReportModeProps) {
                 "sensory-profile": { category: "Sensory Processing", rationale: "Assesses sensory processing patterns impacting daily functioning." },
                 "zarit": { category: "Carer Assessment", rationale: "Quantifies carer burden and sustainability of informal supports." },
                 "dass-42": { category: "Mental Health", rationale: "Quantifies severity of depression, anxiety, and stress." },
+                "k10": { category: "Mental Health", rationale: "Screens psychological distress over the past 4 weeks." },
               };
 
               return (
