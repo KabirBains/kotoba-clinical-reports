@@ -142,15 +142,6 @@ export const SUBSECTION_FIELDS: SubsectionConfig[] = [
       { id: "theory-of-mind", label: "Theory of mind / Empathy", placeholder: "Understanding others perspectives, emotions, social contexts", ratingOptions: SOCIAL_RATINGS },
     ],
   },
-  {
-    subsectionId: "sensory-profile",
-    fields: [
-      { id: "hypersensitivity", label: "Hypersensitivity", placeholder: "Modalities affected — tactile, auditory, visual, proprioceptive", ratingOptions: SENSORY_RATINGS },
-      { id: "hyposensitivity", label: "Hyposensitivity", placeholder: "Detail if relevant or state N/A", ratingOptions: SENSORY_RATINGS },
-      { id: "impact", label: "Impact on daily function", placeholder: "Effect on self-care, community access, behaviour, meal choices", ratingOptions: SENSORY_RATINGS },
-      { id: "strategies", label: "Strategies in place", placeholder: "Accommodations, sensory diet, environmental modifications or nil", ratingOptions: SENSORY_RATINGS },
-    ],
-  },
 ];
 
 export function getSubsectionConfig(subsectionId: string): SubsectionConfig | undefined {

@@ -275,7 +275,6 @@ export default function ClientEditor() {
     "section12_6": "Section 14.6 - Cognition",
     "section12_7": "Section 14.7 - Communication",
     "section12_8": "Section 14.8 - Social Functioning",
-    "section12_9": "Section 14.9 - Sensory Profile",
     "assessments": "Section 15 - Standardised Assessments",
     "limitations-barriers": "Section 16 - Limitations and Barriers",
     "functional-impact": "Section 17 - Functional Impact Summary",
@@ -428,7 +427,6 @@ export default function ClientEditor() {
                     { id: "cognition", name: "Cognition", reportKey: "section12_6" },
                     { id: "communication", name: "Communication", reportKey: "section12_7" },
                     { id: "social-functioning", name: "Social Functioning", reportKey: "section12_8" },
-                    { id: "sensory-profile", name: "Sensory Profile", reportKey: "section12_9" },
                   ];
 
                   const domainEntries: { id: string; name: string; reportKey: string; rowData: { fieldId: string; label: string; rating: string; observation: string }[] }[] = [];
@@ -753,7 +751,6 @@ export default function ClientEditor() {
                     section12_6: "Cognition",
                     section12_7: "Communication",
                     section12_8: "Social Functioning",
-                    section12_9: "Sensory Profile",
                   };
 
                   // Pre-compute assessment data for queue items.

@@ -25,7 +25,6 @@ export const TEMPLATE_SECTIONS = [
       { id: "cognition", number: "14.6", title: "Cognition" },
       { id: "communication", number: "14.7", title: "Communication" },
       { id: "social-functioning", number: "14.8", title: "Social Functioning" },
-      { id: "sensory-profile", number: "14.9", title: "Sensory Profile" },
     ],
   },
   { id: "assessments", number: "15", title: "Assessments" },

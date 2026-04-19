@@ -196,7 +196,6 @@ export interface ReportData {
   section12_6?: string; // Cognition
   section12_7?: string; // Communication
   section12_8?: string; // Social functioning
-  section12_9?: string; // Sensory profile
   section13?: string; // Standardised assessments (interpretations)
   section14?: string; // Limitations
   section15?: string; // Impact summary
@@ -412,7 +411,6 @@ export async function assembleReport(data: ReportData): Promise<void> {
   addSubsection("12.6 Cognition", data.section12_6);
   addSubsection("12.7 Communication", data.section12_7);
   addSubsection("12.8 Social Functioning", data.section12_8);
-  addSubsection("12.9 Sensory Profile", data.section12_9);
 
   // ═══ SECTION 13 — ASSESSMENTS ═══
   add(pb(), h1("13. Standardised Assessments"));
