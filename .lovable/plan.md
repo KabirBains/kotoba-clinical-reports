@@ -2,54 +2,50 @@
 
 ## Goal
 
-Two targeted edits to `src/lib/subsection-fields.ts`:
+Replace `src/lib/diagnosis-library.ts` with the expanded library from the uploaded `diagnosis_picker-2.jsx` (~250+ DSM-5 / ICD-10 entries across new categories), while keeping the existing `DiagnosisPicker.tsx` UI untouched.
 
-1. Add **"Supervision Required"** to the PADL ratings (used by 14.3 Personal ADLs and 14.4 Domestic IADLs since `DOMESTIC_IADL_RATINGS = PADL_RATINGS`).
-2. Replace the inappropriate dropdown for **Behaviour regulation** and **Emotional regulation** in 14.8 with clinically meaningful options (frequency/severity of dysregulation rather than "Adequate / Avoidant").
+## Why not replace the picker UI
 
-## Change 1 — PADL ratings (affects 14.3 + 14.4)
+The uploaded file's `DiagnosisPicker` component is a standalone JSX prototype using inline styles and hard-coded fonts. The project's current `src/components/editor/DiagnosisPicker.tsx` already implements the **same behaviour** (search by name/ICD/DSM/keyword, category chips, primary/secondary toggle, expandable description, custom diagnosis form) using Tailwind + shadcn, integrated with `notes` JSONB persistence and `DiagnosisInstance` types. Swapping it would regress styling and break props/state wiring. Only the data needs updating.
 
-Updated `PADL_RATINGS`:
-```
-Independent
-Supervision Required        ← NEW (sits between Independent and Prompting)
-Prompting Required
-Assistance Required
-Fully Dependent
-```
+## Change — `src/lib/diagnosis-library.ts`
 
-Order rationale: "Supervision Required" reflects the participant performing the task themselves but needing someone present for safety — a lighter level of support than verbal prompting, so it slots in second.
+Replace the `DIAGNOSIS_LIBRARY` array with the full list extracted from the uploaded file (lines 14–approx 580 of the upload). Keep:
 
-## Change 2 — 14.8 Behaviour & Emotional regulation
+- The existing `DiagnosisEntry` interface (`id`, `name`, `icd10`, `dsm5`, `category`, `description`, `isCustom?`)
+- The existing `DiagnosisInstance` interface (`isPrimary?`)
+- The existing `DIAGNOSIS_CATEGORIES` derivation (`[...new Set(...)].sort()`) — auto-picks up the new categories
 
-These two fields currently use `SOCIAL_RATINGS` (`Adequate / Mildly Impaired / Significantly Impaired / Avoidant / Unable to Determine`), which doesn't describe dysregulation well — "Avoidant" is meaningless for emotional regulation, and "Adequate" understates clinical relevance.
-
-Introduce a new shared scale, `REGULATION_RATINGS`, applied to both fields:
+New categories that will appear in the filter chips automatically:
 
 ```
-Self-Regulates
-Occasional Dysregulation
-Frequent Dysregulation
-Pervasive Dysregulation
-Unable to Determine
+Neurodevelopmental, Intellectual Disability, Psychosocial,
+Anxiety, Trauma & Stressor-Related, Obsessive-Compulsive,
+Substance Use, Eating Disorders, Sleep-Wake, Personality,
+Acquired Brain Injury, Neurological, Dementia & Neurocognitive,
+Muscular/Physical, Genetic, Sensory, Medical
 ```
 
-Rationale per option:
-- **Self-Regulates** — participant manages internal state / behaviour without external support
-- **Occasional Dysregulation** — episodes are infrequent, recover independently or with minimal prompting
-- **Frequent Dysregulation** — recurring episodes, requires external co-regulation strategies
-- **Pervasive Dysregulation** — near-constant dysregulation, requires full external regulation / behaviour support plan
-- **Unable to Determine** — preserved for consistency with other scales
+Order rationale within file: grouped by category banner comments (matching the upload's structure) so future edits stay readable.
 
-The "1:1 interactions" and "Group settings" fields in 14.8 keep `SOCIAL_RATINGS` — that scale fits social engagement appropriately.
+## Backwards compatibility
+
+- All existing IDs in the current library (`asd_1`, `adhd_combined`, `gad`, `ptsd`, `bpd`, `tbi`, `ms`, `parkinsons`, etc.) are preserved in the new library — saved diagnoses on existing reports keep resolving.
+- A handful of IDs in the upload have **slight code refinements** (e.g. `mdd_single` ICD `F32` → `F32.9`, `id_mild` DSM `319` → `317`). This is a clinical accuracy upgrade — existing saved diagnoses just display the corrected codes on next load (the codes aren't user-editable post-add).
+- One ID collision risk: the upload uses `cptsd` for Complex PTSD and the current file uses `cptsd` too — same ID, same intent. Verified safe.
+- Where the upload introduces *new* level/subtype variants under an existing ICD (e.g. multiple `epilepsy_*` entries replacing the single `epilepsy`), the original `id: "epilepsy"` will be preserved as well to avoid orphaning saved data, even if the upload omits it. Same approach for `ms`, `stroke_left`/`stroke_right`, `sci_para`/`sci_tetra`, `spina_bifida`. Net result: union of old + new IDs.
 
 ## What is NOT changed
 
-- No other subsections, no field IDs, no labels, no placeholders.
-- No changes to AI prompts, edge functions, report assembly, or stored data.
-- Existing reports with old values (e.g. "Adequate") still display correctly — they just won't match a new dropdown option until re-selected.
+- `src/components/editor/DiagnosisPicker.tsx` — untouched
+- `DiagnosisEntry` / `DiagnosisInstance` types — unchanged
+- Persistence keys, AI prompts, methodology aggregator, report assembly — unaffected
+- No edge functions touched
 
 ## Verification
 
-Open a client → Notes mode → 14.3, 14.4, 14.8 → confirm the new dropdown options appear and the regulation fields read sensibly.
+Open a client → Notes mode → Section 6 Diagnoses → click **+ Add Diagnosis** → confirm:
+- New category chips appear (Dementia & Neurocognitive, Trauma & Stressor-Related, Substance Use, Eating Disorders, Sleep-Wake)
+- Searching "korsakoff", "dravet", "ftd", "anorexia", "ocd hoarding" returns results
+- Existing reports with previously-saved diagnoses (e.g. ASD Level 2, ADHD Combined) still load and display correctly
 
