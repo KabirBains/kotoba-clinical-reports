@@ -2,50 +2,49 @@
 
 ## Goal
 
-Replace `src/lib/diagnosis-library.ts` with the expanded library from the uploaded `diagnosis_picker-2.jsx` (~250+ DSM-5 / ICD-10 entries across new categories), while keeping the existing `DiagnosisPicker.tsx` UI untouched.
+Stop "Support level: [Level]" from appearing inside the AI-generated prose body in Section 14 (and elsewhere). Today it leaks in as `<> Support level: Fully Dependent` at the start of 14.3 paragraphs. The structured row UI already shows "Support level: …" as a clean italic label above each paragraph (ReportMode line 742-746), so the duplicate inside the prose is redundant noise.
 
-## Why not replace the picker UI
+## Root cause
 
-The uploaded file's `DiagnosisPicker` component is a standalone JSX prototype using inline styles and hard-coded fonts. The project's current `src/components/editor/DiagnosisPicker.tsx` already implements the **same behaviour** (search by name/ICD/DSM/keyword, category chips, primary/secondary toggle, expandable description, custom diagnosis form) using Tailwind + shadcn, integrated with `notes` JSONB persistence and `DiagnosisInstance` types. Swapping it would regress styling and break props/state wiring. Only the data needs updating.
+Two cooperating triggers in `supabase/functions/generate-report/index.ts`:
 
-## Change — `src/lib/diagnosis-library.ts`
+1. The cached `SUB_AREA_RULES` block (lines 341-385) explicitly tells the model to output `Support level: [level]` after every `<<SUB_AREA: …>>` delimiter.
+2. The `D2_support_level_declarations` rubric criterion (lines 254-257) actively penalises sections that omit it.
 
-Replace the `DIAGNOSIS_LIBRARY` array with the full list extracted from the uploaded file (lines 14–approx 580 of the upload). Keep:
+Even on per-row JSON domains (14.x), the model echoes the `SUPPORT LEVEL:` value from the row input back into the prose. The `<>` prefix is a leftover delimiter artifact.
 
-- The existing `DiagnosisEntry` interface (`id`, `name`, `icd10`, `dsm5`, `category`, `description`, `isCustom?`)
-- The existing `DiagnosisInstance` interface (`isPrimary?`)
-- The existing `DIAGNOSIS_CATEGORIES` derivation (`[...new Set(...)].sort()`) — auto-picks up the new categories
+## Changes
 
-New categories that will appear in the filter chips automatically:
+### 1. `supabase/functions/generate-report/index.ts`
+- **Remove** the `D2_support_level_declarations` criterion push (lines 254-257).
+- **Rewrite** `SUB_AREA_RULES` example blocks (lines 346-352, 366-381) to drop every `Support level: …` line. The `<<SUB_AREA: [Name]>>` delimiter stays — it's still needed for sub-area separation.
+- **Add** an explicit negative rule inside `SUB_AREA_RULES`: *"Do NOT write 'Support level: …' anywhere in your prose. The support level is rendered separately by the UI."*
+- **Update** the per-row domain prompt in `src/pages/ClientEditor.tsx` (around line 896) — append: *"Do NOT echo the SUPPORT LEVEL value in your prose. It is rendered separately."*
 
-```
-Neurodevelopmental, Intellectual Disability, Psychosocial,
-Anxiety, Trauma & Stressor-Related, Obsessive-Compulsive,
-Substance Use, Eating Disorders, Sleep-Wake, Personality,
-Acquired Brain Injury, Neurological, Dementia & Neurocognitive,
-Muscular/Physical, Genetic, Sensory, Medical
-```
+### 2. `src/lib/utils.ts` — defensive cleanup for already-stored content
+Strengthen `stripMarkdown` so legacy/cached content also renders clean:
+- Replace the existing narrow regex on line 52 with a broader version that strips any leading `Support level:` line at the start of a block, with or without a `<>` / `<` prefix and any whitespace:
+  ```
+  /^[\s<>]*support level\s*:\s*[^\n]*\n?/gim
+  ```
+- Keep the existing `<>` delimiter cleanup for other artifacts.
 
-Order rationale within file: grouped by category banner comments (matching the upload's structure) so future edits stay readable.
+### 3. `src/components/editor/ReportMode.tsx`
+Run the prose through a tiny inline cleaner before the `dangerouslySetInnerHTML` for both:
+- the per-row path (`entry.text`, line 751)
+- the legacy prose path (`proseText`, line 769)
 
-## Backwards compatibility
+This guarantees existing reports already saved in `notes` JSONB display cleanly, without needing regeneration.
 
-- All existing IDs in the current library (`asd_1`, `adhd_combined`, `gad`, `ptsd`, `bpd`, `tbi`, `ms`, `parkinsons`, etc.) are preserved in the new library — saved diagnoses on existing reports keep resolving.
-- A handful of IDs in the upload have **slight code refinements** (e.g. `mdd_single` ICD `F32` → `F32.9`, `id_mild` DSM `319` → `317`). This is a clinical accuracy upgrade — existing saved diagnoses just display the corrected codes on next load (the codes aren't user-editable post-add).
-- One ID collision risk: the upload uses `cptsd` for Complex PTSD and the current file uses `cptsd` too — same ID, same intent. Verified safe.
-- Where the upload introduces *new* level/subtype variants under an existing ICD (e.g. multiple `epilepsy_*` entries replacing the single `epilepsy`), the original `id: "epilepsy"` will be preserved as well to avoid orphaning saved data, even if the upload omits it. Same approach for `ms`, `stroke_left`/`stroke_right`, `sci_para`/`sci_tetra`, `spina_bifida`. Net result: union of old + new IDs.
+## What's NOT changed
 
-## What is NOT changed
-
-- `src/components/editor/DiagnosisPicker.tsx` — untouched
-- `DiagnosisEntry` / `DiagnosisInstance` types — unchanged
-- Persistence keys, AI prompts, methodology aggregator, report assembly — unaffected
-- No edge functions touched
+- The clean italic "Support level: {entry.rating}" label rendered by the UI (line 742-746) stays — that's the legitimate display.
+- The `<<SUB_AREA: [Name]>>` delimiter mechanism stays.
+- No changes to data, types, recommendations, assessments, methodology, or `assemble-report` (the .docx exporter reads the same cleaned text).
 
 ## Verification
 
-Open a client → Notes mode → Section 6 Diagnoses → click **+ Add Diagnosis** → confirm:
-- New category chips appear (Dementia & Neurocognitive, Trauma & Stressor-Related, Substance Use, Eating Disorders, Sleep-Wake)
-- Searching "korsakoff", "dravet", "ftd", "anorexia", "ocd hoarding" returns results
-- Existing reports with previously-saved diagnoses (e.g. ASD Level 2, ADHD Combined) still load and display correctly
+1. Open the current client → Report Mode → Section 14.3. The previously-saved prose should no longer start with `<> Support level: Fully Dependent` (cleaned at render time).
+2. Regenerate Section 14.3 and any other 14.x domain. Confirm the prose body contains no `Support level: …` line; the italic label above each row is unchanged.
+3. Download the .docx and confirm the same.
 
