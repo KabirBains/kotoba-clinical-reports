@@ -1100,6 +1100,11 @@ export default function ClientEditor() {
 
                     try {
                       const diagnosesText = diagnoses.map(d => d.name).join(", ") || diagnosis;
+                      // max_passes: 1 — thread-narrative's internal Claude calls take ~45-60s
+                      // each. With max_passes: 2 or 3, total execution exceeds Supabase's
+                      // 150s edge function timeout (observed ~150.2s failures in v1/v2/v4/v5/v6).
+                      // Single pass completes reliably in ~60s. Multi-pass returns once
+                      // threading is refactored to span multiple client invocations.
                       const { data: threadData, error: threadError } = await supabase.functions.invoke("thread-narrative", {
                         method: "POST",
                         body: {
@@ -1107,7 +1112,7 @@ export default function ClientEditor() {
                           participant_name: participantFullName,
                           participant_first_name: participantFirstName,
                           diagnoses_context: diagnosesText,
-                          max_passes: 3,
+                          max_passes: 1,
                         },
                       });
 
