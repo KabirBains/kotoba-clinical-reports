@@ -117,7 +117,7 @@ export function EditorSidebar({ notes, assessments, recommendations, scrollConta
         "bg-card border-r border-border/50 flex flex-col shrink-0",
         isMobile
           ? "fixed left-0 top-14 bottom-0 z-20 w-64 shadow-lg"
-          : "w-60 sticky top-14 h-[calc(100vh-3.5rem)] self-start"
+          : "w-64 sticky top-14 h-[calc(100vh-3.5rem)] self-start"
       )}
     >
       {isMobile && (
@@ -127,7 +127,7 @@ export function EditorSidebar({ notes, assessments, recommendations, scrollConta
           </Button>
         </div>
       )}
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 min-h-0">
         <nav className="py-2 px-1">
           {TEMPLATE_SECTIONS.map((section) => {
             const isFc = section.id === "functional-capacity";
@@ -173,7 +173,7 @@ export function EditorSidebar({ notes, assessments, recommendations, scrollConta
                   <span className="font-mono w-5 shrink-0 text-[10px] opacity-60">
                     {section.number}
                   </span>
-                  <span className="flex-1 truncate leading-tight">
+                  <span className="flex-1 leading-tight break-words text-left">
                     {getSidebarTitle(section.id, section.title)}
                   </span>
                   {hasContent && !isFc && !isAssessments && !isRecs && (
@@ -214,7 +214,7 @@ export function EditorSidebar({ notes, assessments, recommendations, scrollConta
                       <span className="font-mono w-6 shrink-0 text-[10px] opacity-50">
                         {sub.number}
                       </span>
-                      <span className="flex-1 truncate leading-tight">
+                      <span className="flex-1 leading-tight break-words text-left">
                         {getSidebarTitle(sub.id, sub.title)}
                       </span>
                       {subHasContent && (
@@ -241,7 +241,7 @@ export function EditorSidebar({ notes, assessments, recommendations, scrollConta
                       <span className="font-mono w-6 shrink-0 text-[10px] opacity-50">
                         15.{i + 1}
                       </span>
-                      <span className="flex-1 truncate leading-tight">
+                      <span className="flex-1 leading-tight break-words text-left">
                         {a.name}
                       </span>
                     </button>
@@ -265,7 +265,7 @@ export function EditorSidebar({ notes, assessments, recommendations, scrollConta
                       <span className="font-mono w-6 shrink-0 text-[10px] opacity-50">
                         18.{i + 1}
                       </span>
-                      <span className="flex-1 truncate leading-tight">
+                      <span className="flex-1 leading-tight break-words text-left">
                         {r.supportName}
                       </span>
                     </button>
