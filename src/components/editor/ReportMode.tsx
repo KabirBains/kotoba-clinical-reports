@@ -1410,6 +1410,64 @@ export function ReportMode(props: ReportModeProps) {
               );
             }
 
+            // Section 17 — Risks if No Funding: render as 3-6 bolded-headline
+            // paragraphs. The edge function returns a framing sentence followed
+            // by numbered or **bolded** risks; we split on those markers and
+            // render one risk per paragraph with the headline emphasised. If
+            // the model returns flat prose, we fall through to the default
+            // single-block renderer.
+            if (section.id === "functional-impact") {
+              const content = reportContent[section.id];
+              if (!content) return null;
+              const cleaned = stripMarkdown(content).trim();
+
+              // Split on numbered headlines (1., 2., 3. ...) or markdown bold
+              // headlines (**Risk: X**) at line starts. Each chunk becomes a
+              // paragraph with its leading headline bolded.
+              const blocks = cleaned.split(/\n(?=\s*(?:\d+\.|\*\*|<strong>))/g).map(b => b.trim()).filter(Boolean);
+
+              const renderBlock = (block: string, idx: number) => {
+                // Match a leading headline: "1. Title — body" or "**Title** body"
+                const numberedMatch = block.match(/^(\s*\d+\.\s*)([^\n—:.\-]+[—:\-])?\s*(.*)$/s);
+                const boldMatch = block.match(/^\s*\*\*(.+?)\*\*\s*(.*)$/s);
+                if (boldMatch) {
+                  const [, headline, body] = boldMatch;
+                  return (
+                    <p key={idx} className="mb-3">
+                      <strong>{headline}</strong>
+                      {body ? ` ${body}` : ""}
+                    </p>
+                  );
+                }
+                if (numberedMatch && numberedMatch[2]) {
+                  const [, num, headline, body] = numberedMatch;
+                  return (
+                    <p key={idx} className="mb-3">
+                      <strong>{num}{headline.replace(/[—:\-]\s*$/, "")}</strong>
+                      {headline.match(/[—:\-]\s*$/) ? headline.match(/[—:\-]\s*$/)![0] : ""}
+                      {body ? ` ${body}` : ""}
+                    </p>
+                  );
+                }
+                return <p key={idx} className="mb-3">{block}</p>;
+              };
+
+              return (
+                <div key={section.id} className="space-y-3">
+                  <h2 className="text-base font-semibold text-foreground border-b border-border/30 pb-2">
+                    {section.number}. {section.title}
+                  </h2>
+                  <div
+                    className="prose prose-sm max-w-none text-foreground/90"
+                    contentEditable
+                    suppressContentEditableWarning
+                  >
+                    {blocks.length > 0 ? blocks.map(renderBlock) : <p>{cleaned}</p>}
+                  </div>
+                </div>
+              );
+            }
+
             const content = reportContent[section.id];
             if (!content) return null;
             return (
@@ -1421,7 +1479,7 @@ export function ReportMode(props: ReportModeProps) {
                   className="prose prose-sm max-w-none text-foreground/90"
                   contentEditable
                   suppressContentEditableWarning
-                  dangerouslySetInnerHTML={{ __html: content }}
+                  dangerouslySetInnerHTML={{ __html: stripMarkdown(content) }}
                 />
               </div>
             );
