@@ -1,5 +1,6 @@
 export const TEMPLATE_SECTIONS = [
   { id: "participant-details", number: "1", title: "Participant & Report Details" },
+  { id: "decision-maker", number: "1a", title: "Participant Decision Maker" },
   { id: "intervention-team", number: "2", title: "Intervention Team & Current Supports" },
   { id: "reason-referral", number: "3", title: "Reason for Referral" },
   { id: "background", number: "4", title: "Background Information" },
