@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { TEMPLATE_SECTIONS } from "@/lib/constants";
 import { type AssessmentInstance } from "@/lib/assessment-library";
 import { type RecommendationInstance } from "@/lib/recommendations-library";
-import { CheckCircle2, ChevronDown, ChevronRight, Menu, X } from "lucide-react";
+import { CheckCircle2, ChevronDown, ChevronRight, Menu, X, ChevronLeft, PanelLeftOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,7 @@ interface EditorSidebarProps {
   assessments: AssessmentInstance[];
   recommendations: RecommendationInstance[];
   scrollContainerRef: React.RefObject<HTMLElement | null>;
+  onWidthChange?: (px: number) => void;
 }
 
 function getSidebarTitle(id: string, title: string) {
