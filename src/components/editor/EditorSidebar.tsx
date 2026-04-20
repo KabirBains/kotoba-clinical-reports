@@ -173,7 +173,7 @@ export function EditorSidebar({ notes, assessments, recommendations, scrollConta
                   <span className="font-mono w-5 shrink-0 text-[10px] opacity-60">
                     {section.number}
                   </span>
-                  <span className="flex-1 truncate leading-tight">
+                  <span className="flex-1 leading-tight break-words text-left">
                     {getSidebarTitle(section.id, section.title)}
                   </span>
                   {hasContent && !isFc && !isAssessments && !isRecs && (
