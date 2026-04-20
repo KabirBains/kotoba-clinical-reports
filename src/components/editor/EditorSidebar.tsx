@@ -214,7 +214,7 @@ export function EditorSidebar({ notes, assessments, recommendations, scrollConta
                       <span className="font-mono w-6 shrink-0 text-[10px] opacity-50">
                         {sub.number}
                       </span>
-                      <span className="flex-1 truncate leading-tight">
+                      <span className="flex-1 leading-tight break-words text-left">
                         {getSidebarTitle(sub.id, sub.title)}
                       </span>
                       {subHasContent && (
@@ -241,7 +241,7 @@ export function EditorSidebar({ notes, assessments, recommendations, scrollConta
                       <span className="font-mono w-6 shrink-0 text-[10px] opacity-50">
                         15.{i + 1}
                       </span>
-                      <span className="flex-1 truncate leading-tight">
+                      <span className="flex-1 leading-tight break-words text-left">
                         {a.name}
                       </span>
                     </button>
@@ -265,7 +265,7 @@ export function EditorSidebar({ notes, assessments, recommendations, scrollConta
                       <span className="font-mono w-6 shrink-0 text-[10px] opacity-50">
                         18.{i + 1}
                       </span>
-                      <span className="flex-1 truncate leading-tight">
+                      <span className="flex-1 leading-tight break-words text-left">
                         {r.supportName}
                       </span>
                     </button>
