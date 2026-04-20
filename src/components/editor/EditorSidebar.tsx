@@ -117,7 +117,7 @@ export function EditorSidebar({ notes, assessments, recommendations, scrollConta
         "bg-card border-r border-border/50 flex flex-col shrink-0",
         isMobile
           ? "fixed left-0 top-14 bottom-0 z-20 w-64 shadow-lg"
-          : "w-60 sticky top-14 h-[calc(100vh-3.5rem)] self-start"
+          : "w-64 sticky top-14 h-[calc(100vh-3.5rem)] self-start"
       )}
     >
       {isMobile && (
@@ -127,7 +127,7 @@ export function EditorSidebar({ notes, assessments, recommendations, scrollConta
           </Button>
         </div>
       )}
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 min-h-0">
         <nav className="py-2 px-1">
           {TEMPLATE_SECTIONS.map((section) => {
             const isFc = section.id === "functional-capacity";
