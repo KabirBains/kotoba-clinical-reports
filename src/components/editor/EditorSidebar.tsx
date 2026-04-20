@@ -32,13 +32,35 @@ function hasSectionContent(sectionId: string, notes: Record<string, string>): bo
   );
 }
 
-export function EditorSidebar({ notes, assessments, recommendations, scrollContainerRef }: EditorSidebarProps) {
+const COLLAPSED_KEY = "kotoba-sidebar-collapsed";
+
+export function EditorSidebar({ notes, assessments, recommendations, scrollContainerRef, onWidthChange }: EditorSidebarProps) {
   const isMobile = useIsMobile();
   const [open, setOpen] = useState(!isMobile);
+  const [collapsed, setCollapsed] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem(COLLAPSED_KEY) === "1";
+  });
   const [activeSectionId, setActiveSectionId] = useState<string>("");
   const [fcExpanded, setFcExpanded] = useState(true);
   const [assessmentsExpanded, setAssessmentsExpanded] = useState(true);
   const [recsExpanded, setRecsExpanded] = useState(true);
+
+  // Persist collapsed state and notify parent of current width.
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(COLLAPSED_KEY, collapsed ? "1" : "0");
+    }
+  }, [collapsed]);
+
+  useEffect(() => {
+    if (!onWidthChange) return;
+    if (isMobile) {
+      onWidthChange(0);
+    } else {
+      onWidthChange(collapsed ? 32 : 256);
+    }
+  }, [collapsed, isMobile, onWidthChange]);
 
   const updateActiveSection = useCallback(() => {
     const container = scrollContainerRef.current;
