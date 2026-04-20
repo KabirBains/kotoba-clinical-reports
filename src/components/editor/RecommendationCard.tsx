@@ -140,23 +140,35 @@ export function RecommendationCard({ rec, index, onUpdate, onRemove, onSuggestJu
                   className="w-full h-9 px-3 text-xs bg-muted/30 border border-border/50 rounded-md focus:outline-none focus:ring-1 focus:ring-accent/50"
                 />
               </div>
-              <div className="min-w-[100px]">
-                <label className="text-[11px] font-semibold text-muted-foreground block mb-1">
-                  Support Ratio
-                </label>
-                <Select value={rec.ratio} onValueChange={(val) => updateField("ratio", val)}>
-                  <SelectTrigger className="h-9 text-xs bg-background border-border/60">
-                    <SelectValue placeholder="Select" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {["1:1", "1:2", "2:1", "Group", "N/A"].map((r) => (
-                      <SelectItem key={r} value={r} className="text-xs">
-                        {r}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              {/*
+                Support Ratio — only rendered for support items where the
+                ratio is a meaningful decision variable (i.e., support
+                worker items like Personal Care, Community Access, SIL).
+                Hidden for professional/clinician services (OT, Physio,
+                Psychology, Speech, etc.) where the 1:1 clinician-to-
+                participant ratio is implicit, and for coordination services
+                which are hours-based. See SupportItem.hideRatio in
+                recommendations-library.ts for the flagged items.
+              */}
+              {!support?.hideRatio && (
+                <div className="min-w-[100px]">
+                  <label className="text-[11px] font-semibold text-muted-foreground block mb-1">
+                    Support Ratio
+                  </label>
+                  <Select value={rec.ratio} onValueChange={(val) => updateField("ratio", val)}>
+                    <SelectTrigger className="h-9 text-xs bg-background border-border/60">
+                      <SelectValue placeholder="Select" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {["1:1", "1:2", "2:1", "Group", "N/A"].map((r) => (
+                        <SelectItem key={r} value={r} className="text-xs">
+                          {r}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </div>
           ) : (
             <div className="max-w-[300px]">
