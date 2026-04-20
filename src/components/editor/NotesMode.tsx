@@ -11,6 +11,7 @@ import { DiagnosisPicker } from "@/components/editor/DiagnosisPicker";
 import { MethodologyAggregator } from "@/components/editor/MethodologyAggregator";
 import { ParticipantGoals, type GoalInstance } from "@/components/editor/ParticipantGoals";
 import { ParticipantReportDetails } from "@/components/editor/ParticipantReportDetails";
+import { DecisionMakerSection } from "@/components/editor/DecisionMakerSection";
 import { ChevronDown, ChevronRight, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
