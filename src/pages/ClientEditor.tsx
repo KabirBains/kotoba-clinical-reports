@@ -1419,9 +1419,19 @@ export default function ClientEditor() {
       {/* Editor with sidebar */}
       <div className="flex-1 flex overflow-hidden">
         {mode === "notes" && (
-          <EditorSidebar notes={notes} assessments={assessments} recommendations={recommendations} scrollContainerRef={mainRef} />
+          <EditorSidebar
+            notes={notes}
+            assessments={assessments}
+            recommendations={recommendations}
+            scrollContainerRef={mainRef}
+            onWidthChange={setSidebarWidth}
+          />
         )}
-        <main ref={mainRef} className="flex-1 overflow-auto">
+        <main
+          ref={mainRef}
+          className="flex-1 overflow-auto transition-[margin] duration-200"
+          style={{ marginLeft: mode === "notes" && !isMobile ? sidebarWidth : 0 }}
+        >
           {mode === "notes" ? (
             <NotesMode
               notes={notes}
