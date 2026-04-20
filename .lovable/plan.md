@@ -2,90 +2,45 @@
 
 ## Goal
 
-Three UI/queue changes to repurpose existing report sections and add one new section. The edge function (`generate-report`) has already been updated server-side to handle the new `section_name` values.
+Make the left sidebar truly persistent on screen — it should follow the viewport as the user scrolls down the page (not just sit at the top and scroll out of view). Also add a collapse/expand toggle so users can hide the sidebar and bring it back.
 
-## Change 1 — Rename "Functional Impact Summary" → "Risks if No Funding"
+## Root cause
 
-**`src/lib/constants.ts`** — section 17:
-- Keep `id: "functional-impact"` (preserves saved data); update `title` to **"Risks if No Funding"**.
+Today `EditorSidebar` uses `sticky top-14 h-[calc(100vh-3.5rem)]` and lives inside `ClientEditor`'s flex layout. The page itself scrolls the document body — `sticky` only works as long as the sidebar's parent is in view. Once the user scrolls past the parent's bottom, the sidebar scrolls away with it.
 
-**`src/components/editor/NotesMode.tsx`** (`SectionPanel`):
-- Add a `placeholder` prop and pass a custom placeholder when `section.id === "functional-impact"`:
-  > "Enter context for the risks — recommendations from earlier sections, critical safety concerns, and any specific deteriorations you want to anchor the risks to. The edge function will produce 3-6 professor-style risks in the output."
+The reliable fix: switch to `position: fixed` so the sidebar is anchored to the viewport regardless of page scroll position, and offset the main content to compensate.
 
-**`src/pages/ClientEditor.tsx`** — generation routing:
-- Update `SECTION_LABELS["functional-impact"]` → `"Section 17 - Risks if No Funding"`.
-- Add to `SECTION_NAME_MAP`: `"functional-impact": "section-risks-if-not-funded"`.
-- In the top-level loop (line 628), add a per-section override for `max_tokens`: when `sectionId === "functional-impact"`, push with `maxTokens: 1500` (instead of the default 2000) and a **simplified prompt** that just passes the clinician's input — no template guidance, no rubric (the edge function owns those rules now). The prompt body is just the raw clinician observations under a brief header.
+## Changes
 
-**`src/components/editor/ReportMode.tsx`**:
-- Update the section heading rendering for `section15` → label "Risks if No Funding" (line 496 sources from `s("functional-impact")`, no key change needed).
-- Render output: split returned prose on numbered/bolded headlines; render one risk per paragraph with the headline `<strong>`. If the model returns plain numbered prose, fall back to the existing paragraph rendering. Keep `dangerouslySetInnerHTML` + `stripMarkdown` pipeline intact.
+### 1. `src/components/editor/EditorSidebar.tsx` — fixed positioning + collapse
 
-## Change 2 — Rename "Review & Monitoring Plan" → "Barriers to Accessing/Utilising Supports"
+- Change desktop positioning from `sticky top-14 h-[calc(100vh-3.5rem)] self-start` to `fixed left-0 top-14 bottom-0` (anchored to viewport, full-height minus the app header).
+- Add a controlled `collapsed` state (desktop only — mobile keeps its existing open/closed sheet behaviour).
+- When collapsed: render a narrow 12px-wide rail with just an expand button (chevron-right icon) so the user can bring it back. Width transitions smoothly (`transition-all duration-200`).
+- When expanded: render the full `w-64` sidebar with a small collapse button (chevron-left icon) in the top-right corner of the sidebar header.
+- Persist the collapsed preference in `localStorage` under key `kotoba-sidebar-collapsed` so it survives reloads and route changes.
+- Expose the current width via a prop callback `onWidthChange?: (px: number) => void` so the parent can offset main content.
 
-**`src/lib/constants.ts`** — section 19:
-- Keep `id: "review-monitoring"` (preserves saved data); update `title` to **"Barriers to Accessing/Utilising Supports"**.
+### 2. `src/pages/ClientEditor.tsx` — offset main content
 
-**`src/components/editor/NotesMode.tsx`**:
-- Custom placeholder when `section.id === "review-monitoring"`:
-  > "Enter observations about what limits this participant's ability to access or benefit from supports. Examples: communication barriers, cognitive/behavioural barriers, transport/mobility, carer burnout, no extended family, housing instability, previous negative service experiences, cultural/linguistic factors."
+- Track sidebar width in local state (`sidebarWidth`, default 256px desktop / 0 mobile).
+- Pass `onWidthChange={setSidebarWidth}` to `EditorSidebar`.
+- Apply a left margin/padding to the main content wrapper equal to `sidebarWidth` on desktop only (mobile sidebar is overlay, no offset needed). Use inline style `style={{ marginLeft: isMobile ? 0 : sidebarWidth }}` with a `transition-[margin] duration-200` class so the content slides smoothly when the sidebar collapses/expands.
+- Remove the existing flex layout dependency between sidebar and main (the sidebar is now `fixed`, so it's out of normal flow).
 
-**`src/pages/ClientEditor.tsx`**:
-- Add to `SECTION_NAME_MAP`: `"review-monitoring": "section-barriers-to-supports"`.
-- In the top-level loop, override for `review-monitoring`: `maxTokens: 1000`, simplified prompt (raw clinician input only, no template guidance/rubric).
+## What's NOT changed
 
-**`src/components/editor/ReportMode.tsx`**:
-- Section heading label updated for `section18` → "Barriers to Accessing/Utilising Supports". Renders as standard prose paragraph (no special formatting).
-
-## Change 3 — New section: "Participant Decision Maker"
-
-**`src/lib/constants.ts`**:
-- Insert new section `{ id: "decision-maker", number: "1a", title: "Participant Decision Maker" }` immediately after `participant-details` (index 1). Renumbering the whole template would break saved data and many references — using `1a` keeps the placement requirement satisfied without touching downstream IDs.
-
-**New component `src/components/editor/DecisionMakerSection.tsx`**:
-Structured form following the `ParticipantReportDetails` pattern, with three inputs persisted under prefixed keys (so they don't pollute the generic notes scan):
-- `__decisionMaker__primary` — text field: "Who currently makes decisions for this participant?"
-- `__decisionMaker__limitedDomains` — multi-select chips with options: health, finances, accommodation, legal, daily living, medication, complex life decisions
-- `__decisionMaker__observations` — textarea: "Additional observations about capacity"
-
-Plus a derived `notes["decision-maker"]` rollup string (formatted observations) so the existing top-level generation loop picks it up automatically. The rollup is recomputed on any input change.
-
-**`src/components/editor/NotesMode.tsx`**:
-- Render `<DecisionMakerSection>` when `section.id === "decision-maker"`, branching just like the other structured sections (assessments, recommendations, etc).
-
-**`src/pages/ClientEditor.tsx`**:
-- Add to `SECTION_NAME_MAP`: `"decision-maker": "section-decision-maker"`.
-- Override in the top-level loop: `maxTokens: 800`, simplified prompt body that just contains the formatted clinician inputs.
-- Add `SECTION_LABELS["decision-maker"]` for the quality checker.
-
-**`src/components/editor/ReportMode.tsx`**:
-- Add render slot for the decision-maker output between Participant Details and Methodology in the report layout. Reads from `notes["decision-maker"]` after generation overwrites it (same flow as other top-level sections).
-
-## What is NOT changed
-
-- `id` values for `functional-impact` and `review-monitoring` — preserved so existing saved reports load.
-- Edge functions, `assemble-report`, recommendations, assessments, methodology aggregator, goals — untouched.
-- The "Limitations & Barriers to Progress" section (16) — left as-is per the request scope.
-- No client-side prompt rules added for the three repurposed/new sections — the edge function owns the prose rules.
-
-## Server-side wins (verification only, no code)
-
-After shipping, regenerate a test report and spot-check:
-1. Background section contains the permanence clause naturally woven in.
-2. Recommendations / risk sections use "The writer recommends" instead of "The assessor recommends".
-3. The protected phrase "in the assessor's clinical opinion" still appears for speculation attribution.
+- Mobile sidebar behaviour (overlay sheet with hamburger) stays as-is.
+- Active section tracking, scroll-spy, group expansion logic — untouched.
+- Header (`top-14` offset) — unchanged.
+- All other layout, no other components touched.
 
 ## Verification
 
-1. Open a client → Notes mode. Confirm:
-   - Section 17 title is "Risks if No Funding" with new placeholder.
-   - Section 19 title is "Barriers to Accessing/Utilising Supports" with new placeholder.
-   - New "1a Participant Decision Maker" section appears after Participant Details with the three structured inputs.
-2. Add input to all three sections, click "Generate Full Report".
-3. Switch to Report mode. Confirm:
-   - Risks section renders 3-6 bolded-headline risks, one per paragraph.
-   - Barriers section renders as a single 4-6 sentence paragraph.
-   - Decision Maker section renders 2-4 sentences in the correct position.
-4. Download .docx and confirm all three sections export correctly.
+1. Open a client → Notes mode. The sidebar should be visible at the left edge.
+2. Scroll the page all the way to the bottom — the sidebar stays pinned to the viewport the entire time, never scrolls out of view.
+3. Click the collapse chevron (top-right of sidebar) — sidebar shrinks to a narrow rail with just an expand chevron; main content slides left to reclaim the space.
+4. Click the expand chevron — sidebar returns to full width; main content slides right.
+5. Reload the page — collapsed/expanded state persists.
+6. Resize to mobile width — desktop collapse button hidden; existing hamburger overlay behaviour still works.
 
