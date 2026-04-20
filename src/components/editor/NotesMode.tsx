@@ -243,12 +243,30 @@ export function NotesMode({ notes, onUpdateNote, assessments, onUpdateAssessment
             })()}
 
             {/* Recommendations section */}
-            {section.id === "recommendations" && (
-              <RecommendationsSection
-                recommendations={recommendations}
-                onUpdateRecommendations={onUpdateRecommendations}
-              />
-            )}
+            {section.id === "recommendations" && (() => {
+              // Reuse the same participant-field extraction pattern used for
+              // AssessmentsSection above. Passed into RecommendationsSection
+              // so the "Suggest with AI" button on each RecommendationCard
+              // can call generate-report with full participant + notes
+              // context for high-quality, cross-section-anchored drafts.
+              const rawGender = notes["__participant__genderIdentity"] || "";
+              const customGender = notes["__participant__genderCustom"] || "";
+              const sex = (rawGender === "Self-described" ? customGender : rawGender).trim();
+              const pronouns = (notes["__participant__pronouns"] || "").trim();
+              const fullName = notes["__participant__fullName"] || clientName || "";
+              return (
+                <RecommendationsSection
+                  recommendations={recommendations}
+                  onUpdateRecommendations={onUpdateRecommendations}
+                  clinicianNotes={notes}
+                  diagnoses={diagnoses}
+                  participantName={fullName}
+                  participantFirstName={fullName.split(/\s+/)[0]}
+                  participantSex={sex || undefined}
+                  participantPronouns={pronouns || undefined}
+                />
+              );
+            })()}
 
             {/* Diagnoses section — replaced with DiagnosisPicker */}
             {section.id === "diagnoses" && (
