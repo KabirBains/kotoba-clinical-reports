@@ -11,6 +11,7 @@ import { DiagnosisPicker } from "@/components/editor/DiagnosisPicker";
 import { MethodologyAggregator } from "@/components/editor/MethodologyAggregator";
 import { ParticipantGoals, type GoalInstance } from "@/components/editor/ParticipantGoals";
 import { ParticipantReportDetails } from "@/components/editor/ParticipantReportDetails";
+import { DecisionMakerSection } from "@/components/editor/DecisionMakerSection";
 import { ChevronDown, ChevronRight, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -166,12 +167,14 @@ function SectionPanel({
   title,
   value,
   onChange,
+  placeholder,
 }: {
   id: string;
   number: string;
   title: string;
   value: string;
   onChange: (val: string) => void;
+  placeholder?: string;
 }) {
   const [open, setOpen] = useState(true);
   const hasContent = (typeof value === 'string' ? value.trim() : '').length > 0;
@@ -198,7 +201,7 @@ function SectionPanel({
           <textarea
             value={value || ""}
             onChange={(e) => onChange(e.target.value)}
-            placeholder="Type your notes here... dot points, rough observations, anything."
+            placeholder={placeholder || "Type your notes here... dot points, rough observations, anything."}
             className="w-full min-h-[120px] p-3 text-sm bg-muted/30 border border-border/50 rounded-md resize-y focus:outline-none focus:ring-1 focus:ring-accent/50 focus:border-accent/50 placeholder:text-muted-foreground/50"
           />
         </div>
@@ -206,6 +209,14 @@ function SectionPanel({
     </div>
   );
 }
+
+// Per-section custom placeholders for repurposed sections. Empty string = use default.
+const SECTION_PLACEHOLDERS: Record<string, string> = {
+  "functional-impact":
+    "Enter context for the risks — recommendations from earlier sections, critical safety concerns, and any specific deteriorations you want to anchor the risks to. The edge function will produce 3-6 professor-style risks in the output.",
+  "review-monitoring":
+    "Enter observations about what limits this participant's ability to access or benefit from supports. Examples: communication barriers, cognitive/behavioural barriers, transport/mobility, carer burnout, no extended family, housing instability, previous negative service experiences, cultural/linguistic factors.",
+};
 
 export function NotesMode({ notes, onUpdateNote, assessments, onUpdateAssessments, recommendations, onUpdateRecommendations, diagnoses, onUpdateDiagnoses, collateralInterviews, goals, onUpdateGoals, nilGoals, onToggleNilGoals, clientName, ndisNumber, clinicianProfile }: NotesModeProps) {
   return (
@@ -280,14 +291,20 @@ export function NotesMode({ notes, onUpdateNote, assessments, onUpdateAssessment
               />
             )}
 
-            {/* Top-level sections (not functional-capacity, assessments, recommendations, diagnoses, methodology, participant-goals, or participant-details) get a plain textarea */}
-            {section.id !== "functional-capacity" && section.id !== "assessments" && section.id !== "recommendations" && section.id !== "diagnoses" && section.id !== "methodology" && section.id !== "participant-goals" && section.id !== "participant-details" && (
+            {/* Section 1a — Participant Decision Maker */}
+            {section.id === "decision-maker" && (
+              <DecisionMakerSection notes={notes} onUpdateNote={onUpdateNote} />
+            )}
+
+            {/* Top-level sections (not functional-capacity, assessments, recommendations, diagnoses, methodology, participant-goals, participant-details, or decision-maker) get a plain textarea */}
+            {section.id !== "functional-capacity" && section.id !== "assessments" && section.id !== "recommendations" && section.id !== "diagnoses" && section.id !== "methodology" && section.id !== "participant-goals" && section.id !== "participant-details" && section.id !== "decision-maker" && (
               <SectionPanel
                 id={section.id}
                 number={section.number}
                 title={section.title}
                 value={notes[section.id] ?? ""}
                 onChange={(val) => onUpdateNote(section.id, val)}
+                placeholder={SECTION_PLACEHOLDERS[section.id]}
               />
             )}
 

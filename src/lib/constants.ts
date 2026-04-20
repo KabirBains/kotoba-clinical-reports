@@ -1,5 +1,6 @@
 export const TEMPLATE_SECTIONS = [
   { id: "participant-details", number: "1", title: "Participant & Report Details" },
+  { id: "decision-maker", number: "1a", title: "Participant Decision Maker" },
   { id: "intervention-team", number: "2", title: "Intervention Team & Current Supports" },
   { id: "reason-referral", number: "3", title: "Reason for Referral" },
   { id: "background", number: "4", title: "Background Information" },
@@ -29,9 +30,9 @@ export const TEMPLATE_SECTIONS = [
   },
   { id: "assessments", number: "15", title: "Assessments" },
   { id: "limitations-barriers", number: "16", title: "Limitations & Barriers to Progress" },
-  { id: "functional-impact", number: "17", title: "Functional Impact Summary" },
+  { id: "functional-impact", number: "17", title: "Risks if No Funding" },
   { id: "recommendations", number: "18", title: "Recommendations" },
-  { id: "review-monitoring", number: "19", title: "Review & Monitoring Plan" },
+  { id: "review-monitoring", number: "19", title: "Barriers to Accessing/Utilising Supports" },
 ] as const;
 
 export type TemplateSection = (typeof TEMPLATE_SECTIONS)[number];
