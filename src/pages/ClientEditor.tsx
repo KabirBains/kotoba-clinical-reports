@@ -624,7 +624,22 @@ export default function ClientEditor() {
                     "social-environment": "section10",
                     "typical-week": "section11",
                     "risk-safety": "section12",
+                    // Repurposed / new sections — handled by edge function with
+                    // dedicated section_name routing and bespoke prompt rules.
+                    "decision-maker": "section-decision-maker",
+                    "functional-impact": "section-risks-if-not-funded",
+                    "review-monitoring": "section-barriers-to-supports",
                   };
+
+                  // Per-section overrides (max_tokens). Sections owned by the
+                  // edge function's bespoke prose rules use simplified prompts
+                  // and tighter token budgets.
+                  const SECTION_MAX_TOKENS: Record<string, number> = {
+                    "decision-maker": 800,
+                    "functional-impact": 1500,
+                    "review-monitoring": 1000,
+                  };
+                  const EDGE_OWNED_SECTIONS = new Set(["decision-maker", "functional-impact", "review-monitoring"]);
 
                   // 1. Top-level text sections (excluding methodology — handled separately as section 6)
                   for (const [sectionId, observations] of topLevelEntries) {
