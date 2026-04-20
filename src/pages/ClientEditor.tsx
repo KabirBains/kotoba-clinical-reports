@@ -256,6 +256,7 @@ export default function ClientEditor() {
   };
 
   const SECTION_LABELS: Record<string, string> = {
+    "decision-maker": "Section 1a - Participant Decision Maker",
     "reason-referral": "Section 1 - Reason for Referral",
     "background": "Section 2 - Background Information",
     "participant-goals": "Section 3 - Participant Goals",
@@ -277,8 +278,9 @@ export default function ClientEditor() {
     "section12_8": "Section 14.8 - Social Functioning",
     "assessments": "Section 15 - Standardised Assessments",
     "limitations-barriers": "Section 16 - Limitations and Barriers",
-    "functional-impact": "Section 17 - Functional Impact Summary",
+    "functional-impact": "Section 17 - Risks if No Funding",
     "recommendations": "Section 18 - Recommendations",
+    "review-monitoring": "Section 19 - Barriers to Accessing/Utilising Supports",
   };
 
   const runQualityCheck = useCallback(async () => {
