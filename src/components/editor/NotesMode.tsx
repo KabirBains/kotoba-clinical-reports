@@ -291,14 +291,20 @@ export function NotesMode({ notes, onUpdateNote, assessments, onUpdateAssessment
               />
             )}
 
-            {/* Top-level sections (not functional-capacity, assessments, recommendations, diagnoses, methodology, participant-goals, or participant-details) get a plain textarea */}
-            {section.id !== "functional-capacity" && section.id !== "assessments" && section.id !== "recommendations" && section.id !== "diagnoses" && section.id !== "methodology" && section.id !== "participant-goals" && section.id !== "participant-details" && (
+            {/* Section 1a — Participant Decision Maker */}
+            {section.id === "decision-maker" && (
+              <DecisionMakerSection notes={notes} onUpdateNote={onUpdateNote} />
+            )}
+
+            {/* Top-level sections (not functional-capacity, assessments, recommendations, diagnoses, methodology, participant-goals, participant-details, or decision-maker) get a plain textarea */}
+            {section.id !== "functional-capacity" && section.id !== "assessments" && section.id !== "recommendations" && section.id !== "diagnoses" && section.id !== "methodology" && section.id !== "participant-goals" && section.id !== "participant-details" && section.id !== "decision-maker" && (
               <SectionPanel
                 id={section.id}
                 number={section.number}
                 title={section.title}
                 value={notes[section.id] ?? ""}
                 onChange={(val) => onUpdateNote(section.id, val)}
+                placeholder={SECTION_PLACEHOLDERS[section.id]}
               />
             )}
 
