@@ -100,6 +100,8 @@ export default function ClientEditor() {
   const [isThreading, setIsThreading] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setInterval>>();
   const mainRef = useRef<HTMLElement>(null);
+  const isMobile = useIsMobile();
+  const [sidebarWidth, setSidebarWidth] = useState<number>(256);
 
   const { data: client } = useQuery({
     queryKey: ["client", clientId],
