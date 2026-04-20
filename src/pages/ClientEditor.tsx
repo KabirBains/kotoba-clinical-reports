@@ -644,15 +644,28 @@ export default function ClientEditor() {
                   // 1. Top-level text sections (excluding methodology — handled separately as section 6)
                   for (const [sectionId, observations] of topLevelEntries) {
                     if (sectionId === "methodology") continue; // handled in phase as section6
-                    const templateGuidance = getTemplateGuidance(sectionId);
-                    const rubric = getRubricForSection("text");
-                    // Liaise Phase 1: We NO LONGER inline collateralContext into
-                    // the user prompt. The edge function's formatCollateralForPrompt
-                    // produces a correctly-formatted, section-appropriate version
-                    // in the system prompt, which is better quality and avoids
-                    // double-injection. The only thing we pass in the user prompt
-                    // is the clinician's own observations.
-                    const prompt = `Write a section of an NDIS Functional Capacity Assessment for ${clientName}.\n\nSECTION: ${sectionId}\n\n${templateGuidance ? templateGuidance + "\n\n" : ""}CLINICIAN OBSERVATIONS (transform these into formal clinical prose):\n${observations}\n\nDIAGNOSIS CONTEXT: ${diagnosis || "[Not provided]"}\n\n${rubric}\n\nWrite 2-3 paragraphs of formal NDIS report prose. Use observation → impact → support need structure. Person-first language, third-person active voice. No bullet points, no markdown. Output only the section text.`;
+
+                    const isEdgeOwned = EDGE_OWNED_SECTIONS.has(sectionId);
+                    let prompt: string;
+                    if (isEdgeOwned) {
+                      // Edge function owns ALL prose rules for these sections
+                      // (rubric, structure, headlines, length). Pass only the
+                      // clinician's raw input — no client-side template guidance,
+                      // no rubric, no structural directives. This avoids the
+                      // model receiving conflicting instructions.
+                      prompt = `Participant: ${clientName}\n\nCLINICIAN INPUT:\n${observations}`;
+                    } else {
+                      const templateGuidance = getTemplateGuidance(sectionId);
+                      const rubric = getRubricForSection("text");
+                      // Liaise Phase 1: We NO LONGER inline collateralContext into
+                      // the user prompt. The edge function's formatCollateralForPrompt
+                      // produces a correctly-formatted, section-appropriate version
+                      // in the system prompt, which is better quality and avoids
+                      // double-injection. The only thing we pass in the user prompt
+                      // is the clinician's own observations.
+                      prompt = `Write a section of an NDIS Functional Capacity Assessment for ${clientName}.\n\nSECTION: ${sectionId}\n\n${templateGuidance ? templateGuidance + "\n\n" : ""}CLINICIAN OBSERVATIONS (transform these into formal clinical prose):\n${observations}\n\nDIAGNOSIS CONTEXT: ${diagnosis || "[Not provided]"}\n\n${rubric}\n\nWrite 2-3 paragraphs of formal NDIS report prose. Use observation → impact → support need structure. Person-first language, third-person active voice. No bullet points, no markdown. Output only the section text.`;
+                    }
+
                     const extraBody: Record<string, any> = { ...baseExtra };
                     // Liaise Phase 1: pass section_name so the edge function's
                     // section-aware collateral routing fires correctly.
@@ -663,7 +676,8 @@ export default function ClientEditor() {
                     if (collateralPayload.length > 0) {
                       extraBody.collateral_interviews = collateralPayload;
                     }
-                    phase1Items.push({ key: sectionId, prompt, maxTokens: 2000, inputForHash: observations, label: `Section: ${sectionId}`, extraBody: Object.keys(extraBody).length > 0 ? extraBody : undefined });
+                    const maxTokens = SECTION_MAX_TOKENS[sectionId] ?? 2000;
+                    phase1Items.push({ key: sectionId, prompt, maxTokens, inputForHash: observations, label: `Section: ${sectionId}`, extraBody: Object.keys(extraBody).length > 0 ? extraBody : undefined });
                   }
 
                   // ─── SECTION 6 — Collateral Information (Liaise Phase 2 fix) ───────────
