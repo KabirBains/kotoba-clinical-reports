@@ -1234,6 +1234,60 @@ Do NOT write a top-level heading. Start with the framing sentence, then the risk
 `;
     }
 
+    if (section_name === "section-recommendation-justification") {
+      // AI-assisted Clinical Justification for ONE specific recommendation.
+      // Clinician picks the recommendation from the dropdown library (we do
+      // NOT suggest recommendations). AI helps draft the "why this support
+      // is needed" text in the justification field, pulling specific
+      // findings from the clinician's notes across other sections as
+      // evidence anchors. Clinician edits the draft freely.
+      //
+      // Inputs packaged into the prompt by the client:
+      //   - Recommendation data (supportName, category, current/recommended
+      //     hours, tasks, linkedSections)
+      //   - All clinician notes keyed by section
+      //   - Any existing dot-points the clinician has already entered in
+      //     the justification field
+      //   - Clinical spine (optional)
+      //
+      // Output: 2-4 sentences of drafted clinical reasoning, or an expanded
+      // bullet list if the clinician already has dot points. Weakness-based
+      // framing throughout.
+      dynamicSuffix += `
+
+=== RECOMMENDATION JUSTIFICATION — section-specific guidance ===
+You are drafting the Clinical Justification for ONE specific recommendation requested in Section 17 of the NDIS Functional Capacity Assessment. This text will appear alongside the recommendation as the "why this participant needs this support at this level" reasoning. The clinician has already selected the recommendation from a dropdown library — you are NOT suggesting recommendations. Your job is to draft the clinical reasoning for the recommendation the clinician has chosen, grounded in the notes they have already documented elsewhere in the report.
+
+STRUCTURE (follow this reasoning chain — each link is explicit):
+1. Name the specific impairment or functional limitation documented in the participant's NOTES CONTEXT that this support addresses. Reference the participant by first name.
+2. Describe the concrete functional consequence the participant is currently experiencing because of that impairment — draw the consequence from the notes, do not invent.
+3. Explain how the recommended support directly addresses this consequence (using the support's stated tasks / delivery model).
+4. Name the expected outcome in specific, measurable terms — what changes in the participant's functioning if this support is delivered.
+
+LANGUAGE:
+- Definitive verbs: "requires", "cannot", "prevents", "compromises", "is unable to".
+- Weakness-based throughout: anchor the justification in the impairment/gap the support is filling. The justification exists to justify NDIS funding — be specific, concrete, and weakness-framed.
+- Draw specific facts from the NOTES CONTEXT provided below. Do NOT invent clinical detail, diagnoses, or impairments not documented in the notes.
+- Where a fact references documentation from another section, name the section (e.g. "as documented in the Social Environment notes", "consistent with findings in the Cognition domain").
+- Third person — refer to the participant by first name. Do not use "the writer" in this section; this is reasoning about the participant, not a clinician action.
+
+LENGTH:
+- If the clinician has NOT entered any existing dot points: produce 2-4 sentences of connected clinical prose.
+- If the clinician HAS entered dot points: produce an EXPANDED version preserving each dot point's intent, with 1-2 sentences of supporting clinical reasoning per dot point, maintaining the bullet structure. Do NOT collapse their dot points into prose against their intent. Do NOT remove any dot point they have written.
+
+DO NOT:
+- Include a consequence-if-not-funded statement ("Without this support, X will..."). That is a separate field (consequence) handled elsewhere.
+- Invent diagnoses or impairments not documented in the notes.
+- Cite sections by number — use section names (e.g. "Risk & Safety Profile", not "Section 12").
+- Add a closing "thus this support is necessary" or "this support is reasonable and necessary" sentence. The reasoning chain speaks for itself.
+- Use generic phrasing like "functional decline", "improved quality of life", "meaningful participation" unless immediately followed by a specific participant-anchored consequence.
+- Recommend the support itself or suggest support levels — that is the clinician's decision and is already in the recommendation data.
+
+OUTPUT:
+Plain prose (or 2-4 bullet points if the clinician's existing input was bulleted). No preamble, no headings, no markdown. Start directly with the first clinical sentence.
+`;
+    }
+
     // === RECOMMENDATIONS-SPECIFIC: PARTICIPANT-SPECIFIC CONSEQUENCE RULE ===
     // When generating Section 17 (Recommendations) narratives, the model
     // must produce a participant-specific consequence statement for every

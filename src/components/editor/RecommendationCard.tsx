@@ -6,7 +6,7 @@ import {
   SECTION_OPTIONS,
   SUPPORT_LIBRARY,
 } from "@/lib/recommendations-library";
-import { ChevronDown, ChevronRight, Trash2, GripVertical } from "lucide-react";
+import { ChevronDown, ChevronRight, Trash2, GripVertical, Sparkles, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,6 +22,11 @@ interface RecommendationCardProps {
   index: number;
   onUpdate: (index: number, updated: RecommendationInstance) => void;
   onRemove: (index: number) => void;
+  // AI-assisted Clinical Justification drafting. Optional — if not provided,
+  // the Suggest-with-AI button is hidden so the card still works in contexts
+  // that don't have access to clinician notes (e.g. standalone demos).
+  onSuggestJustification?: () => Promise<void> | void;
+  isJustifying?: boolean;
 }
 
 function findSupport(supportId: string): SupportItem | null {
@@ -32,7 +37,7 @@ function findSupport(supportId: string): SupportItem | null {
   return null;
 }
 
-export function RecommendationCard({ rec, index, onUpdate, onRemove }: RecommendationCardProps) {
+export function RecommendationCard({ rec, index, onUpdate, onRemove, onSuggestJustification, isJustifying = false }: RecommendationCardProps) {
   const [open, setOpen] = useState(true);
   const support = findSupport(rec.supportId);
 
@@ -209,9 +214,36 @@ export function RecommendationCard({ rec, index, onUpdate, onRemove }: Recommend
 
           {/* Clinical Justification */}
           <div>
-            <label className="text-[11px] font-semibold text-muted-foreground block mb-1">
-              Clinical Justification — Why this level is needed
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-[11px] font-semibold text-muted-foreground">
+                Clinical Justification — Why this level is needed
+              </label>
+              {onSuggestJustification && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={isJustifying}
+                  onClick={() => { void onSuggestJustification(); }}
+                  className="h-6 px-2 text-[10px] font-semibold text-accent hover:text-accent hover:bg-accent/10 gap-1"
+                  title={rec.justification.trim()
+                    ? "Expand your dot points into a full clinical justification using your documented notes"
+                    : "Draft a clinical justification using your documented notes"}
+                >
+                  {isJustifying ? (
+                    <>
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      Drafting…
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-3 w-3" />
+                      {rec.justification.trim() ? "Expand with AI" : "Suggest with AI"}
+                    </>
+                  )}
+                </Button>
+              )}
+            </div>
             <textarea
               rows={2}
               placeholder="Why this participant needs this support at this level..."
@@ -219,6 +251,11 @@ export function RecommendationCard({ rec, index, onUpdate, onRemove }: Recommend
               onChange={(e) => updateField("justification", e.target.value)}
               className="w-full p-3 text-xs bg-muted/30 border border-border/50 rounded-md resize-y focus:outline-none focus:ring-1 focus:ring-accent/50 placeholder:text-muted-foreground/50"
             />
+            {onSuggestJustification && (
+              <p className="text-[10px] text-muted-foreground/60 mt-1">
+                Enter your own dot points and use "Expand with AI" to draft the full reasoning chain from your notes. Or leave blank and use "Suggest with AI" to draft from scratch.
+              </p>
+            )}
           </div>
 
           {/* Expected Outcomes */}

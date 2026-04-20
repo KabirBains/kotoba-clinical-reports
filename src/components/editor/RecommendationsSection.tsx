@@ -3,6 +3,7 @@ import {
   type RecommendationInstance,
   SUPPORT_LIBRARY,
 } from "@/lib/recommendations-library";
+import { type DiagnosisInstance } from "@/lib/diagnosis-library";
 import { RecommendationCard } from "./RecommendationCard";
 import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -15,17 +16,37 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 
 interface RecommendationsSectionProps {
   recommendations: RecommendationInstance[];
   onUpdateRecommendations: (recommendations: RecommendationInstance[]) => void;
+  // Optional context for AI-assisted justification drafting. Passed in from
+  // NotesMode when available. If not supplied, the "Suggest with AI" button
+  // degrades gracefully (button still works but produces a generic draft).
+  clinicianNotes?: Record<string, string>;
+  diagnoses?: DiagnosisInstance[];
+  participantName?: string;
+  participantFirstName?: string;
+  participantPronouns?: string;
+  participantSex?: string;
 }
 
 export function RecommendationsSection({
   recommendations,
   onUpdateRecommendations,
+  clinicianNotes,
+  diagnoses,
+  participantName,
+  participantFirstName,
+  participantPronouns,
+  participantSex,
 }: RecommendationsSectionProps) {
   const [libraryOpen, setLibraryOpen] = useState(false);
+  // Per-recommendation loading state for the "Suggest with AI" button.
+  // Keyed by recommendation index so multiple simultaneous clicks (unlikely
+  // but possible) don't clobber each other.
+  const [justifyingIndex, setJustifyingIndex] = useState<number | null>(null);
 
   const alreadyAdded = new Set(recommendations.map((r) => r.supportId));
 
@@ -81,6 +102,92 @@ export function RecommendationsSection({
 
   const removeRec = (index: number) => {
     onUpdateRecommendations(recommendations.filter((_, i) => i !== index));
+  };
+
+  // ── AI-assisted Clinical Justification ────────────────────────────────
+  // Drafts (or expands) the justification field for a single recommendation
+  // using the clinician's notes as cross-section context. Calls the
+  // generate-report edge function with section_name
+  // "section-recommendation-justification" — see the edge function for the
+  // prompt guidance that defines structure / weakness-framing / length.
+  //
+  // The clinician's existing dot points (if any) are passed into the prompt
+  // so the AI expands them rather than overwriting. If the field is empty,
+  // the AI drafts from scratch.
+  const handleSuggestJustification = async (index: number) => {
+    const rec = recommendations[index];
+    if (!rec) return;
+
+    setJustifyingIndex(index);
+    try {
+      // Build a clean summary of the recommendation for the prompt.
+      const recSummary = [
+        `SUPPORT: ${rec.supportName}`,
+        `CATEGORY: ${rec.categoryName} (${rec.ndisCategory})`,
+        `CURRENT FUNDING: ${rec.currentHours || "Not currently funded"}`,
+        `RECOMMENDED: ${rec.recommendedHours || "Not yet specified"}${rec.ratio ? ` (${rec.ratio})` : ""}`,
+        rec.tasks.length > 0 ? `KEY TASKS:\n${rec.tasks.map((t) => `- ${t}`).join("\n")}` : "",
+        rec.outcomes.length > 0 ? `EXPECTED OUTCOMES: ${rec.outcomes.join(", ")}` : "",
+        rec.linkedSections.length > 0 ? `LINKED SECTIONS: ${rec.linkedSections.join(", ")}` : "",
+        "",
+        "EXISTING CLINICIAN DOT POINTS (expand these, do not replace):",
+        rec.justification.trim() || "(none — clinician has not entered any dot points yet; draft from scratch using the notes context)",
+      ]
+        .filter(Boolean)
+        .join("\n");
+
+      const prompt = `Draft the Clinical Justification for this support recommendation. Reference specific findings from the clinician's notes where relevant.\n\n${recSummary}`;
+
+      // Prepare the notes context. The edge function's generated_sections
+      // lookback mechanism treats each key as a section name and each value
+      // as that section's content. We reuse this infrastructure for raw
+      // clinician notes — the AI reads them as documented findings.
+      //
+      // We filter out empty / internal-state keys (like __assessments__ and
+      // __participant__* which start with double underscore) so they don't
+      // pollute the prompt context.
+      const notesContext: Record<string, string> = {};
+      if (clinicianNotes) {
+        for (const [key, value] of Object.entries(clinicianNotes)) {
+          if (!key || key.startsWith("__")) continue;
+          if (typeof value !== "string" || !value.trim()) continue;
+          notesContext[key] = value;
+        }
+      }
+
+      const diagnosesText = (diagnoses && diagnoses.length > 0)
+        ? diagnoses.map((d) => d.name).filter(Boolean).join(", ")
+        : "";
+
+      const { data, error } = await supabase.functions.invoke("generate-report", {
+        body: {
+          prompt,
+          section_name: "section-recommendation-justification",
+          max_tokens: 1200,
+          participant_name: participantName || "",
+          participant_first_name: participantFirstName || "",
+          participant_pronouns: participantPronouns || "",
+          participant_sex: participantSex || "",
+          diagnoses_context: diagnosesText,
+          generated_sections: notesContext,
+        },
+      });
+
+      if (error || !data?.success || typeof data?.text !== "string" || !data.text.trim()) {
+        const msg = data?.error || data?.details || error?.message || "Unknown error";
+        console.error("[suggest-justification] failed:", msg);
+        toast.error("Couldn't draft justification — please try again");
+        return;
+      }
+
+      updateRec(index, { ...rec, justification: data.text.trim() });
+      toast.success("Draft justification added — edit as needed");
+    } catch (e) {
+      console.error("[suggest-justification] exception:", e);
+      toast.error("Couldn't draft justification — please try again");
+    } finally {
+      setJustifyingIndex(null);
+    }
   };
 
   const summary = useMemo(() => {
@@ -145,6 +252,8 @@ export function RecommendationsSection({
               index={index}
               onUpdate={updateRec}
               onRemove={removeRec}
+              onSuggestJustification={() => handleSuggestJustification(index)}
+              isJustifying={justifyingIndex === index}
             />
           ))}
         </div>
