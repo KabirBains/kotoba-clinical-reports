@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { TEMPLATE_SECTIONS } from "@/lib/constants";
 import { type AssessmentInstance } from "@/lib/assessment-library";
 import { type RecommendationInstance } from "@/lib/recommendations-library";
-import { CheckCircle2, ChevronDown, ChevronRight, Menu, X } from "lucide-react";
+import { CheckCircle2, ChevronDown, ChevronRight, Menu, X, ChevronLeft, PanelLeftOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,7 @@ interface EditorSidebarProps {
   assessments: AssessmentInstance[];
   recommendations: RecommendationInstance[];
   scrollContainerRef: React.RefObject<HTMLElement | null>;
+  onWidthChange?: (px: number) => void;
 }
 
 function getSidebarTitle(id: string, title: string) {
@@ -31,13 +32,35 @@ function hasSectionContent(sectionId: string, notes: Record<string, string>): bo
   );
 }
 
-export function EditorSidebar({ notes, assessments, recommendations, scrollContainerRef }: EditorSidebarProps) {
+const COLLAPSED_KEY = "kotoba-sidebar-collapsed";
+
+export function EditorSidebar({ notes, assessments, recommendations, scrollContainerRef, onWidthChange }: EditorSidebarProps) {
   const isMobile = useIsMobile();
   const [open, setOpen] = useState(!isMobile);
+  const [collapsed, setCollapsed] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem(COLLAPSED_KEY) === "1";
+  });
   const [activeSectionId, setActiveSectionId] = useState<string>("");
   const [fcExpanded, setFcExpanded] = useState(true);
   const [assessmentsExpanded, setAssessmentsExpanded] = useState(true);
   const [recsExpanded, setRecsExpanded] = useState(true);
+
+  // Persist collapsed state and notify parent of current width.
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(COLLAPSED_KEY, collapsed ? "1" : "0");
+    }
+  }, [collapsed]);
+
+  useEffect(() => {
+    if (!onWidthChange) return;
+    if (isMobile) {
+      onWidthChange(0);
+    } else {
+      onWidthChange(collapsed ? 32 : 256);
+    }
+  }, [collapsed, isMobile, onWidthChange]);
 
   const updateActiveSection = useCallback(() => {
     const container = scrollContainerRef.current;
@@ -111,19 +134,48 @@ export function EditorSidebar({ notes, assessments, recommendations, scrollConta
     );
   }
 
+  // Desktop collapsed rail — narrow strip with expand button.
+  if (!isMobile && collapsed) {
+    return (
+      <aside className="fixed left-0 top-14 bottom-0 z-20 w-8 bg-card border-r border-border/50 flex flex-col items-center pt-2 transition-all duration-200">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          onClick={() => setCollapsed(false)}
+          title="Expand sidebar"
+        >
+          <PanelLeftOpen className="h-4 w-4" />
+        </Button>
+      </aside>
+    );
+  }
+
   return (
     <aside
       className={cn(
-        "bg-card border-r border-border/50 flex flex-col shrink-0",
+        "bg-card border-r border-border/50 flex flex-col shrink-0 transition-all duration-200",
         isMobile
           ? "fixed left-0 top-14 bottom-0 z-20 w-64 shadow-lg"
-          : "w-64 sticky top-14 h-[calc(100vh-3.5rem)] self-start"
+          : "fixed left-0 top-14 bottom-0 z-20 w-64"
       )}
     >
-      {isMobile && (
+      {isMobile ? (
         <div className="flex justify-end p-2 border-b border-border/30">
           <Button variant="ghost" size="icon" onClick={() => setOpen(false)}>
             <X className="h-4 w-4" />
+          </Button>
+        </div>
+      ) : (
+        <div className="flex justify-end px-1 pt-1 border-b border-border/30">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={() => setCollapsed(true)}
+            title="Collapse sidebar"
+          >
+            <ChevronLeft className="h-4 w-4" />
           </Button>
         </div>
       )}

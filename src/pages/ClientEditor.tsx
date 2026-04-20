@@ -19,6 +19,7 @@ import { NotesMode } from "@/components/editor/NotesMode";
 import { ReportMode } from "@/components/editor/ReportMode";
 import { LiaiseMode, LIAISE_TEMPLATES, LIAISE_TEMPLATES_V2, getQuestionText, flattenStoredResponse, type CollateralInterview } from "@/components/editor/LiaiseMode";
 import { EditorSidebar } from "@/components/editor/EditorSidebar";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, FileText, PenLine, Clock, Handshake, Link2 } from "lucide-react";
 import { toast } from "sonner";
@@ -99,6 +100,8 @@ export default function ClientEditor() {
   const [isThreading, setIsThreading] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setInterval>>();
   const mainRef = useRef<HTMLElement>(null);
+  const isMobile = useIsMobile();
+  const [sidebarWidth, setSidebarWidth] = useState<number>(256);
 
   const { data: client } = useQuery({
     queryKey: ["client", clientId],
@@ -1416,9 +1419,19 @@ export default function ClientEditor() {
       {/* Editor with sidebar */}
       <div className="flex-1 flex overflow-hidden">
         {mode === "notes" && (
-          <EditorSidebar notes={notes} assessments={assessments} recommendations={recommendations} scrollContainerRef={mainRef} />
+          <EditorSidebar
+            notes={notes}
+            assessments={assessments}
+            recommendations={recommendations}
+            scrollContainerRef={mainRef}
+            onWidthChange={setSidebarWidth}
+          />
         )}
-        <main ref={mainRef} className="flex-1 overflow-auto">
+        <main
+          ref={mainRef}
+          className="flex-1 overflow-auto transition-[margin] duration-200"
+          style={{ marginLeft: mode === "notes" && !isMobile ? sidebarWidth : 0 }}
+        >
           {mode === "notes" ? (
             <NotesMode
               notes={notes}
