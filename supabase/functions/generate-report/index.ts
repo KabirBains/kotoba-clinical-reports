@@ -629,10 +629,59 @@ function postProcessClaudeOutput(
   text = text.replace(/\*{1,3}([^*]+)\*{1,3}/g, "$1");
   text = text.replace(/\*{2,}/g, "");
 
-  // 9. Collapse multiple blank lines that the strips may have created.
+  // 9. "The writer" authorial voice (Sprint 1 — professor-style).
+  // Australian NDIS FCA convention is to refer to the assessing clinician
+  // as "the writer". The AI often defaults to "the assessor" / "the
+  // clinician" / "this report" as the clinician-subject. We rewrite these
+  // to "the writer" — BUT the negative-lookahead guards preserve the
+  // protected phrase "in the assessor's clinical opinion" which is a
+  // deliberate speculation-attribution device (see rule 6 above).
+  //
+  // We only rewrite when used as the SUBJECT of a sentence ("The assessor
+  // observed X" → "The writer observed X"). We do NOT rewrite possessives
+  // ("the assessor's clinical opinion") or other embedded uses.
+  text = text.replace(/\bThe assessor\b(?!['\u2018\u2019]s)/g, "The writer");
+  text = text.replace(/\bthe assessor\b(?!['\u2018\u2019]s)/g, "the writer");
+  text = text.replace(/\bThe assessing clinician\b(?!['\u2018\u2019]s)/g, "The writer");
+  text = text.replace(/\bthe assessing clinician\b(?!['\u2018\u2019]s)/g, "the writer");
+
+  // 10. Permanence phrase injection (Sprint 1 — professor-style).
+  // Every high-quality NDIS FCA report states the disability is
+  // "significantly and permanently impacting his/her daily life" in the
+  // Disability Profile / Background section. This phrase directly maps to
+  // NDIS Section 24 permanence-and-significance test and pre-answers the
+  // planner's key question.
+  //
+  // We inject the phrase only in sections where it legitimately belongs
+  // (Background / Disability Profile) and only when the text doesn't
+  // already contain "permanent" language — avoids duplication.
+  const permanenceEligibleSections = new Set([
+    "section2",
+    "section-background",
+    "section-disability-profile",
+  ]);
+  if (sectionName && permanenceEligibleSections.has(sectionName)) {
+    const hasPermanenceLanguage = /\b(?:permanent(?:ly)?|lifelong|chronic progressive|progressive.*(?:irreversible|life[-\s]?long))\b/i.test(text);
+    if (!hasPermanenceLanguage) {
+      // Find the first mention of the diagnosis context or disability
+      // statement and append the permanence clause. Conservative approach:
+      // find first sentence containing "disability" or "diagnos" and append
+      // a follow-up sentence to that paragraph.
+      const diagnosisSentence = text.match(/[^.!?\n]*\b(?:diagnosis|disability|condition|diagnos(?:ed|es))\b[^.!?\n]*[.!?]/);
+      if (diagnosisSentence && diagnosisSentence.index !== undefined) {
+        const insertionPoint = diagnosisSentence.index + diagnosisSentence[0].length;
+        const pronoun = /\bshe\b|\bher\b/i.test(text.slice(0, insertionPoint + 200)) ? "her" :
+                        /\bhe\b|\bhis\b/i.test(text.slice(0, insertionPoint + 200)) ? "his" : "their";
+        const permanenceClause = ` This disability is significantly and permanently impacting ${pronoun} daily life, with ongoing functional consequences that necessitate NDIS-funded supports.`;
+        text = text.slice(0, insertionPoint) + permanenceClause + text.slice(insertionPoint);
+      }
+    }
+  }
+
+  // 11. Collapse multiple blank lines that the strips may have created.
   text = text.replace(/\n{3,}/g, "\n\n").trim();
 
-  // 10. Insert cross-section citations. Runs LAST so it operates on already-
+  // 12. Insert cross-section citations. Runs LAST so it operates on already-
   // cleaned prose (no markdown artefacts to confuse the sentence splitter).
   // See insertCrossSectionCitations() for the trigger table and self-
   // citation guards. Skipped entirely when the caller didn't supply a
@@ -940,6 +989,15 @@ Why: Writing "secondary to his Autism Spectrum Disorder Level 3 and Severe Intel
 Forbidden: listing every supplied diagnosis for every limitation ("secondary to his ASD Level 3 and Severe Intellectual Disability" used 10+ times in a single report).
 Correct: pair each finding with the diagnosis most causally linked to it. Examples: non-speaking presentation → "secondary to his Autism Spectrum Disorder Level 3"; inability to operate a washing machine → "secondary to his Severe Intellectual Disability"; restricted food preferences → "characteristic of his Autism Spectrum Disorder"; lack of safety awareness in community → "secondary to his Severe Intellectual Disability". If a finding is genuinely driven by both, then both is appropriate — but the default should be one.
 
+RULE: Preserve first-person goal quotes.
+Why: NDIS goals carry more weight when stated in the participant's own voice ("I want to live safely in accessible housing..."). High-quality FCA reports preserve these verbatim. Paraphrasing to third-person ("${firstName} wants to live safely...") flattens the participant's voice and weakens the goal statement for the planner.
+Forbidden: rewriting a direct first-person quote from the clinician's observations ("I want to...", "I would like to...", "I need to...") into third-person narrative. Do NOT translate "I want to attend community events" into "${firstName} expressed a desire to attend community events".
+Correct: when the clinician's notes contain a first-person goal statement (identified by "I want to...", "I would like to...", "I'd like to...", "I need to...", "I hope to..."), preserve the exact quote verbatim. Present it either as a bullet (one per goal) or as a direct quotation within prose ("${firstName} states: 'I want to live safely in accessible housing.'"). If the notes paraphrase a goal in third person, leave it as-is — do not fabricate a first-person quote that was not said.
+
+RULE: Use "the writer" for clinician-voice.
+Why: Australian NDIS FCA convention refers to the assessing clinician as "the writer" when documenting the clinician's own observations, actions, recommendations, or clinical reasoning. High-quality reports from experienced NDIS OTs consistently use this voice. Mixing between "the assessor", "the clinician", "this report", and "the occupational therapist" reads as inconsistent.
+Convention: use "the writer" when the subject is the assessing clinician's action or view. Examples: "The writer completed the WHODAS 2.0 on the participant's behalf", "The writer observed that...", "The writer identified the following OT goals", "The writer recommends...". The existing phrase "In the assessor's clinical opinion" is a protected speculation-attribution device and should remain unchanged — do NOT rewrite it to "in the writer's opinion".
+
 RULE: Consistent parent/carer reference form.
 Why: Switching between "Mo", "his mother Mo", "John's mother", and "the mother" within a single report reads as careless and creates ambiguity.
 Convention: at first mention of the parent/carer in any given section, use their name and relationship in full ("his mother, Mo") — but only on the FIRST mention in that section. After that, use just the first name ("Mo") for the rest of the section. Do not switch to "his mother" or "John's mother" later. Across sections, each section can re-introduce ("his mother, Mo") on its first mention and then use just the name.
@@ -1067,6 +1125,118 @@ ${spineJson}
       } else if (collateralContext) {
         dynamicSuffix += "\n\n=== COLLATERAL AVAILABLE ===\n" + collateralContext;
       }
+    }
+
+    // === PROFESSOR-STYLE SECTIONS (Sprint 1) ===
+    // Three new section types that mirror the structure used in high-quality
+    // NDIS FCA reports (Dr Nhunzvi reference set). These sections live as
+    // their own section_name values so the client can request them
+    // independently and the edge function can apply tailored writing
+    // guidance. All three maintain WEAKNESS-BASED framing for NDIS funding
+    // justification — strengths may be briefly acknowledged then pivoted
+    // back to residual impairment.
+
+    if (section_name === "section-decision-maker") {
+      // Participant Decision Maker subsection — explicit capacity statement.
+      // Answers the NDIS planner's question about who makes decisions for
+      // the participant and where capacity is limited by the disability.
+      dynamicSuffix += `
+
+=== PARTICIPANT DECISION MAKER — section-specific guidance ===
+This is a SHORT subsection (2-4 sentences) that documents the participant's decision-making capacity.
+
+STRUCTURE:
+1. One sentence stating who currently makes decisions for the participant (themselves, a parent/guardian, a public guardian, a financial administrator).
+2. One sentence identifying specific decision domains where capacity is limited by disability (health, finances, accommodation, legal, daily living).
+3. If capacity limitations are present, one sentence recommending appropriate supported decision-making structures (Public Guardian, financial administrator, informal SDM arrangements, enduring power of attorney).
+
+LANGUAGE:
+- Use definitive verbs: "makes their own decisions about X", "requires a Public Guardian for Y", "lacks capacity to Z".
+- Ground capacity claims in the diagnosis/functional impact already established elsewhere — do NOT infer capacity from the person's name, age, or cultural background.
+- Use "the writer" when expressing the clinician's recommendation ("the writer recommends a Public Guardian...").
+- Weakness-based framing: state what the participant CANNOT do without support, not what they can. If they can make simple decisions but struggle with complex ones, lead with the limitation.
+
+EXAMPLE OUTPUT:
+"${firstName} makes their own day-to-day decisions about personal preferences and routine. However, due to the severity of their Severe Intellectual Disability, ${firstName} lacks capacity to make informed decisions about finances, medical treatment, and long-term accommodation. The writer recommends ongoing supported decision-making arrangements and consideration of a Public Guardian to support decisions in these domains."
+
+Do NOT write headings. Start directly with the first clinical sentence.
+`;
+    }
+
+    if (section_name === "section-barriers-to-supports") {
+      // Barriers to Accessing/Utilising Supports subsection — documents what
+      // prevents existing supports from working even when funded. Justifies
+      // higher-intensity or more specialised support models.
+      dynamicSuffix += `
+
+=== BARRIERS TO ACCESSING/UTILISING SUPPORTS — section-specific guidance ===
+This is a SHORT-TO-MEDIUM subsection (1 paragraph, 4-6 sentences) that documents why supports may not deliver full benefit even when provided. This justifies intensity, specialised provision, or additional funding.
+
+STRUCTURE:
+1. Opening sentence naming the participant and the general barrier framing ("${firstName} faces multiple challenges that limit access to and engagement with funded supports, largely driven by the severity of their disability").
+2. 3-5 specific barriers, each tied to a functional or psychosocial mechanism. Typical categories:
+   - Communication barriers (non-verbal, severe expressive/receptive language impairment)
+   - Cognitive/behavioural barriers (limited insight, dysregulation during sessions, impulse control)
+   - Transport/mobility barriers (unable to travel independently to appointments)
+   - Carer sustainability barriers (single parent, carer burnout, lack of extended family)
+   - Environmental barriers (rural location, housing instability, social isolation)
+   - System barriers (previous negative experiences, low trust in services, cultural/linguistic factors)
+3. Where a barrier is disability-driven, name the underlying impairment ("his severe communication impairment prevents...", "her executive dysfunction means...").
+
+LANGUAGE:
+- Definitive verbs: "prevents", "limits", "compromises", "requires", "cannot".
+- Avoid hedging ("may", "could", "sometimes").
+- Weakness-based: every barrier should anchor to a clinical impairment or capacity gap.
+- Use "the writer" for assessor observations ("The writer observed that ${firstName}...").
+
+Do NOT write headings. Start directly with the first clinical sentence.
+`;
+    }
+
+    if (section_name === "section-risks-if-not-funded") {
+      // Risks if NDIS Funding Not Provided subsection — the single most
+      // powerful funding-justification device in the professor's reports.
+      // Enumerates what will deteriorate if the proposed supports are cut
+      // or reduced.
+      dynamicSuffix += `
+
+=== RISKS IF NDIS FUNDING NOT PROVIDED — section-specific guidance ===
+This is a MEDIUM subsection (3-6 numbered or bulleted risks) documenting specific deteriorations that will occur if the recommended supports are not funded. Each risk is a named, concrete clinical pathway — NOT generic "functional decline" boilerplate.
+
+STRUCTURE:
+Open with one framing sentence: "The writer has identified the following risks, should the recommended funding not or only partly be provided in ${firstName}'s NDIS plan:"
+
+Then 3-6 risks. Each risk has:
+- A short headline (e.g., "High risk of self-harm and functional decline:", "Increased long-term disability and social isolation:", "Escalation of behaviours of concern:")
+- 1-2 sentences unpacking the specific pathway, naming the underlying impairment and the concrete outcome.
+
+TYPICAL RISK CATEGORIES (pick the ones that match this participant):
+- Physical deterioration / progressive disability worsening
+- Mental health deterioration / psychiatric crisis
+- Increased behaviours of concern / risk to self or others
+- Homelessness / accommodation instability / eviction
+- Hospitalisation / emergency department presentations
+- Social isolation / disengagement from community / loneliness
+- Carer breakdown / sustainability collapse
+- Nutrition / self-neglect / hygiene decline
+- Medication non-compliance / treatment disruption
+- Financial exploitation / legal vulnerability
+- Loss of existing skills and functional independence
+- Escalation to higher-intensity or more costly support models
+
+LANGUAGE:
+- Definitive: "is at significant risk of X", "will deteriorate", "is likely to require Y", "places ${firstName} at substantial risk of Z".
+- Ground every risk in a named impairment. Example: "Without adequate behavioural support, ${firstName} is at high risk of aggressive outbursts escalating to physical harm, given the documented carrying and threatening of others with weapons."
+- Use "Without [specific support], ${firstName} will/is likely to/faces..." construction frequently.
+- WEAKNESS-BASED: this section is the purest expression of weakness-based NDIS framing — it is LITERALLY enumerating what will go wrong. Be direct, specific, and clinically rigorous.
+- Use "the writer" for clinician-voice framing.
+- Avoid generic boilerplate: "functional decline" / "deterioration in quality of life" / "missed opportunities" are FORBIDDEN unless followed by a specific participant-anchored consequence in the same sentence.
+
+EXAMPLE FORMAT (one risk item):
+"High risk of self-harm and functional decline: Without adequate daily living assistance, capacity-building supports, and behavioural intervention, ${firstName} is at significant risk of deterioration in mental health, increased behaviours of concern, worsening cognitive disorganisation, and impaired communication. Reduced support will also compromise his ability to engage in social participation, self-care, and self-management routines, leading to further decline in safety, physical health, well-being, and independence."
+
+Do NOT write a top-level heading. Start with the framing sentence, then the risk items.
+`;
     }
 
     // === RECOMMENDATIONS-SPECIFIC: PARTICIPANT-SPECIFIC CONSEQUENCE RULE ===
