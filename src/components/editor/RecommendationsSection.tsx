@@ -1,8 +1,19 @@
 import { useState, useMemo } from "react";
 import {
   type RecommendationInstance,
+  type SupportItem,
   SUPPORT_LIBRARY,
 } from "@/lib/recommendations-library";
+
+// Find the SupportItem definition for a given supportId. Returns null if the
+// supportId is unknown (e.g., removed from the library post-addition).
+function findSupport(supportId: string): SupportItem | null {
+  for (const cat of Object.values(SUPPORT_LIBRARY)) {
+    const item = cat.items.find((i) => i.id === supportId);
+    if (item) return item;
+  }
+  return null;
+}
 import { type DiagnosisInstance } from "@/lib/diagnosis-library";
 import { RecommendationCard } from "./RecommendationCard";
 import { Plus } from "lucide-react";
@@ -121,11 +132,16 @@ export function RecommendationsSection({
     setJustifyingIndex(index);
     try {
       // Build a clean summary of the recommendation for the prompt.
+      // Skip the ratio for items flagged hideRatio (therapies, coordination,
+      // etc.) so the AI doesn't receive noise from legacy data where a
+      // ratio may have been entered before hideRatio was introduced.
+      const supportDef = findSupport(rec.supportId);
+      const showRatio = !supportDef?.hideRatio && !!rec.ratio;
       const recSummary = [
         `SUPPORT: ${rec.supportName}`,
         `CATEGORY: ${rec.categoryName} (${rec.ndisCategory})`,
         `CURRENT FUNDING: ${rec.currentHours || "Not currently funded"}`,
-        `RECOMMENDED: ${rec.recommendedHours || "Not yet specified"}${rec.ratio ? ` (${rec.ratio})` : ""}`,
+        `RECOMMENDED: ${rec.recommendedHours || "Not yet specified"}${showRatio ? ` (${rec.ratio})` : ""}`,
         rec.tasks.length > 0 ? `KEY TASKS:\n${rec.tasks.map((t) => `- ${t}`).join("\n")}` : "",
         rec.outcomes.length > 0 ? `EXPECTED OUTCOMES: ${rec.outcomes.join(", ")}` : "",
         rec.linkedSections.length > 0 ? `LINKED SECTIONS: ${rec.linkedSections.join(", ")}` : "",
@@ -313,7 +329,10 @@ export function RecommendationsSection({
                       {rec.recommendedHours || "—"}
                     </td>
                     <td className="text-center px-2 py-2 font-mono text-[11px]">
-                      {rec.ratio || "—"}
+                      {/* Show dash for items where ratio is not applicable
+                          (therapies, coordination, etc.) even if legacy data
+                          has a stored ratio value. */}
+                      {findSupport(rec.supportId)?.hideRatio ? "—" : (rec.ratio || "—")}
                     </td>
                     <td className="text-center px-2 py-2 font-mono text-[10px] text-muted-foreground">
                       {rec.linkedSections.length > 0

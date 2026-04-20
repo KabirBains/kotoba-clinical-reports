@@ -21,6 +21,17 @@ export interface SupportItem {
   sections: string[];
   isConsumable?: boolean;
   isCapital?: boolean;
+  /**
+   * Hide the Support Ratio field in the RecommendationCard UI for this
+   * item. Use for professional/clinician services (OT, Psychology, Speech,
+   * etc.) where the 1:1 clinician-to-participant ratio is implicit and not
+   * a decision variable, and for coordination services (SC, Specialist SC)
+   * where the funding is hours-based rather than ratio-based, and for
+   * task-based supports like garden maintenance where participant ratio is
+   * not applicable. Items without this flag continue to show the ratio
+   * selector as before.
+   */
+  hideRatio?: boolean;
 }
 
 export interface SupportCategory {
@@ -134,6 +145,7 @@ export const SUPPORT_LIBRARY: Record<string, SupportCategory> = {
         outcomes: ["maintain_safety", "reduce_informal"],
         exampleConsequenceTemplate: "deterioration of the home environment, safety hazards from unmaintained outdoor areas, and increased burden on informal supports",
         sections: ["12.4"],
+        hideRatio: true,
       },
       {
         id: "high_intensity_personal_care_l1",
@@ -285,6 +297,7 @@ export const SUPPORT_LIBRARY: Record<string, SupportCategory> = {
         outcomes: ["build_capacity", "achieve_goals", "reduce_informal", "prevent_deterioration"],
         exampleConsequenceTemplate: "missed opportunity for capacity building intervention that could reduce long-term support needs, and inability to assess and implement appropriate assistive technology and home modifications",
         sections: ["12.3", "12.4", "12.5"],
+        hideRatio: true,
       },
       {
         id: "physio",
@@ -293,6 +306,7 @@ export const SUPPORT_LIBRARY: Record<string, SupportCategory> = {
         outcomes: ["build_capacity", "prevent_deterioration", "prevent_hospitalisation"],
         exampleConsequenceTemplate: "progressive decline in mobility, increased falls risk, and deconditioning that will increase long-term support needs",
         sections: ["12.1", "12.2"],
+        hideRatio: true,
       },
       {
         id: "psychology",
@@ -301,6 +315,7 @@ export const SUPPORT_LIBRARY: Record<string, SupportCategory> = {
         outcomes: ["build_capacity", "achieve_goals", "prevent_hospitalisation", "social_participation"],
         exampleConsequenceTemplate: "unmanaged mental health symptoms, risk of acute deterioration and hospitalisation, and inability to engage meaningfully with other supports",
         sections: ["11", "12.8"],
+        hideRatio: true,
       },
       {
         id: "speech",
@@ -309,6 +324,7 @@ export const SUPPORT_LIBRARY: Record<string, SupportCategory> = {
         outcomes: ["build_capacity", "maintain_safety", "social_participation"],
         exampleConsequenceTemplate: "unmanaged swallowing risks, inability to communicate needs effectively, and progressive social withdrawal due to communication barriers",
         sections: ["12.7"],
+        hideRatio: true,
       },
       {
         id: "dietitian",
@@ -317,6 +333,7 @@ export const SUPPORT_LIBRARY: Record<string, SupportCategory> = {
         outcomes: ["maintain_safety", "build_capacity"],
         exampleConsequenceTemplate: "nutritional compromise, weight-related health complications, and increased risk of hospital presentation for malnutrition-related conditions",
         sections: ["12.3"],
+        hideRatio: true,
       },
       {
         id: "exercise_physiology",
@@ -325,6 +342,7 @@ export const SUPPORT_LIBRARY: Record<string, SupportCategory> = {
         outcomes: ["build_capacity", "prevent_deterioration", "social_participation"],
         exampleConsequenceTemplate: "progressive deconditioning, increased falls risk, and reduced capacity for independent daily living tasks",
         sections: ["12.1"],
+        hideRatio: true,
       },
       {
         id: "behaviour_support",
@@ -333,6 +351,7 @@ export const SUPPORT_LIBRARY: Record<string, SupportCategory> = {
         outcomes: ["build_capacity", "maintain_safety", "reduce_informal"],
         exampleConsequenceTemplate: "escalation of behaviours of concern, risk of harm to self or others, potential for increased use of restrictive practices, and placement breakdown",
         sections: ["11", "12.8"],
+        hideRatio: true,
       },
       {
         id: "counselling",
@@ -341,6 +360,7 @@ export const SUPPORT_LIBRARY: Record<string, SupportCategory> = {
         outcomes: ["build_capacity", "achieve_goals", "prevent_hospitalisation"],
         exampleConsequenceTemplate: "unaddressed emotional distress, deterioration in coping capacity, and inability to engage with other supports due to unmanaged psychological burden",
         sections: ["11", "12.8"],
+        hideRatio: true,
       },
       {
         id: "art_music_therapy",
@@ -349,6 +369,7 @@ export const SUPPORT_LIBRARY: Record<string, SupportCategory> = {
         outcomes: ["build_capacity", "social_participation", "achieve_goals"],
         exampleConsequenceTemplate: "loss of accessible communication and expression channels for participants with limited verbal capacity, and reduced engagement with therapeutic intervention",
         sections: ["12.7", "12.8"],
+        hideRatio: true,
       },
       {
         id: "continence_assessment",
@@ -357,6 +378,7 @@ export const SUPPORT_LIBRARY: Record<string, SupportCategory> = {
         outcomes: ["maintain_safety", "build_capacity", "prevent_hospitalisation"],
         exampleConsequenceTemplate: "ongoing skin integrity issues, urinary tract infection, dignity loss during continence care, and inappropriate use of continence aids",
         sections: ["12.3"],
+        hideRatio: true,
       },
       {
         id: "dysphagia_management",
@@ -365,6 +387,7 @@ export const SUPPORT_LIBRARY: Record<string, SupportCategory> = {
         outcomes: ["maintain_safety", "prevent_hospitalisation"],
         exampleConsequenceTemplate: "choking events, aspiration pneumonia hospitalisation, and unmanaged mealtime safety risks",
         sections: ["12.3"],
+        hideRatio: true,
       },
       {
         id: "audiology",
@@ -373,6 +396,7 @@ export const SUPPORT_LIBRARY: Record<string, SupportCategory> = {
         outcomes: ["build_capacity", "social_participation"],
         exampleConsequenceTemplate: "progressive social withdrawal due to hearing loss, communication breakdown with carers and clinicians, and reduced engagement with therapeutic supports",
         sections: ["12.7"],
+        hideRatio: true,
       },
       {
         id: "optometry_low_vision",
@@ -381,6 +405,7 @@ export const SUPPORT_LIBRARY: Record<string, SupportCategory> = {
         outcomes: ["build_capacity", "maintain_safety"],
         exampleConsequenceTemplate: "preventable falls due to undiagnosed vision impairment, loss of independence in ADLs requiring vision, and reduced community access",
         sections: ["12.1"],
+        hideRatio: true,
       },
     ],
   },
@@ -395,6 +420,7 @@ export const SUPPORT_LIBRARY: Record<string, SupportCategory> = {
         outcomes: ["achieve_goals", "reduce_informal", "social_participation"],
         exampleConsequenceTemplate: "fragmented service delivery, inability to implement the NDIS plan effectively, and increased burden on informal supports to coordinate care",
         sections: [],
+        hideRatio: true,
       },
       {
         id: "specialist_sc",
@@ -403,6 +429,7 @@ export const SUPPORT_LIBRARY: Record<string, SupportCategory> = {
         outcomes: ["maintain_safety", "achieve_goals", "prevent_hospitalisation"],
         exampleConsequenceTemplate: "uncoordinated complex support needs, increased risk of crisis presentation, and potential placement breakdown",
         sections: ["11"],
+        hideRatio: true,
       },
       {
         id: "community_participation",
@@ -481,6 +508,7 @@ export const SUPPORT_LIBRARY: Record<string, SupportCategory> = {
         outcomes: ["build_capacity", "prevent_deterioration", "achieve_goals"],
         exampleConsequenceTemplate: "ongoing poor sleep, unmanaged stress, deteriorating health behaviours, and loss of opportunity for self-management capacity-building",
         sections: ["11", "12.6"],
+        hideRatio: true,
       },
     ],
   },
