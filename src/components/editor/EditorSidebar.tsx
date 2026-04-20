@@ -134,19 +134,48 @@ export function EditorSidebar({ notes, assessments, recommendations, scrollConta
     );
   }
 
+  // Desktop collapsed rail — narrow strip with expand button.
+  if (!isMobile && collapsed) {
+    return (
+      <aside className="fixed left-0 top-14 bottom-0 z-20 w-8 bg-card border-r border-border/50 flex flex-col items-center pt-2 transition-all duration-200">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          onClick={() => setCollapsed(false)}
+          title="Expand sidebar"
+        >
+          <PanelLeftOpen className="h-4 w-4" />
+        </Button>
+      </aside>
+    );
+  }
+
   return (
     <aside
       className={cn(
-        "bg-card border-r border-border/50 flex flex-col shrink-0",
+        "bg-card border-r border-border/50 flex flex-col shrink-0 transition-all duration-200",
         isMobile
           ? "fixed left-0 top-14 bottom-0 z-20 w-64 shadow-lg"
-          : "w-64 sticky top-14 h-[calc(100vh-3.5rem)] self-start"
+          : "fixed left-0 top-14 bottom-0 z-20 w-64"
       )}
     >
-      {isMobile && (
+      {isMobile ? (
         <div className="flex justify-end p-2 border-b border-border/30">
           <Button variant="ghost" size="icon" onClick={() => setOpen(false)}>
             <X className="h-4 w-4" />
+          </Button>
+        </div>
+      ) : (
+        <div className="flex justify-end px-1 pt-1 border-b border-border/30">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={() => setCollapsed(true)}
+            title="Collapse sidebar"
+          >
+            <ChevronLeft className="h-4 w-4" />
           </Button>
         </div>
       )}
