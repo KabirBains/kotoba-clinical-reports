@@ -9,35 +9,40 @@ import { KotobaLogo } from "@/components/KotobaLogo";
 import { toast } from "sonner";
 
 // User-facing message when an email is not on the whitelist.
-// Kept consistent across signup-blocked and login-blocked paths so users
-// get the same clear instruction regardless of which door they tried.
+// Matches the P0001 exception thrown by public.enforce_whitelist_on_signup()
+// in the email-whitelist migration; the Supabase auth error wraps that
+// message and we surface it to the user verbatim here.
 const WHITELIST_ERROR_MESSAGE =
   "This email address is not authorised for Kotoba access. Please contact the administrator to request access.";
 
 /**
- * Check whether an email is on the app's access whitelist.
+ * AUTH ACCESS CONTROL — whitelist enforcement model.
  *
- * Uses the is_email_whitelisted RPC (SECURITY DEFINER) which bypasses RLS
- * and can be called from the anonymous role before auth. Returns false on
- * any error (including network) to fail-closed — if we can't verify the
- * user is allowed, we don't let them in. The caller is expected to surface
- * a generic-but-clear message to the user.
+ * Enforcement happens at ONE authoritative layer: the database trigger
+ * (public.enforce_whitelist_on_signup) that fires BEFORE INSERT on
+ * auth.users. No unwhitelisted account can ever be created.
+ *
+ * We deliberately do NOT do client-side RPC pre-checks because:
+ *   - They added no security (trigger is the hard gate)
+ *   - They introduced a fragile dependency on the Supabase-js client's
+ *     interpretation of scalar RPC responses. See the Apr 21 2026 bug
+ *     where a whitelisted user was signed out immediately after login
+ *     because the rpc() call's `data` value was interpreted as not-true
+ *     despite the HTTP response body being the literal boolean `true`.
+ *
+ * For sign-in, no check is needed: a user cannot have a Supabase auth
+ * record unless they passed the signup trigger, so a successful sign-in
+ * implies they were whitelisted.
+ *
+ * For sign-up, we rely on signUp's error path — if the trigger blocks,
+ * the auth response contains the whitelist error message and we match
+ * on it below to show the friendly prompt.
+ *
+ * Offboarding (revoking a currently-valid session) is explicitly out of
+ * scope for this iteration. If we need it later, the cleanest approach
+ * is a server-side auth hook or a middleware check in ClientEditor —
+ * both avoid the scalar-RPC-shape fragility.
  */
-async function isEmailWhitelisted(email: string): Promise<boolean> {
-  try {
-    const { data, error } = await supabase.rpc("is_email_whitelisted", {
-      check_email: email.trim(),
-    });
-    if (error) {
-      console.error("[auth] whitelist RPC error:", error);
-      return false;
-    }
-    return data === true;
-  } catch (err) {
-    console.error("[auth] whitelist check threw:", err);
-    return false;
-  }
-}
 
 export default function Auth() {
   const navigate = useNavigate();
@@ -52,53 +57,28 @@ export default function Auth() {
 
     try {
       if (isLogin) {
-        // ── LOGIN FLOW ─────────────────────────────────────────────────
-        // 1. Sign in normally.
-        // 2. After sign-in succeeds, verify the email is still whitelisted.
-        //    This handles the offboarding case — if someone's access is
-        //    revoked while their account still exists, the next sign-in
-        //    gets them signed straight back out with a clear message.
-        // Checking POST sign-in (rather than pre-sign-in) means we don't
-        // leak whitelist membership to unauthenticated callers via the
-        // login-vs-notfound-vs-wrongpassword error behaviour.
+        // Sign in — the database trigger guaranteed that this user's email
+        // was whitelisted at signup. No runtime whitelist check needed.
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
-
-        const allowed = await isEmailWhitelisted(email);
-        if (!allowed) {
-          await supabase.auth.signOut();
-          toast.error(WHITELIST_ERROR_MESSAGE);
-          return;
-        }
-
         navigate("/dashboard");
       } else {
-        // ── SIGNUP FLOW ────────────────────────────────────────────────
-        // 1. Pre-check the whitelist so we can give a clean error without
-        //    the user burning through email-verification retries.
-        // 2. Call supabase.auth.signUp — if the client check is somehow
-        //    bypassed (e.g. stale JS, direct REST call), the database
-        //    trigger also blocks signup at the auth layer. The trigger's
-        //    error message matches WHITELIST_ERROR_MESSAGE, so either
-        //    path surfaces the same UX.
-        const allowed = await isEmailWhitelisted(email);
-        if (!allowed) {
-          toast.error(WHITELIST_ERROR_MESSAGE);
-          return;
-        }
-
+        // Sign up — let the database trigger be the single source of truth.
+        // If the email is not on the whitelist, the trigger raises a P0001
+        // exception and Supabase surfaces it in the error response. We
+        // match the specific message and show the friendly prompt.
         const { error } = await supabase.auth.signUp({
           email,
           password,
           options: { emailRedirectTo: window.location.origin },
         });
         if (error) {
-          // The database trigger raises a specific error message that we
-          // surface cleanly. Supabase wraps it — we detect the substring
-          // to show the friendly whitelist message instead of a raw
-          // Postgres error.
           const msg = error.message || "";
-          if (/not authorised for Kotoba access/i.test(msg) || /is not whitelisted/i.test(msg)) {
+          if (
+            /not authorised for Kotoba access/i.test(msg) ||
+            /is not whitelisted/i.test(msg) ||
+            /whitelist/i.test(msg)
+          ) {
             toast.error(WHITELIST_ERROR_MESSAGE);
             return;
           }
