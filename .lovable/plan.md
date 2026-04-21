@@ -2,45 +2,58 @@
 
 ## Goal
 
-Make the left sidebar truly persistent on screen — it should follow the viewport as the user scrolls down the page (not just sit at the top and scroll out of view). Also add a collapse/expand toggle so users can hide the sidebar and bring it back.
+Lock Kotoba sign-up and sign-in to exactly four whitelisted emails. Revoke any existing accounts that aren't on the list.
 
-## Root cause
+## Current state
 
-Today `EditorSidebar` uses `sticky top-14 h-[calc(100vh-3.5rem)]` and lives inside `ClientEditor`'s flex layout. The page itself scrolls the document body — `sticky` only works as long as the sidebar's parent is in view. Once the user scrolls past the parent's bottom, the sidebar scrolls away with it.
+- A whitelist migration was authored in `supabase/migrations/20260421201712_email_whitelist.sql` but **was never applied** to the live database — no `whitelisted_emails` table, no trigger, no RPC. So today any email can sign up.
+- `src/pages/Auth.tsx` already has the client-side defensive handling that surfaces "This email address is not authorised…" when the database trigger blocks signup. Once the DB layer is live, that UX will just work.
 
-The reliable fix: switch to `position: fixed` so the sidebar is anchored to the viewport regardless of page scroll position, and offset the main content to compensate.
+## Allowed emails (case-insensitive)
+
+1. `kabirbains99@hotmail.com`
+2. `tinkoo.malhi@gmail.com`
+3. `kyle@livingwithmeaning.com.au`
+4. `sara@livingwithmeaning.com.au`
 
 ## Changes
 
-### 1. `src/components/editor/EditorSidebar.tsx` — fixed positioning + collapse
+### 1. New migration — apply whitelist + seed exact list + purge non-whitelisted users
 
-- Change desktop positioning from `sticky top-14 h-[calc(100vh-3.5rem)] self-start` to `fixed left-0 top-14 bottom-0` (anchored to viewport, full-height minus the app header).
-- Add a controlled `collapsed` state (desktop only — mobile keeps its existing open/closed sheet behaviour).
-- When collapsed: render a narrow 12px-wide rail with just an expand button (chevron-right icon) so the user can bring it back. Width transitions smoothly (`transition-all duration-200`).
-- When expanded: render the full `w-64` sidebar with a small collapse button (chevron-left icon) in the top-right corner of the sidebar header.
-- Persist the collapsed preference in `localStorage` under key `kotoba-sidebar-collapsed` so it survives reloads and route changes.
-- Expose the current width via a prop callback `onWidthChange?: (px: number) => void` so the parent can offset main content.
+Create a new migration that does the following in one transaction (idempotent so re-running is safe):
 
-### 2. `src/pages/ClientEditor.tsx` — offset main content
+**A. Whitelist infrastructure** (re-applies the previously-authored but un-applied schema):
+- Create `public.whitelisted_emails` table (PK on email, plus `added_at`, `note`).
+- Create `public.is_email_whitelisted(text)` SECURITY DEFINER function (case-insensitive).
+- Create `public.enforce_whitelist_on_signup()` SECURITY DEFINER trigger function that raises `P0001` with the user-facing whitelist message.
+- Attach `BEFORE INSERT` trigger `before_user_insert_check_whitelist` on `auth.users`.
+- Enable RLS on `whitelisted_emails` with no policies (service-role only).
 
-- Track sidebar width in local state (`sidebarWidth`, default 256px desktop / 0 mobile).
-- Pass `onWidthChange={setSidebarWidth}` to `EditorSidebar`.
-- Apply a left margin/padding to the main content wrapper equal to `sidebarWidth` on desktop only (mobile sidebar is overlay, no offset needed). Use inline style `style={{ marginLeft: isMobile ? 0 : sidebarWidth }}` with a `transition-[margin] duration-200` class so the content slides smoothly when the sidebar collapses/expands.
-- Remove the existing flex layout dependency between sidebar and main (the sidebar is now `fixed`, so it's out of normal flow).
+**B. Seed the exact 4-email allowlist**:
+- `TRUNCATE public.whitelisted_emails` then insert the four emails (lowercased) so the table contains *only* these four. This guarantees no stale entries from prior testing.
+
+**C. Revoke access from any existing non-whitelisted users**:
+- `DELETE FROM auth.users WHERE lower(email) NOT IN (<the 4 emails>)`. This cascades to `profiles`, `clients`, `reports`, `collateral_interviews` via existing FK relationships and RLS ownership, so non-whitelisted users lose all data alongside their account. Whitelisted users keep their existing data intact.
+
+### 2. No client code changes
+
+`src/pages/Auth.tsx` and `src/hooks/useAuth.tsx` already handle the trigger's error path and surface the right message. No edits needed.
 
 ## What's NOT changed
 
-- Mobile sidebar behaviour (overlay sheet with hamburger) stays as-is.
-- Active section tracking, scroll-spy, group expansion logic — untouched.
-- Header (`top-14` offset) — unchanged.
-- All other layout, no other components touched.
+- Whitelisted users' existing data (clients, reports, collateral, profiles) is preserved.
+- Auth UX, password rules, session handling — untouched.
+- No admin UI for managing the whitelist (out of scope; you can add/remove emails directly via SQL when needed — same workflow documented in the original migration's header comment).
+
+## Important confirmations before I run this
+
+- Only the four emails above will retain access. If any other email currently has an account (including any test accounts you've made), it will be **permanently deleted** along with that user's clients, reports, and collateral interviews.
+- The match is case-insensitive, so `Tinkoo.Malhi@gmail.com` and `tinkoo.malhi@gmail.com` are treated as the same address.
 
 ## Verification
 
-1. Open a client → Notes mode. The sidebar should be visible at the left edge.
-2. Scroll the page all the way to the bottom — the sidebar stays pinned to the viewport the entire time, never scrolls out of view.
-3. Click the collapse chevron (top-right of sidebar) — sidebar shrinks to a narrow rail with just an expand chevron; main content slides left to reclaim the space.
-4. Click the expand chevron — sidebar returns to full width; main content slides right.
-5. Reload the page — collapsed/expanded state persists.
-6. Resize to mobile width — desktop collapse button hidden; existing hamburger overlay behaviour still works.
+1. After the migration runs, attempt to sign up with an email NOT on the list → should see "This email address is not authorised for Kotoba access…"
+2. Sign in with one of the four whitelisted emails → succeeds.
+3. Query confirms only the four allowed emails exist in `auth.users` and `whitelisted_emails`.
+4. Adding a new clinician later: insert into `whitelisted_emails` then ask them to sign up.
 
