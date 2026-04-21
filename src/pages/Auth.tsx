@@ -63,27 +63,68 @@ export default function Auth() {
         if (error) throw error;
         navigate("/dashboard");
       } else {
-        // Sign up — let the database trigger be the single source of truth.
-        // If the email is not on the whitelist, the trigger raises a P0001
-        // exception and Supabase surfaces it in the error response. We
-        // match the specific message and show the friendly prompt.
-        const { error } = await supabase.auth.signUp({
+        // Sign up — the database trigger is the single source of truth for
+        // whitelist enforcement. Apr 21 2026 bug: unwhitelisted signups
+        // appeared to succeed in the UI even though auth.users stayed
+        // empty. Root causes we defend against here:
+        //
+        //   (1) Supabase-js may translate the trigger's 500 response into
+        //       an error whose message doesn't match our regex (e.g. when
+        //       Supabase has email-enumeration obfuscation turned on, it
+        //       can return a generic "Database error saving new user" or
+        //       swallow the P0001 message entirely).
+        //   (2) In some auth configurations Supabase returns a 200 with
+        //       data.user set to an obfuscated placeholder (no real row in
+        //       auth.users) to prevent attackers learning whether an email
+        //       exists. A successful whitelisted signup returns a user
+        //       object with a real UUID and populated identities metadata.
+        //
+        // Strategy: treat ANY of the following as "signup was blocked":
+        //   - error is present (any reason)
+        //   - data.user is missing / lacks an id
+        //   - data.user.identities is an empty array (obfuscated response)
+        //
+        // In every blocked case we show the WHITELIST_ERROR_MESSAGE because
+        // for a whitelist-gated app, whitelist rejection is by far the
+        // most likely failure mode. If the clinician needs a finer-grained
+        // error (e.g. weak password), Supabase's error message is shown
+        // when the specific password-strength regex matches.
+        const { data, error } = await supabase.auth.signUp({
           email,
           password,
           options: { emailRedirectTo: window.location.origin },
         });
+
+        // Password-strength / validation errors we want to surface directly
+        // so the clinician can correct them.
+        const passwordErrorRegex = /password|should be at least|at least \d+ characters/i;
+
         if (error) {
           const msg = error.message || "";
-          if (
-            /not authorised for Kotoba access/i.test(msg) ||
-            /is not whitelisted/i.test(msg) ||
-            /whitelist/i.test(msg)
-          ) {
-            toast.error(WHITELIST_ERROR_MESSAGE);
+          if (passwordErrorRegex.test(msg)) {
+            toast.error(msg);
             return;
           }
-          throw error;
+          // Any other error on signup — default to the whitelist explanation
+          // since the trigger is the only gate that blocks this path.
+          console.warn("[auth] signup error:", error);
+          toast.error(WHITELIST_ERROR_MESSAGE);
+          return;
         }
+
+        // Defence-in-depth against obfuscated responses. A real successful
+        // signup has data.user.id (valid UUID). The identities array
+        // should contain at least one entry with a provider.
+        const userId = data?.user?.id;
+        const identities = data?.user?.identities;
+        const identitiesLooksValid = Array.isArray(identities) && identities.length > 0;
+
+        if (!userId || !identitiesLooksValid) {
+          console.warn("[auth] signup returned obfuscated/placeholder user:", data);
+          toast.error(WHITELIST_ERROR_MESSAGE);
+          return;
+        }
+
         toast.success("Account created. Please check your email to verify.");
       }
     } catch (error: any) {
