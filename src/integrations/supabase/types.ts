@@ -192,12 +192,30 @@ export type Database = {
           },
         ]
       }
+      whitelisted_emails: {
+        Row: {
+          added_at: string
+          email: string
+          note: string | null
+        }
+        Insert: {
+          added_at?: string
+          email: string
+          note?: string | null
+        }
+        Update: {
+          added_at?: string
+          email?: string
+          note?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      is_email_whitelisted: { Args: { _email: string }; Returns: boolean }
     }
     Enums: {
       [_ in never]: never
