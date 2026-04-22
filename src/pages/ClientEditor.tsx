@@ -21,11 +21,14 @@ import { LiaiseMode, LIAISE_TEMPLATES, LIAISE_TEMPLATES_V2, getQuestionText, fla
 import { EditorSidebar } from "@/components/editor/EditorSidebar";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, FileText, PenLine, Clock, Handshake, Link2 } from "lucide-react";
+import { ArrowLeft, FileText, PenLine, Clock, Handshake, Link2, Users, Eye } from "lucide-react";
 import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
-import { format } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
+import { Badge } from "@/components/ui/badge";
+import { ManageAccessDialog } from "@/components/editor/ManageAccessDialog";
+import { logActivity } from "@/lib/reportActivity";
 
 // ─── Narrative threading response types ───────────────────────────────────
 // Mirror of the shape returned by the thread-narrative edge function (v2
