@@ -10,6 +10,7 @@ import Dashboard from "./pages/Dashboard";
 import Profile from "./pages/Profile";
 import ClientEditor from "./pages/ClientEditor";
 import NotFound from "./pages/NotFound";
+import ResetPassword from "./pages/ResetPassword";
 
 const queryClient = new QueryClient();
 
@@ -38,6 +39,11 @@ const App = () => (
             <Routes>
               <Route path="/" element={<Navigate to="/dashboard" replace />} />
               <Route path="/auth" element={<PublicRoute><Auth /></PublicRoute>} />
+              {/* Reset password is intentionally NOT wrapped in PublicRoute:
+                  the recovery email link establishes a session, but we
+                  must still let the user reach the form to actually set
+                  a new password instead of bouncing them to /dashboard. */}
+              <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
               <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
               <Route path="/client/:clientId" element={<ProtectedRoute><ClientEditor /></ProtectedRoute>} />
