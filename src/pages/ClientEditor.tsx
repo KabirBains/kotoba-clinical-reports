@@ -456,7 +456,8 @@ export default function ClientEditor() {
             <Button
               size="sm"
               className="bg-accent text-accent-foreground hover:bg-accent/90"
-              disabled={generatingReport}
+              disabled={generatingReport || isViewer}
+              title={isViewer ? "View-only access" : undefined}
               onClick={async () => {
                 setGeneratingReport(true);
 
@@ -1665,6 +1666,13 @@ export default function ClientEditor() {
           )}
         </main>
       </div>
+      {isOwner && report?.id && (
+        <ManageAccessDialog
+          reportId={report.id}
+          open={manageAccessOpen}
+          onOpenChange={setManageAccessOpen}
+        />
+      )}
     </div>
   );
 }
