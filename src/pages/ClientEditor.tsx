@@ -370,20 +370,20 @@ export default function ClientEditor() {
     <div className="min-h-screen bg-background flex flex-col">
       {/* Toolbar */}
       <header className="border-b border-border/50 bg-card/50 backdrop-blur-sm sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="max-w-7xl mx-auto px-4 min-h-14 py-2 flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-3 min-w-0">
             <Button variant="ghost" size="icon" onClick={() => navigate("/dashboard")}>
               <ArrowLeft className="h-4 w-4" />
             </Button>
             <KotobaLogo size="sm" />
             {client && (
-              <span className="text-sm text-muted-foreground border-l border-border pl-3 ml-1">
+              <span className="text-sm text-muted-foreground border-l border-border pl-3 ml-1 truncate">
                 {client.client_name}
               </span>
             )}
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap justify-end">
             {isViewer && (
               <Badge variant="outline" className="gap-1 text-xs">
                 <Eye className="h-3 w-3" /> View only
@@ -395,23 +395,23 @@ export default function ClientEditor() {
               </span>
             )}
             {lastSaved && (
-              <span className="text-xs text-muted-foreground flex items-center gap-1">
+              <span className="text-xs text-muted-foreground flex items-center gap-1 shrink-0">
                 <Clock className="h-3 w-3" />
                 Saved {format(lastSaved, "HH:mm")}
               </span>
             )}
             {isOwner && report?.id && (
-              <Button variant="ghost" size="sm" onClick={() => setManageAccessOpen(true)}>
+              <Button variant="ghost" size="sm" className="shrink-0" onClick={() => setManageAccessOpen(true)}>
                 <Users className="h-3.5 w-3.5 mr-1.5" />
                 Manage access
               </Button>
             )}
 
-            <div className="flex border border-border rounded-md overflow-hidden">
+            <div className="flex border border-border rounded-md overflow-hidden shrink-0">
               <Button
                 variant={mode === "notes" ? "default" : "ghost"}
                 size="sm"
-                className="rounded-none"
+                className="rounded-none whitespace-nowrap"
                 onClick={() => setMode("notes")}
               >
                 <PenLine className="h-3.5 w-3.5 mr-1.5" />
@@ -420,7 +420,7 @@ export default function ClientEditor() {
               <Button
                 variant={mode === "liaise" ? "default" : "ghost"}
                 size="sm"
-                className="rounded-none relative"
+                className="rounded-none relative whitespace-nowrap"
                 onClick={() => setMode("liaise")}
               >
                 <Handshake className="h-3.5 w-3.5 mr-1.5" />
@@ -434,7 +434,7 @@ export default function ClientEditor() {
               <Button
                 variant={mode === "report" ? "default" : "ghost"}
                 size="sm"
-                className="rounded-none"
+                className="rounded-none whitespace-nowrap"
                 onClick={() => setMode("report")}
               >
                 <FileText className="h-3.5 w-3.5 mr-1.5" />
