@@ -167,17 +167,17 @@ export default function Auth() {
           <CardHeader className="pb-4">
             <div className="flex gap-2">
               <Button
-                variant={isLogin ? "default" : "ghost"}
+                variant={mode === "login" ? "default" : "ghost"}
                 size="sm"
-                onClick={() => setIsLogin(true)}
+                onClick={() => setMode("login")}
                 className="flex-1"
               >
                 Sign in
               </Button>
               <Button
-                variant={!isLogin ? "default" : "ghost"}
+                variant={mode === "signup" ? "default" : "ghost"}
                 size="sm"
-                onClick={() => setIsLogin(false)}
+                onClick={() => setMode("signup")}
                 className="flex-1"
               >
                 Create account
@@ -197,27 +197,60 @@ export default function Auth() {
                   required
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  required
-                  minLength={6}
-                />
-              </div>
+              {mode !== "forgot" && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="password">Password</Label>
+                    {mode === "login" && (
+                      <button
+                        type="button"
+                        onClick={() => setMode("forgot")}
+                        className="text-xs text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
+                      >
+                        Forgot password?
+                      </button>
+                    )}
+                  </div>
+                  <Input
+                    id="password"
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    required
+                    minLength={6}
+                  />
+                </div>
+              )}
               <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? "Please wait..." : isLogin ? "Sign in" : "Create account"}
+                {loading
+                  ? "Please wait..."
+                  : mode === "login"
+                    ? "Sign in"
+                    : mode === "signup"
+                      ? "Create account"
+                      : "Send reset link"}
               </Button>
             </form>
-            {!isLogin && (
+            {mode === "signup" && (
               <p className="text-xs text-muted-foreground mt-4 text-center">
                 Kotoba access is by invitation during beta. If your email
                 isn't recognised, contact the administrator to request access.
               </p>
+            )}
+            {mode === "forgot" && (
+              <div className="mt-4 space-y-2 text-center">
+                <p className="text-xs text-muted-foreground">
+                  Enter your email and we'll send you a link to reset your password.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setMode("login")}
+                  className="text-xs text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
+                >
+                  Back to sign in
+                </button>
+              </div>
             )}
           </CardContent>
         </Card>
