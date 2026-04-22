@@ -139,6 +139,76 @@ export type Database = {
         }
         Relationships: []
       }
+      report_activity: {
+        Row: {
+          action: string
+          created_at: string
+          id: string
+          metadata: Json
+          report_id: string
+          user_id: string
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          id?: string
+          metadata?: Json
+          report_id: string
+          user_id: string
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          id?: string
+          metadata?: Json
+          report_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "report_activity_report_id_fkey"
+            columns: ["report_id"]
+            isOneToOne: false
+            referencedRelation: "reports"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      report_collaborators: {
+        Row: {
+          added_at: string
+          added_by: string
+          id: string
+          report_id: string
+          role: Database["public"]["Enums"]["app_collab_role"]
+          user_id: string
+        }
+        Insert: {
+          added_at?: string
+          added_by: string
+          id?: string
+          report_id: string
+          role: Database["public"]["Enums"]["app_collab_role"]
+          user_id: string
+        }
+        Update: {
+          added_at?: string
+          added_by?: string
+          id?: string
+          report_id?: string
+          role?: Database["public"]["Enums"]["app_collab_role"]
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "report_collaborators_report_id_fkey"
+            columns: ["report_id"]
+            isOneToOne: false
+            referencedRelation: "reports"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       reports: {
         Row: {
           client_id: string
@@ -215,10 +285,47 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      find_user_id_by_email: { Args: { _email: string }; Returns: string }
+      get_accessible_clients: {
+        Args: never
+        Returns: {
+          client_name: string
+          id: string
+          is_shared: boolean
+          ndis_number: string
+          owner_user_id: string
+          status: string
+          updated_at: string
+        }[]
+      }
+      get_collaborator_emails: {
+        Args: { _report: string }
+        Returns: {
+          email: string
+          user_id: string
+        }[]
+      }
       is_email_whitelisted: { Args: { _email: string }; Returns: boolean }
+      is_report_collaborator: {
+        Args: { _report: string; _user: string }
+        Returns: boolean
+      }
+      last_editor_for_report: {
+        Args: { _report: string }
+        Returns: {
+          clinician_name: string
+          edited_at: string
+          email: string
+          user_id: string
+        }[]
+      }
+      report_role: {
+        Args: { _report: string; _user: string }
+        Returns: Database["public"]["Enums"]["app_collab_role"]
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_collab_role: "owner" | "editor" | "viewer"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -345,6 +452,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_collab_role: ["owner", "editor", "viewer"],
+    },
   },
 } as const
