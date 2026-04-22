@@ -46,7 +46,11 @@ const WHITELIST_ERROR_MESSAGE =
 
 export default function Auth() {
   const navigate = useNavigate();
-  const [isLogin, setIsLogin] = useState(true);
+  // Three modes: "login" | "signup" | "forgot"
+  // We split forgot-password out as a distinct mode (rather than a separate
+  // route) so the user stays in the same auth shell — keeps the flow simple
+  // and matches the existing tab-style toggle UX.
+  const [mode, setMode] = useState<"login" | "signup" | "forgot">("login");
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -56,7 +60,22 @@ export default function Auth() {
     setLoading(true);
 
     try {
-      if (isLogin) {
+      if (mode === "forgot") {
+        // Send the reset link. We deliberately do NOT pre-check whether the
+        // email is whitelisted or registered — Supabase's resetPasswordForEmail
+        // does not reveal whether an address exists (no error returned for
+        // unknown emails), and we want to preserve that non-enumeration
+        // behaviour. The reset link only works for accounts that actually
+        // exist (which, by definition, were whitelisted at signup).
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: `${window.location.origin}/reset-password`,
+        });
+        if (error) throw error;
+        toast.success(
+          "If that email is registered, a password reset link has been sent. Please check your inbox.",
+        );
+        setMode("login");
+      } else if (mode === "login") {
         // Sign in — the database trigger guaranteed that this user's email
         // was whitelisted at signup. No runtime whitelist check needed.
         const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -148,17 +167,17 @@ export default function Auth() {
           <CardHeader className="pb-4">
             <div className="flex gap-2">
               <Button
-                variant={isLogin ? "default" : "ghost"}
+                variant={mode === "login" ? "default" : "ghost"}
                 size="sm"
-                onClick={() => setIsLogin(true)}
+                onClick={() => setMode("login")}
                 className="flex-1"
               >
                 Sign in
               </Button>
               <Button
-                variant={!isLogin ? "default" : "ghost"}
+                variant={mode === "signup" ? "default" : "ghost"}
                 size="sm"
-                onClick={() => setIsLogin(false)}
+                onClick={() => setMode("signup")}
                 className="flex-1"
               >
                 Create account
@@ -178,27 +197,60 @@ export default function Auth() {
                   required
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  required
-                  minLength={6}
-                />
-              </div>
+              {mode !== "forgot" && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="password">Password</Label>
+                    {mode === "login" && (
+                      <button
+                        type="button"
+                        onClick={() => setMode("forgot")}
+                        className="text-xs text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
+                      >
+                        Forgot password?
+                      </button>
+                    )}
+                  </div>
+                  <Input
+                    id="password"
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    required
+                    minLength={6}
+                  />
+                </div>
+              )}
               <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? "Please wait..." : isLogin ? "Sign in" : "Create account"}
+                {loading
+                  ? "Please wait..."
+                  : mode === "login"
+                    ? "Sign in"
+                    : mode === "signup"
+                      ? "Create account"
+                      : "Send reset link"}
               </Button>
             </form>
-            {!isLogin && (
+            {mode === "signup" && (
               <p className="text-xs text-muted-foreground mt-4 text-center">
                 Kotoba access is by invitation during beta. If your email
                 isn't recognised, contact the administrator to request access.
               </p>
+            )}
+            {mode === "forgot" && (
+              <div className="mt-4 space-y-2 text-center">
+                <p className="text-xs text-muted-foreground">
+                  Enter your email and we'll send you a link to reset your password.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setMode("login")}
+                  className="text-xs text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
+                >
+                  Back to sign in
+                </button>
+              </div>
             )}
           </CardContent>
         </Card>
