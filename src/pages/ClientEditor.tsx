@@ -384,11 +384,27 @@ export default function ClientEditor() {
           </div>
 
           <div className="flex items-center gap-3">
+            {isViewer && (
+              <Badge variant="outline" className="gap-1 text-xs">
+                <Eye className="h-3 w-3" /> View only
+              </Badge>
+            )}
+            {lastEditor && lastEditor.user_id !== user?.id && (
+              <span className="text-xs text-muted-foreground hidden md:inline" title={format(new Date(lastEditor.edited_at), "d MMM yyyy HH:mm")}>
+                Edited by {lastEditor.clinician_name || lastEditor.email || "another user"} · {formatDistanceToNow(new Date(lastEditor.edited_at), { addSuffix: true })}
+              </span>
+            )}
             {lastSaved && (
               <span className="text-xs text-muted-foreground flex items-center gap-1">
                 <Clock className="h-3 w-3" />
                 Saved {format(lastSaved, "HH:mm")}
               </span>
+            )}
+            {isOwner && report?.id && (
+              <Button variant="ghost" size="sm" onClick={() => setManageAccessOpen(true)}>
+                <Users className="h-3.5 w-3.5 mr-1.5" />
+                Manage access
+              </Button>
             )}
 
             <div className="flex border border-border rounded-md overflow-hidden">
