@@ -21,11 +21,14 @@ import { LiaiseMode, LIAISE_TEMPLATES, LIAISE_TEMPLATES_V2, getQuestionText, fla
 import { EditorSidebar } from "@/components/editor/EditorSidebar";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, FileText, PenLine, Clock, Handshake, Link2 } from "lucide-react";
+import { ArrowLeft, FileText, PenLine, Clock, Handshake, Link2, Users, Eye } from "lucide-react";
 import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
-import { format } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
+import { Badge } from "@/components/ui/badge";
+import { ManageAccessDialog } from "@/components/editor/ManageAccessDialog";
+import { logActivity } from "@/lib/reportActivity";
 
 // ─── Narrative threading response types ───────────────────────────────────
 // Mirror of the shape returned by the thread-narrative edge function (v2
@@ -102,6 +105,7 @@ export default function ClientEditor() {
   const mainRef = useRef<HTMLElement>(null);
   const isMobile = useIsMobile();
   const [sidebarWidth, setSidebarWidth] = useState<number>(256);
+  const [manageAccessOpen, setManageAccessOpen] = useState(false);
 
   const { data: client } = useQuery({
     queryKey: ["client", clientId],
@@ -141,6 +145,36 @@ export default function ClientEditor() {
         .single();
       if (error) throw error;
       return data;
+    },
+  });
+
+  // Caller's role on this report (owner | editor | viewer | null)
+  const { data: myRole } = useQuery({
+    queryKey: ["report-role", report?.id, user?.id],
+    enabled: !!report?.id && !!user?.id,
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("report_role" as any, {
+        _report: report!.id,
+        _user: user!.id,
+      });
+      if (error) throw error;
+      return (data as "owner" | "editor" | "viewer" | null) ?? null;
+    },
+  });
+  const isViewer = myRole === "viewer";
+  const isOwner = myRole === "owner";
+
+  // Last non-self editor of this report, for the "Edited by …" indicator
+  const { data: lastEditor } = useQuery({
+    queryKey: ["last-editor", report?.id, user?.id],
+    enabled: !!report?.id && !!user?.id,
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("last_editor_for_report" as any, {
+        _report: report!.id,
+      });
+      if (error) throw error;
+      const rows = (data as Array<{ user_id: string; email: string | null; clinician_name: string | null; edited_at: string }> | null) ?? [];
+      return rows[0] ?? null;
     },
   });
 
@@ -238,8 +272,17 @@ export default function ClientEditor() {
     if (!error) {
       setLastSaved(new Date());
       if (clientId) localStorage.setItem(`kotoba-notes-${clientId}`, JSON.stringify(notes));
+      // Log a single edit-activity row at most every 5 minutes per session,
+      // so the activity log records meaningful presence without spam.
+      if (user?.id) {
+        const stamp = Number(localStorage.getItem(`kotoba-last-edit-log-${report.id}`) || 0);
+        if (Date.now() - stamp > 5 * 60 * 1000) {
+          localStorage.setItem(`kotoba-last-edit-log-${report.id}`, String(Date.now()));
+          void logActivity(report.id, user.id, "edited_section");
+        }
+      }
     }
-  }, [report?.id, notes, assessments, recommendations, diagnoses, goals, nilGoals, reportContent, clientId, scorecard, issueStatuses, dismissedIssueKeys]);
+  }, [report?.id, notes, assessments, recommendations, diagnoses, goals, nilGoals, reportContent, clientId, scorecard, issueStatuses, dismissedIssueKeys, user?.id]);
 
   // Autosave every 30 seconds
   useEffect(() => {
@@ -341,11 +384,27 @@ export default function ClientEditor() {
           </div>
 
           <div className="flex items-center gap-3">
+            {isViewer && (
+              <Badge variant="outline" className="gap-1 text-xs">
+                <Eye className="h-3 w-3" /> View only
+              </Badge>
+            )}
+            {lastEditor && lastEditor.user_id !== user?.id && (
+              <span className="text-xs text-muted-foreground hidden md:inline" title={format(new Date(lastEditor.edited_at), "d MMM yyyy HH:mm")}>
+                Edited by {lastEditor.clinician_name || lastEditor.email || "another user"} · {formatDistanceToNow(new Date(lastEditor.edited_at), { addSuffix: true })}
+              </span>
+            )}
             {lastSaved && (
               <span className="text-xs text-muted-foreground flex items-center gap-1">
                 <Clock className="h-3 w-3" />
                 Saved {format(lastSaved, "HH:mm")}
               </span>
+            )}
+            {isOwner && report?.id && (
+              <Button variant="ghost" size="sm" onClick={() => setManageAccessOpen(true)}>
+                <Users className="h-3.5 w-3.5 mr-1.5" />
+                Manage access
+              </Button>
             )}
 
             <div className="flex border border-border rounded-md overflow-hidden">
@@ -397,7 +456,8 @@ export default function ClientEditor() {
             <Button
               size="sm"
               className="bg-accent text-accent-foreground hover:bg-accent/90"
-              disabled={generatingReport}
+              disabled={generatingReport || isViewer}
+              title={isViewer ? "View-only access" : undefined}
               onClick={async () => {
                 setGeneratingReport(true);
 
@@ -1237,6 +1297,9 @@ export default function ClientEditor() {
                 } finally {
                   setGeneratingReport(false);
                   setTimeout(() => setGenerateProgress({ current: 0, total: 0, label: "" }), 3000);
+                  if (report?.id && user?.id) {
+                    void logActivity(report.id, user.id, "generated_full_report");
+                  }
                 }
               }}
             >
@@ -1603,6 +1666,13 @@ export default function ClientEditor() {
           )}
         </main>
       </div>
+      {isOwner && report?.id && (
+        <ManageAccessDialog
+          reportId={report.id}
+          open={manageAccessOpen}
+          onOpenChange={setManageAccessOpen}
+        />
+      )}
     </div>
   );
 }

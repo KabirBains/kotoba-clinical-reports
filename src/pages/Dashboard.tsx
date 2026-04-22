@@ -34,12 +34,19 @@ export default function Dashboard() {
   const { data: clients, isLoading } = useQuery({
     queryKey: ["clients"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("clients")
-        .select("*")
-        .order("updated_at", { ascending: false });
+      const { data, error } = await supabase.rpc("get_accessible_clients" as any);
       if (error) throw error;
-      return data;
+      const rows = (data as Array<{
+        id: string;
+        client_name: string;
+        ndis_number: string | null;
+        status: string;
+        updated_at: string;
+        owner_user_id: string;
+        is_shared: boolean;
+      }> | null) ?? [];
+      // RPC sorts by id; re-sort by updated_at desc for the UI
+      return [...rows].sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
     },
   });
 
@@ -186,7 +193,14 @@ export default function Dashboard() {
               >
                 <CardContent className="py-4 px-5 flex items-center justify-between">
                   <div className="space-y-1">
-                    <p className="font-medium text-foreground">{client.client_name}</p>
+                    <p className="font-medium text-foreground flex items-center gap-2">
+                      {client.client_name}
+                      {(client as any).is_shared && (
+                        <Badge variant="outline" className="text-[10px] py-0 px-1.5 h-4 border-accent/30 text-accent">
+                          Shared
+                        </Badge>
+                      )}
+                    </p>
                     <p className="text-xs text-muted-foreground">
                       {client.ndis_number && `NDIS: ${client.ndis_number} · `}
                       Updated {format(new Date(client.updated_at), "d MMM yyyy")}
