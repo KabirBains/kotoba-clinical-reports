@@ -148,6 +148,36 @@ export default function ClientEditor() {
     },
   });
 
+  // Caller's role on this report (owner | editor | viewer | null)
+  const { data: myRole } = useQuery({
+    queryKey: ["report-role", report?.id, user?.id],
+    enabled: !!report?.id && !!user?.id,
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("report_role" as any, {
+        _report: report!.id,
+        _user: user!.id,
+      });
+      if (error) throw error;
+      return (data as "owner" | "editor" | "viewer" | null) ?? null;
+    },
+  });
+  const isViewer = myRole === "viewer";
+  const isOwner = myRole === "owner";
+
+  // Last non-self editor of this report, for the "Edited by …" indicator
+  const { data: lastEditor } = useQuery({
+    queryKey: ["last-editor", report?.id, user?.id],
+    enabled: !!report?.id && !!user?.id,
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("last_editor_for_report" as any, {
+        _report: report!.id,
+      });
+      if (error) throw error;
+      const rows = (data as Array<{ user_id: string; email: string | null; clinician_name: string | null; edited_at: string }> | null) ?? [];
+      return rows[0] ?? null;
+    },
+  });
+
   // Load notes, report, and quality scorecard from DB
   useEffect(() => {
     if (report) {
