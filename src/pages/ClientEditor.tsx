@@ -272,8 +272,17 @@ export default function ClientEditor() {
     if (!error) {
       setLastSaved(new Date());
       if (clientId) localStorage.setItem(`kotoba-notes-${clientId}`, JSON.stringify(notes));
+      // Log a single edit-activity row at most every 5 minutes per session,
+      // so the activity log records meaningful presence without spam.
+      if (user?.id) {
+        const stamp = Number(localStorage.getItem(`kotoba-last-edit-log-${report.id}`) || 0);
+        if (Date.now() - stamp > 5 * 60 * 1000) {
+          localStorage.setItem(`kotoba-last-edit-log-${report.id}`, String(Date.now()));
+          void logActivity(report.id, user.id, "edited_section");
+        }
+      }
     }
-  }, [report?.id, notes, assessments, recommendations, diagnoses, goals, nilGoals, reportContent, clientId, scorecard, issueStatuses, dismissedIssueKeys]);
+  }, [report?.id, notes, assessments, recommendations, diagnoses, goals, nilGoals, reportContent, clientId, scorecard, issueStatuses, dismissedIssueKeys, user?.id]);
 
   // Autosave every 30 seconds
   useEffect(() => {
@@ -1271,6 +1280,9 @@ export default function ClientEditor() {
                 } finally {
                   setGeneratingReport(false);
                   setTimeout(() => setGenerateProgress({ current: 0, total: 0, label: "" }), 3000);
+                  if (report?.id && user?.id) {
+                    void logActivity(report.id, user.id, "generated_full_report");
+                  }
                 }
               }}
             >
