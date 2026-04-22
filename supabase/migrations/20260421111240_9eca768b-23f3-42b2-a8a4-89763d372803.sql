@@ -54,6 +54,7 @@ CREATE TRIGGER before_user_insert_check_whitelist
 TRUNCATE public.whitelisted_emails;
 INSERT INTO public.whitelisted_emails (email, note) VALUES
   ('kabirbains99@hotmail.com',           'founding clinician'),
+  ('kabirbains9999@gmail.com',           'founder / admin'),
   ('tinkoo.malhi@gmail.com',             'founding clinician'),
   ('kyle@livingwithmeaning.com.au',      'founding clinician'),
   ('sara@livingwithmeaning.com.au',      'founding clinician');
@@ -66,6 +67,7 @@ DELETE FROM public.collateral_interviews
     SELECT id FROM auth.users
     WHERE email IS NULL OR lower(email) NOT IN (
       'kabirbains99@hotmail.com',
+      'kabirbains9999@gmail.com',
       'tinkoo.malhi@gmail.com',
       'kyle@livingwithmeaning.com.au',
       'sara@livingwithmeaning.com.au'
@@ -77,6 +79,7 @@ DELETE FROM public.reports
     SELECT id FROM auth.users
     WHERE email IS NULL OR lower(email) NOT IN (
       'kabirbains99@hotmail.com',
+      'kabirbains9999@gmail.com',
       'tinkoo.malhi@gmail.com',
       'kyle@livingwithmeaning.com.au',
       'sara@livingwithmeaning.com.au'
@@ -88,6 +91,7 @@ DELETE FROM public.clients
     SELECT id FROM auth.users
     WHERE email IS NULL OR lower(email) NOT IN (
       'kabirbains99@hotmail.com',
+      'kabirbains9999@gmail.com',
       'tinkoo.malhi@gmail.com',
       'kyle@livingwithmeaning.com.au',
       'sara@livingwithmeaning.com.au'
@@ -99,6 +103,7 @@ DELETE FROM public.profiles
     SELECT id FROM auth.users
     WHERE email IS NULL OR lower(email) NOT IN (
       'kabirbains99@hotmail.com',
+      'kabirbains9999@gmail.com',
       'tinkoo.malhi@gmail.com',
       'kyle@livingwithmeaning.com.au',
       'sara@livingwithmeaning.com.au'
@@ -108,6 +113,7 @@ DELETE FROM public.profiles
 DELETE FROM auth.users
   WHERE email IS NULL OR lower(email) NOT IN (
     'kabirbains99@hotmail.com',
+    'kabirbains9999@gmail.com',
     'tinkoo.malhi@gmail.com',
     'kyle@livingwithmeaning.com.au',
     'sara@livingwithmeaning.com.au'
