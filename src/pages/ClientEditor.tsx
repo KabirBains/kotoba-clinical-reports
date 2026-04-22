@@ -105,6 +105,7 @@ export default function ClientEditor() {
   const mainRef = useRef<HTMLElement>(null);
   const isMobile = useIsMobile();
   const [sidebarWidth, setSidebarWidth] = useState<number>(256);
+  const [manageAccessOpen, setManageAccessOpen] = useState(false);
 
   const { data: client } = useQuery({
     queryKey: ["client", clientId],
