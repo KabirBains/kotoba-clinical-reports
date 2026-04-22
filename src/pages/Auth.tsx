@@ -46,7 +46,11 @@ const WHITELIST_ERROR_MESSAGE =
 
 export default function Auth() {
   const navigate = useNavigate();
-  const [isLogin, setIsLogin] = useState(true);
+  // Three modes: "login" | "signup" | "forgot"
+  // We split forgot-password out as a distinct mode (rather than a separate
+  // route) so the user stays in the same auth shell — keeps the flow simple
+  // and matches the existing tab-style toggle UX.
+  const [mode, setMode] = useState<"login" | "signup" | "forgot">("login");
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -56,7 +60,22 @@ export default function Auth() {
     setLoading(true);
 
     try {
-      if (isLogin) {
+      if (mode === "forgot") {
+        // Send the reset link. We deliberately do NOT pre-check whether the
+        // email is whitelisted or registered — Supabase's resetPasswordForEmail
+        // does not reveal whether an address exists (no error returned for
+        // unknown emails), and we want to preserve that non-enumeration
+        // behaviour. The reset link only works for accounts that actually
+        // exist (which, by definition, were whitelisted at signup).
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: `${window.location.origin}/reset-password`,
+        });
+        if (error) throw error;
+        toast.success(
+          "If that email is registered, a password reset link has been sent. Please check your inbox.",
+        );
+        setMode("login");
+      } else if (mode === "login") {
         // Sign in — the database trigger guaranteed that this user's email
         // was whitelisted at signup. No runtime whitelist check needed.
         const { error } = await supabase.auth.signInWithPassword({ email, password });
