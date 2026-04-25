@@ -696,7 +696,12 @@ function postProcessClaudeOutput(
   // See insertCrossSectionCitations() for the trigger table and self-
   // citation guards. Skipped entirely when the caller didn't supply a
   // sectionName (we can't guard against self-citation without it).
-  if (sectionName) {
+  //
+  // Also skipped for the section-domain-observation route — that route
+  // produces 1-2 sentences for a Section 14 table cell, where citations
+  // would clutter the table. The route's prompt explicitly forbids them
+  // and we MUST NOT undo that decision here in post-processing.
+  if (sectionName && sectionName !== "section-domain-observation") {
     text = insertCrossSectionCitations(text, sectionName);
   }
 
@@ -1371,6 +1376,83 @@ EXAMPLE FORMAT (one risk item):
 "High risk of self-harm and functional decline: Without adequate daily living assistance, capacity-building supports, and behavioural intervention, ${firstName} is at significant risk of deterioration in mental health, increased behaviours of concern, worsening cognitive disorganisation, and impaired communication. Reduced support will also compromise his ability to engage in social participation, self-care, and self-management routines, leading to further decline in safety, physical health, well-being, and independence."
 
 Do NOT write a top-level heading. Start with the framing sentence, then the risk items.
+`;
+    }
+
+    if (section_name === "section-domain-observation") {
+      // AI-assisted polish for a single Functional Capacity domain observation.
+      // The clinician has typed dot points, shorthand, or rough notes into a
+      // per-field textarea (e.g., "Showering" within Personal ADLs). Those
+      // notes are rendered VERBATIM in the Section 14 report tables — without
+      // polish, dot points like "spastic — falls 2x — needs grab rails" land
+      // unchanged in the formal report.
+      //
+      // This route converts that input into 1-2 sentences of clinical prose
+      // suitable for table-cell display: person-first, definitive verbs,
+      // weakness-based, anchored in the rating where provided. No
+      // cross-section citations (table cells stand alone). No goal references
+      // (these are functional descriptions, not justifications).
+      //
+      // Inputs packaged into the prompt by the client:
+      //   - field_label    — the domain field being described (e.g.,
+      //                      "Showering", "Meal preparation")
+      //   - field_rating   — the clinician-selected rating where provided
+      //                      (e.g., "Maximal assistance", "Independent with
+      //                      aids")
+      //   - existing notes — the clinician's raw input, expanded into prose
+      //
+      // Output: 1-2 sentences. No bullets, no headings, no markdown.
+      // We hard-bind the participant first name into the prompt because the
+      // model has been observed substituting an unrelated name (e.g.,
+      // "Sarah") when the clinician's raw input doesn't itself name the
+      // participant. Pinning firstName here removes that failure mode.
+      const polishFirstName = firstName || "the participant";
+
+      dynamicSuffix += `
+
+=== DOMAIN OBSERVATION POLISH — section-specific guidance ===
+You are converting a clinician's raw notes about ONE specific functional capacity domain field into clinical prose suitable for a Section 14 table cell.
+
+This text appears in the "Observations / Support Required" column of a structured table next to the participant's rating for the field (e.g., for "Showering" the rating might be "Maximal assistance" with the observation describing why that level of support is required).
+
+PARTICIPANT FIRST NAME: ${polishFirstName}
+You MUST refer to the participant as "${polishFirstName}" throughout. Do NOT substitute any other name. If the clinician's raw input does not contain a name, use "${polishFirstName}". If the raw input contains a different name, replace it with "${polishFirstName}".
+
+REQUIRED:
+1. 1 to 2 sentences MAXIMUM. Table cells must stay compact.
+2. Person-first, third person, refer to the participant as "${polishFirstName}".
+3. Definitive verbs: "requires", "is unable to", "cannot", "demonstrates".
+4. Weakness-based framing — name the specific impairment / functional gap and the support level required. The observation exists to justify the rating.
+5. Where a rating is provided, the prose must be CONSISTENT with the rating (do not write "independent" if the rating is "maximal assistance").
+6. Use specific clinical detail from the clinician's input. Do NOT invent impairments not in the notes.
+7. Where the clinician has used dot points or shorthand (e.g., "spastic — falls 2x — needs grab rails"), expand into clinical prose.
+
+ABSOLUTELY DO NOT (these are hard rules — violations make the output unusable):
+- Add ANY cross-section citation. Specifically: do NOT write "(as documented in the X section)", "as documented in", "consistent with the X profile", "see the X section", or any equivalent reference to another section. Table cells MUST stand alone. This rule has zero exceptions.
+- Substitute any other participant name. Use ONLY "${polishFirstName}". If the input names someone else, override with "${polishFirstName}".
+- Write more than 2 sentences. This is a table cell, not a narrative section.
+- Reference participant goals — that is for justification sections, not functional descriptions.
+- Use the writer voice ("In the writer's clinical opinion") — not appropriate for an observation cell.
+- Add framing language like "It is observed that" or "It is noted that" — go directly to the clinical statement.
+- Invent rating-inconsistent detail (e.g., adding "with assistance" when rating says "Independent").
+- Use generic phrases ("functional decline", "reduced quality of life") without immediate participant-specific anchoring.
+- Output bullets, headings, or markdown. Plain prose only.
+
+OUTPUT:
+1-2 sentences of plain clinical prose. Start directly with "${polishFirstName}" or with the impairment. No preamble. No cross-section citations. No alternate names.
+
+WORKED EXAMPLES (note: these use the placeholder name [NAME] — your actual output uses "${polishFirstName}"):
+
+Field: "Showering"
+Rating: "Maximal assistance"
+Clinician input: "spastic legs, balance issues, 2 falls last 6 months, needs 1:1 prompting, grab rails fitted"
+CORRECT output: "[NAME] requires 1:1 physical assistance for showering due to spastic diplegia affecting both lower limbs and impaired balance, with grab rails fitted following two documented falls in the past 6 months."
+INCORRECT output (do not do this): "[NAME] requires 1:1 physical assistance for showering due to spastic diplegia (as documented in the Risk & Safety Profile section)..."  ← cross-section citation forbidden
+
+Field: "Money management"
+Rating: "Unable"
+Clinician input: "FSIQ 65, can't budget, public trustee manages plan, exploitation risk"
+CORRECT output: "[NAME] is unable to manage his finances independently given his Full Scale IQ of 65 and impaired executive functioning, with the Public Trustee currently managing his NDIS plan budget to mitigate his identified financial exploitation risk."
 `;
     }
 

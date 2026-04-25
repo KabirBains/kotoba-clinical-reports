@@ -14,7 +14,7 @@ import { MethodologyAggregator } from "@/components/editor/MethodologyAggregator
 import { ParticipantGoals, type GoalInstance } from "@/components/editor/ParticipantGoals";
 import { ParticipantReportDetails } from "@/components/editor/ParticipantReportDetails";
 import { DecisionMakerSection } from "@/components/editor/DecisionMakerSection";
-import { ChevronDown, ChevronRight, CheckCircle2 } from "lucide-react";
+import { ChevronDown, ChevronRight, CheckCircle2, Sparkles, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   Select,
@@ -23,6 +23,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 
 interface NotesModeProps {
   notes: Record<string, string>;
@@ -55,24 +57,118 @@ function StructuredField({
   subsectionId,
   notes,
   onUpdateNote,
+  participantFirstName,
+  diagnosesText,
 }: {
   field: SubsectionField;
   subsectionId: string;
   notes: Record<string, string>;
   onUpdateNote: (key: string, value: string) => void;
+  // Optional context for the "Polish with AI" button. When provided, the
+  // polish call passes participant name + diagnoses to the edge function so
+  // the model can produce participant-anchored prose. Without these, polish
+  // still works but produces more generic prose.
+  participantFirstName?: string;
+  diagnosesText?: string;
 }) {
   const noteKey = `${subsectionId}__${field.id}__notes`;
   const ratingKey = `${subsectionId}__${field.id}__rating`;
 
+  // Per-field polishing state. Multiple fields can be polished concurrently
+  // (each has its own state), so we track this locally per StructuredField
+  // instance rather than at the parent level.
+  const [polishing, setPolishing] = useState(false);
+
+  const noteValue = notes[noteKey] || "";
+  const ratingValue = notes[ratingKey] || "";
+
+  // Polish the clinician's raw observation into clinical prose suitable for
+  // a Section 14 table cell. Uses the section-domain-observation route on
+  // the generate-report edge function. Non-destructive: replaces the
+  // textarea content with the polished version, which the clinician can
+  // then edit freely. We toast both success and failure.
+  const handlePolish = async () => {
+    const raw = noteValue.trim();
+    if (!raw) {
+      toast.error("Add some observation notes first, then polish.");
+      return;
+    }
+    setPolishing(true);
+    try {
+      const promptParts: string[] = [
+        `Polish the following Section 14 (Functional Capacity) domain observation into 1-2 sentences of clinical prose suitable for a report table cell.`,
+        `\nFIELD: ${field.label}`,
+      ];
+      if (ratingValue) promptParts.push(`RATING: ${ratingValue}`);
+      promptParts.push(`\nCLINICIAN INPUT (polish this):\n${raw}`);
+      const prompt = promptParts.join("\n");
+
+      const { data, error } = await supabase.functions.invoke("generate-report", {
+        body: {
+          prompt,
+          section_name: "section-domain-observation",
+          max_tokens: 400,
+          participant_first_name: participantFirstName || "",
+          diagnoses_context: diagnosesText || "",
+        },
+      });
+
+      if (error || !data?.success || typeof data?.text !== "string" || !data.text.trim()) {
+        const msg = data?.error || data?.details || error?.message || "Unknown error";
+        console.error("[polish-domain-observation] failed:", msg);
+        toast.error("Couldn't polish — please try again");
+        return;
+      }
+
+      onUpdateNote(noteKey, data.text.trim());
+      toast.success("Polished — edit as needed");
+    } catch (e) {
+      console.error("[polish-domain-observation] exception:", e);
+      toast.error("Couldn't polish — please try again");
+    } finally {
+      setPolishing(false);
+    }
+  };
+
   return (
     <div className="space-y-1.5">
-      <label className="text-xs font-semibold text-foreground tracking-wide">
-        {field.label}
-      </label>
+      <div className="flex items-center justify-between gap-2">
+        <label className="text-xs font-semibold text-foreground tracking-wide">
+          {field.label}
+        </label>
+        {/* Polish-with-AI button. Only enabled when there's text to polish.
+            Uses Sparkles to match the AI-assist visual language used on
+            recommendation cards. */}
+        <button
+          type="button"
+          onClick={handlePolish}
+          disabled={polishing || !noteValue.trim()}
+          title={
+            polishing
+              ? "Polishing..."
+              : !noteValue.trim()
+                ? "Add observation notes first, then polish to clinical prose"
+                : "Polish to clinical prose with AI"
+          }
+          className={cn(
+            "flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-md border transition-colors",
+            polishing || !noteValue.trim()
+              ? "border-border/30 text-muted-foreground/50 cursor-not-allowed"
+              : "border-accent/40 text-accent hover:bg-accent/10"
+          )}
+        >
+          {polishing ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            <Sparkles className="h-3 w-3" />
+          )}
+          <span>{polishing ? "Polishing…" : "Polish"}</span>
+        </button>
+      </div>
       <div className={cn("flex gap-2", field.ratingOptions ? "flex-col sm:flex-row" : "")}>
         {field.ratingOptions && (
           <Select
-            value={notes[ratingKey] || ""}
+            value={ratingValue}
             onValueChange={(val) => onUpdateNote(ratingKey, val)}
           >
             <SelectTrigger className="h-9 text-xs sm:w-52 w-full bg-background border-border/60 shrink-0">
@@ -89,7 +185,7 @@ function StructuredField({
         )}
         <textarea
           rows={2}
-          value={notes[noteKey] || ""}
+          value={noteValue}
           onChange={(e) => onUpdateNote(noteKey, e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
@@ -111,12 +207,18 @@ function StructuredSubsectionPanel({
   title,
   notes,
   onUpdateNote,
+  participantFirstName,
+  diagnosesText,
 }: {
   id: string;
   number: string;
   title: string;
   notes: Record<string, string>;
   onUpdateNote: (key: string, value: string) => void;
+  // Forwarded to StructuredField → polish-with-AI button. Optional; when
+  // missing, polish still works but produces more generic prose.
+  participantFirstName?: string;
+  diagnosesText?: string;
 }) {
   const [open, setOpen] = useState(true);
   const config = getSubsectionConfig(id);
@@ -157,6 +259,8 @@ function StructuredSubsectionPanel({
               subsectionId={id}
               notes={notes}
               onUpdateNote={onUpdateNote}
+              participantFirstName={participantFirstName}
+              diagnosesText={diagnosesText}
             />
           ))}
         </div>
@@ -355,16 +459,29 @@ export function NotesMode({ notes, onUpdateNote, assessments, onUpdateAssessment
 
             {/* Structured subsections */}
             {"subsections" in section &&
-              section.subsections?.map((sub) => (
-                <StructuredSubsectionPanel
-                  key={sub.id}
-                  id={sub.id}
-                  number={sub.number}
-                  title={sub.title}
-                  notes={notes}
-                  onUpdateNote={onUpdateNote}
-                />
-              ))}
+              section.subsections?.map((sub) => {
+                // Build participant context for the per-field "Polish with AI"
+                // button. Pulled from the same notes state we use elsewhere
+                // for participant-specific generation. Optional — polish still
+                // works without these.
+                const fullName = notes["__participant__fullName"] || clientName || "";
+                const firstName = fullName.split(/\s+/)[0] || "";
+                const dxText = (diagnoses && diagnoses.length > 0)
+                  ? diagnoses.map((d) => d.name).filter(Boolean).join(", ")
+                  : "";
+                return (
+                  <StructuredSubsectionPanel
+                    key={sub.id}
+                    id={sub.id}
+                    number={sub.number}
+                    title={sub.title}
+                    notes={notes}
+                    onUpdateNote={onUpdateNote}
+                    participantFirstName={firstName}
+                    diagnosesText={dxText}
+                  />
+                );
+              })}
           </div>
         ))}
       </div>
