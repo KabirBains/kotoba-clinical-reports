@@ -1589,24 +1589,13 @@ export default function ClientEditor() {
                 if (scorecard?.issues) {
                   const issue = scorecard.issues.find((i: any) => i.id === id);
                   if (issue) {
-                    const key = issue.criterion + "::" + issue.section + "::" + (issue.flaggedText || "").substring(0, 50);
+                    const key = issue.category + "::" + issue.section + "::" + (issue.flaggedText || "").substring(0, 50);
                     setDismissedIssueKeys(prev => new Set([...prev, key]));
                   }
                 }
               }}
               onAcknowledgeIssue={(id) => setIssueStatuses(prev => ({ ...prev, [id]: "acknowledged" }))}
-              onAcceptAllIssues={() => {
-                if (scorecard?.issues) {
-                  const updates: Record<string, "accepted"> = {};
-                  scorecard.issues.forEach((i: any) => {
-                    if (i.tier === "auto_correct" && (!issueStatuses[i.id] || issueStatuses[i.id] === "unresolved")) {
-                      updates[i.id] = "accepted";
-                    }
-                  });
-                  setIssueStatuses(prev => ({ ...prev, ...updates }));
-                }
-              }}
-              onApplyCorrections={async () => {
+              onApplyAcceptedFixes={async () => {
                 setQualityCheckStatus("correcting");
                 try {
                   // Find the reportContent key that best matches an issue's section reference
@@ -1650,7 +1639,7 @@ export default function ClientEditor() {
                   };
 
                   const acceptedFixes = scorecard.issues
-                    .filter((issue: any) => issue.tier === "auto_correct" && issueStatuses[issue.id] === "accepted")
+                    .filter((issue: any) => issue.suggestedFix && issueStatuses[issue.id] === "accepted")
                     .map((issue: any) => {
                       const { key, text } = findSectionText(issue.section);
                       // If we still have no text, search all sections for the flagged text
@@ -1667,7 +1656,7 @@ export default function ClientEditor() {
                       }
                       return {
                         section: sectionKey, sectionText,
-                        criterion: issue.criterion, flaggedText: issue.flaggedText,
+                        criterion: issue.category, flaggedText: issue.flaggedText,
                         suggestedFix: issue.suggestedFix, description: issue.description,
                       };
                     });
