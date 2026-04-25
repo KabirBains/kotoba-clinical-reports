@@ -204,9 +204,18 @@ export default function ClientEditor() {
       if (Array.isArray(savedGoals)) setGoals(savedGoals);
       const savedNilGoals = (savedNotes as any)?.["__nilGoals__"];
       if (typeof savedNilGoals === "boolean") setNilGoals(savedNilGoals);
-      // Load persisted quality scorecard
+      // Load persisted quality scorecard. Skip legacy v1 shapes (which
+      // had `grade`/`categories`/`totalIssues` instead of `readiness`/
+      // `stats`) — rendering them in the v2 component would crash on
+      // `style.fg` and other missing fields. The clinician can simply
+      // re-run the quality check to produce a fresh v2 scorecard.
       const savedScorecard = (report as any).quality_scorecard;
-      if (savedScorecard && typeof savedScorecard === "object" && (savedScorecard.summary || savedScorecard.issues)) {
+      const isV2Scorecard = !!savedScorecard
+        && typeof savedScorecard === "object"
+        && typeof savedScorecard.readiness === "string"
+        && savedScorecard.stats
+        && Array.isArray(savedScorecard.issues);
+      if (isV2Scorecard) {
         setScorecard(savedScorecard);
         setQualityCheckStatus("complete");
       }

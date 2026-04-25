@@ -111,7 +111,7 @@ const CATEGORY_META: Record<IssueCategory, { label: string; description: string 
 
 /** Score-to-colour for the big readiness display. Tied to readiness state,
  *  not score directly, so colour transitions are clinically meaningful. */
-function readinessStyle(readiness: Readiness): { bg: string; fg: string; border: string; label: string } {
+function readinessStyle(readiness: Readiness | undefined): { bg: string; fg: string; border: string; label: string } {
   switch (readiness) {
     case "ready":
       return {
@@ -135,6 +135,17 @@ function readinessStyle(readiness: Readiness): { bg: string; fg: string; border:
         label: "Issues need addressing",
       };
   }
+  // Defensive default — protects against persisted v1 scorecards that
+  // don't carry a `readiness` field (they used `grade` instead). Without
+  // this the component crashes with "undefined is not an object
+  // (evaluating 'o.fg')" when a legacy scorecard is rehydrated from the
+  // `quality_scorecard` JSONB column.
+  return {
+    bg: "bg-muted/30",
+    fg: "text-muted-foreground",
+    border: "border-border/50",
+    label: "Quality check",
+  };
 }
 
 function severityDot(severity: IssueSeverity): string {
