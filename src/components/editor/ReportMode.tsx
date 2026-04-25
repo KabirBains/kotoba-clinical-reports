@@ -838,7 +838,11 @@ export function ReportMode(props: ReportModeProps) {
                       return (
                         <div key={domain.reportKey} className="space-y-4">
                           <h3 className="text-sm font-semibold text-foreground/80">{domain.label}</h3>
-                          <FunctionalDomainEvidenceBlock />
+                          <FunctionalDomainEvidenceBlock
+                            storageKey={`__evidence__${domain.reportKey}`}
+                            savedValue={reportContent[`__evidence__${domain.reportKey}`]}
+                            onChange={props.onUpdateNote}
+                          />
                           {Object.entries(structured).map(([fieldId, entry]) => {
                             if (!entry?.text) return null;
                             return (
@@ -867,7 +871,11 @@ export function ReportMode(props: ReportModeProps) {
                     return (
                       <div key={domain.reportKey} className="space-y-2">
                         <h3 className="text-sm font-semibold text-foreground/80">{domain.label}</h3>
-                        <FunctionalDomainEvidenceBlock />
+                        <FunctionalDomainEvidenceBlock
+                          storageKey={`__evidence__${domain.reportKey}`}
+                          savedValue={reportContent[`__evidence__${domain.reportKey}`]}
+                          onChange={props.onUpdateNote}
+                        />
                         <div
                           className="prose prose-sm max-w-none text-foreground/90"
                           contentEditable
