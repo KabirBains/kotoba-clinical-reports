@@ -6,6 +6,7 @@ export const TEMPLATE_SECTIONS = [
   { id: "background", number: "4", title: "Background Information" },
   { id: "participant-goals", number: "5", title: "Participant Goals" },
   { id: "diagnoses", number: "6", title: "Diagnoses" },
+  { id: "medications", number: "6a", title: "Current Medications" },
   { id: "ot-case-history", number: "7", title: "Allied Health Case History" },
   { id: "methodology", number: "8", title: "Methodology & Assessments Used" },
   { id: "informal-supports", number: "9", title: "Informal Supports" },
