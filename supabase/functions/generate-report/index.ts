@@ -696,7 +696,12 @@ function postProcessClaudeOutput(
   // See insertCrossSectionCitations() for the trigger table and self-
   // citation guards. Skipped entirely when the caller didn't supply a
   // sectionName (we can't guard against self-citation without it).
-  if (sectionName) {
+  //
+  // Also skipped for the section-domain-observation route — that route
+  // produces 1-2 sentences for a Section 14 table cell, where citations
+  // would clutter the table. The route's prompt explicitly forbids them
+  // and we MUST NOT undo that decision here in post-processing.
+  if (sectionName && sectionName !== "section-domain-observation") {
     text = insertCrossSectionCitations(text, sectionName);
   }
 
@@ -1025,6 +1030,14 @@ serve(async (req: Request) => {
       // cross-domain links when writing each section. Produced by the
       // clinical-spine edge function before the generation queue starts.
       clinical_spine,
+      // Participant goals — array of short strings (or {number, text}
+      // objects) representing the participant's NDIS goals as documented
+      // in their plan. Currently consumed only by the
+      // section-recommendation-justification route, where the model is
+      // instructed to reference goal numbers when this support enables
+      // progress toward them. Optional, forward-compatible (other routes
+      // ignore this field).
+      participant_goals,
     } = body;
     if (!prompt) return new Response(JSON.stringify({ success: false, error: "No prompt" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
@@ -1366,57 +1379,176 @@ Do NOT write a top-level heading. Start with the framing sentence, then the risk
 `;
     }
 
+    if (section_name === "section-domain-observation") {
+      // AI-assisted polish for a single Functional Capacity domain observation.
+      // The clinician has typed dot points, shorthand, or rough notes into a
+      // per-field textarea (e.g., "Showering" within Personal ADLs). Those
+      // notes are rendered VERBATIM in the Section 14 report tables — without
+      // polish, dot points like "spastic — falls 2x — needs grab rails" land
+      // unchanged in the formal report.
+      //
+      // This route converts that input into 1-2 sentences of clinical prose
+      // suitable for table-cell display: person-first, definitive verbs,
+      // weakness-based, anchored in the rating where provided. No
+      // cross-section citations (table cells stand alone). No goal references
+      // (these are functional descriptions, not justifications).
+      //
+      // Inputs packaged into the prompt by the client:
+      //   - field_label    — the domain field being described (e.g.,
+      //                      "Showering", "Meal preparation")
+      //   - field_rating   — the clinician-selected rating where provided
+      //                      (e.g., "Maximal assistance", "Independent with
+      //                      aids")
+      //   - existing notes — the clinician's raw input, expanded into prose
+      //
+      // Output: 1-2 sentences. No bullets, no headings, no markdown.
+      // We hard-bind the participant first name into the prompt because the
+      // model has been observed substituting an unrelated name (e.g.,
+      // "Sarah") when the clinician's raw input doesn't itself name the
+      // participant. Pinning firstName here removes that failure mode.
+      const polishFirstName = firstName || "the participant";
+
+      dynamicSuffix += `
+
+=== DOMAIN OBSERVATION POLISH — section-specific guidance ===
+You are converting a clinician's raw notes about ONE specific functional capacity domain field into clinical prose suitable for a Section 14 table cell.
+
+This text appears in the "Observations / Support Required" column of a structured table next to the participant's rating for the field (e.g., for "Showering" the rating might be "Maximal assistance" with the observation describing why that level of support is required).
+
+PARTICIPANT FIRST NAME: ${polishFirstName}
+You MUST refer to the participant as "${polishFirstName}" throughout. Do NOT substitute any other name. If the clinician's raw input does not contain a name, use "${polishFirstName}". If the raw input contains a different name, replace it with "${polishFirstName}".
+
+REQUIRED:
+1. 1 to 2 sentences MAXIMUM. Table cells must stay compact.
+2. Person-first, third person, refer to the participant as "${polishFirstName}".
+3. Definitive verbs: "requires", "is unable to", "cannot", "demonstrates".
+4. Weakness-based framing — name the specific impairment / functional gap and the support level required. The observation exists to justify the rating.
+5. Where a rating is provided, the prose must be CONSISTENT with the rating (do not write "independent" if the rating is "maximal assistance").
+6. Use specific clinical detail from the clinician's input. Do NOT invent impairments not in the notes.
+7. Where the clinician has used dot points or shorthand (e.g., "spastic — falls 2x — needs grab rails"), expand into clinical prose.
+
+ABSOLUTELY DO NOT (these are hard rules — violations make the output unusable):
+- Add ANY cross-section citation. Specifically: do NOT write "(as documented in the X section)", "as documented in", "consistent with the X profile", "see the X section", or any equivalent reference to another section. Table cells MUST stand alone. This rule has zero exceptions.
+- Substitute any other participant name. Use ONLY "${polishFirstName}". If the input names someone else, override with "${polishFirstName}".
+- Write more than 2 sentences. This is a table cell, not a narrative section.
+- Reference participant goals — that is for justification sections, not functional descriptions.
+- Use the writer voice ("In the writer's clinical opinion") — not appropriate for an observation cell.
+- Add framing language like "It is observed that" or "It is noted that" — go directly to the clinical statement.
+- Invent rating-inconsistent detail (e.g., adding "with assistance" when rating says "Independent").
+- Use generic phrases ("functional decline", "reduced quality of life") without immediate participant-specific anchoring.
+- Output bullets, headings, or markdown. Plain prose only.
+
+OUTPUT:
+1-2 sentences of plain clinical prose. Start directly with "${polishFirstName}" or with the impairment. No preamble. No cross-section citations. No alternate names.
+
+WORKED EXAMPLES (note: these use the placeholder name [NAME] — your actual output uses "${polishFirstName}"):
+
+Field: "Showering"
+Rating: "Maximal assistance"
+Clinician input: "spastic legs, balance issues, 2 falls last 6 months, needs 1:1 prompting, grab rails fitted"
+CORRECT output: "[NAME] requires 1:1 physical assistance for showering due to spastic diplegia affecting both lower limbs and impaired balance, with grab rails fitted following two documented falls in the past 6 months."
+INCORRECT output (do not do this): "[NAME] requires 1:1 physical assistance for showering due to spastic diplegia (as documented in the Risk & Safety Profile section)..."  ← cross-section citation forbidden
+
+Field: "Money management"
+Rating: "Unable"
+Clinician input: "FSIQ 65, can't budget, public trustee manages plan, exploitation risk"
+CORRECT output: "[NAME] is unable to manage his finances independently given his Full Scale IQ of 65 and impaired executive functioning, with the Public Trustee currently managing his NDIS plan budget to mitigate his identified financial exploitation risk."
+`;
+    }
+
     if (section_name === "section-recommendation-justification") {
       // AI-assisted Clinical Justification for ONE specific recommendation.
       // Clinician picks the recommendation from the dropdown library (we do
-      // NOT suggest recommendations). AI helps draft the "why this support
-      // is needed" text in the justification field, pulling specific
-      // findings from the clinician's notes across other sections as
-      // evidence anchors. Clinician edits the draft freely.
+      // NOT suggest recommendations). AI helps draft the integrated narrative
+      // explaining WHY this support is necessary — anchored in cross-domain
+      // intersectional cascades drawn from the rest of the report.
       //
       // Inputs packaged into the prompt by the client:
-      //   - Recommendation data (supportName, category, current/recommended
-      //     hours, tasks, linkedSections)
-      //   - All clinician notes keyed by section
-      //   - Any existing dot-points the clinician has already entered in
-      //     the justification field
-      //   - Clinical spine (optional)
+      //   - Recommendation data (supportName, category, hours, tasks, linkedSections)
+      //   - All clinician notes keyed by section (lookback evidence)
+      //   - Participant goals (passed via participant_goals body field)
+      //   - Any existing dot-points the clinician has already entered
       //
-      // Output: 2-4 sentences of drafted clinical reasoning, or an expanded
-      // bullet list if the clinician already has dot points. Weakness-based
-      // framing throughout.
+      // Output: 4-6 connected sentences of clinical prose, OR an expanded
+      // bullet list if the clinician already has dot points. The narrative
+      // must trace one cross-domain cascade, link to participant goals where
+      // applicable, use forward-looking tense for progressive impairments,
+      // and land on an integrated danger-if-not-funded conclusion.
+      //
+      // Style modelled on Dr Clement Nhunzvi's "Clinical reasoning" column
+      // in the OT Funding Needs table (e.g., Lenore Kononen FCA 2026, p17).
+
+      // Optional participant goals — passed as an array of strings or as
+      // structured {number, text} objects. Format into a context block.
+      let goalsBlock = "";
+      try {
+        const rawGoals = participant_goals;
+        if (Array.isArray(rawGoals) && rawGoals.length > 0) {
+          const formatted = rawGoals
+            .map((g, i) => {
+              if (typeof g === "string") return g.trim() ? `Goal ${i + 1}: ${g.trim()}` : "";
+              if (g && typeof g === "object") {
+                const text = typeof (g as any).text === "string" ? (g as any).text.trim() : "";
+                const num = (g as any).number || (i + 1);
+                return text ? `Goal ${num}: ${text}` : "";
+              }
+              return "";
+            })
+            .filter(Boolean);
+          if (formatted.length > 0) {
+            goalsBlock = `\n\nPARTICIPANT GOALS (reference by goal number where this support enables progress toward them):\n${formatted.join("\n")}`;
+          }
+        }
+      } catch (_e) { /* swallow — goals are optional */ }
+
       dynamicSuffix += `
 
 === RECOMMENDATION JUSTIFICATION — section-specific guidance ===
-You are drafting the Clinical Justification for ONE specific recommendation requested in Section 17 of the NDIS Functional Capacity Assessment. This text will appear alongside the recommendation as the "why this participant needs this support at this level" reasoning. The clinician has already selected the recommendation from a dropdown library — you are NOT suggesting recommendations. Your job is to draft the clinical reasoning for the recommendation the clinician has chosen, grounded in the notes they have already documented elsewhere in the report.
+You are drafting the Clinical Justification for ONE specific support recommendation in Section 17 of the NDIS Functional Capacity Assessment. The clinician has already selected the support from a library — you are NOT suggesting supports.
 
-STRUCTURE (follow this reasoning chain — each link is explicit):
-1. Name the specific impairment or functional limitation documented in the participant's NOTES CONTEXT that this support addresses. Reference the participant by first name.
-2. Describe the concrete functional consequence the participant is currently experiencing because of that impairment — draw the consequence from the notes, do not invent.
-3. Explain how the recommended support directly addresses this consequence (using the support's stated tasks / delivery model).
-4. Name the expected outcome in specific, measurable terms — what changes in the participant's functioning if this support is delivered.
+This justification is the comprehensive clinical narrative that explains why this participant requires this support at the recommended level. It must read like a senior occupational therapist's reasoning: integrated, cascading, and grounded in specific findings from the rest of the report. The reader is an NDIS planner deciding whether to fund this line item.
 
-LANGUAGE:
-- Definitive verbs: "requires", "cannot", "prevents", "compromises", "is unable to".
-- Weakness-based throughout: anchor the justification in the impairment/gap the support is filling. The justification exists to justify NDIS funding — be specific, concrete, and weakness-framed.
-- Draw specific facts from the NOTES CONTEXT provided below. Do NOT invent clinical detail, diagnoses, or impairments not documented in the notes.
-- Where a fact references documentation from another section, name the section (e.g. "as documented in the Social Environment notes", "consistent with findings in the Cognition domain").
-- Third person — refer to the participant by first name. Do not use "the writer" in this section; this is reasoning about the participant, not a clinician action.
+REQUIRED REASONING CHAIN (each link must be present, in this order):
+
+1. ANCHOR IN SPECIFIC IMPAIRMENT(S). Open with one or more concrete impairments documented in the NOTES CONTEXT — quote scores, named subscales, or observed deficits where available (e.g. "WHODAS 2.0 score of 64% indicating substantial functional impairment", "LSP-16 Withdrawal subscale score of 8/12", "moderate cognitive impairment as documented in the Cognition section"). Use the participant's first name. Do NOT invent scores or impairments not in the notes.
+
+2. TRACE ONE CROSS-DOMAIN CASCADE. Explicitly link the impairment(s) above to a downstream consequence in a DIFFERENT functional domain. The cascade must traverse at least two domains (cognitive / physical / social / emotional / self-care / community access / financial / vocational) and must be specific to this participant, drawn from the NOTES CONTEXT. Example chains:
+   - impaired mobility → restricted community access → social isolation → deterioration in emotional wellbeing
+   - reduced cognitive function → impaired medication management → physical health decline
+   - cognitive-communication challenges → social withdrawal → reduced community engagement → loss of meaningful occupational roles
+This step is NON-NEGOTIABLE — disability impact is intersectional, and the justification must show that.
+
+3. LINK TO PARTICIPANT GOALS where applicable. If PARTICIPANT GOALS are provided in the context, name the specific goal(s) this support enables progress toward — by goal number ("Goals 1, 3, 5") or short paraphrase. If no goals are provided, skip this step (do not invent goals).
+
+4. FORWARD-LOOKING FRAMING. Use progressive language for chronic / deteriorating conditions ("expected to decline", "will continue to require", "anticipated to escalate", "foreseeable increase in functional impairment"). For capacity-building / stabilising supports, use ("will support sustained engagement", "enables progress toward", "will mitigate the foreseeable decline").
+
+5. INTEGRATED DANGER-IF-NOT-FUNDED CLOSE. End the narrative with a sentence in the form: "Without [this specific support], [first name] will be at high risk of [specific cascading outcome from step 2] due to [the impairment from step 1]." This sentence is the natural conclusion of the cascade, not a tacked-on warning. It should reference at least one element from each of steps 1 and 2.
+
+LANGUAGE — match the senior-OT register modelled on the reference reports:
+- Definitive verbs: "requires", "is unable to", "compromises", "is expected to", "will continue to".
+- Cascade connectives: "compounding", "secondary to", "contributing further to", "with consequent", "this is further compounded by".
+- Reference cross-section findings with section names, not section numbers ("as documented in the Cognition section", "consistent with the Mental Health Risk profile"). Maximum 1 cross-section citation per sentence; maximum 2 in the whole justification.
+- Third person, first name throughout. Do NOT use "the writer" voice — this is reasoning about the participant, not a clinician action.
 
 LENGTH:
-- If the clinician has NOT entered any existing dot points: produce 2-4 sentences of connected clinical prose.
-- If the clinician HAS entered dot points: produce an EXPANDED version preserving each dot point's intent, with 1-2 sentences of supporting clinical reasoning per dot point, maintaining the bullet structure. Do NOT collapse their dot points into prose against their intent. Do NOT remove any dot point they have written.
+- Default: 4-6 connected sentences in continuous prose (matching the senior-OT Clinical Reasoning column format).
+- If the clinician has dot points already entered: produce an EXPANDED version preserving each dot point's intent. Add 1-2 supporting sentences per dot point that complete the reasoning chain. Maintain bullet structure. Do NOT collapse their dot points into prose against their intent. Do NOT remove any dot point they have written.
 
 DO NOT:
-- Include a consequence-if-not-funded statement ("Without this support, X will..."). That is a separate field (consequence) handled elsewhere.
-- Invent diagnoses or impairments not documented in the notes.
-- Cite sections by number — use section names (e.g. "Risk & Safety Profile", not "Section 12").
-- Add a closing "thus this support is necessary" or "this support is reasonable and necessary" sentence. The reasoning chain speaks for itself.
-- Use generic phrasing like "functional decline", "improved quality of life", "meaningful participation" unless immediately followed by a specific participant-anchored consequence.
-- Recommend the support itself or suggest support levels — that is the clinician's decision and is already in the recommendation data.
+- Invent diagnoses, scores, or impairments not documented in the NOTES CONTEXT.
+- Use generic boilerplate ("functional decline", "improved quality of life", "meaningful participation") unless immediately followed by a participant-specific consequence in the same sentence.
+- Cite sections by number ("Section 12") — use section names ("Mental Health Risk Profile").
+- Recommend the support itself or change the recommended support level — that is the clinician's decision and is in the recommendation data.
+- Add a closing "thus this support is reasonable and necessary" — the cascade speaks for itself.
+- Use the writer voice ("In the writer's clinical opinion", "the writer recommends") — not appropriate for this section.
 
 OUTPUT:
-Plain prose (or 2-4 bullet points if the clinician's existing input was bulleted). No preamble, no headings, no markdown. Start directly with the first clinical sentence.
+Plain prose (or expanded bullets if input was bulleted). No preamble, no headings, no markdown formatting. Start directly with the participant's first name and the impairment.
+
+WORKED EXAMPLE (style reference — modelled on the senior-OT Clinical Reasoning column):
+"Lenore presents with substantial functional impairment secondary to a progressive neurological condition, with her WHODAS 2.0 disability score of 71% and impaired neuromuscular functioning already compromising her capacity to safely complete self-care, mobility, and domestic tasks independently — and these capacities are expected to decline further. This decline directly cascades into restricted community access and loss of meaningful occupational roles, with consequent social isolation and deterioration in emotional wellbeing, as documented in the Social Environment section. The decline is further compounded by her concurrent transition to a new residence, which represents a period of increased vulnerability with anticipated escalation in support needs due to environmental disruption. Despite capacity-building interventions, assistive technology, and environmental modifications, Lenore will continue to require consistent in-person support to maintain safety and complete activities of daily living, directly enabling progress toward Goals 1, 2, 3, 5, 6, and 7. Without a structured Supported Independent Living assessment to establish her support type, level, and structure, Lenore will be at high risk of harm, falls, and disruption to continuity of care during and following the transition due to her progressive neuromuscular impairment."
+(End example — do not copy this verbatim; it is a style reference only.)
+${goalsBlock}
 `;
     }
 

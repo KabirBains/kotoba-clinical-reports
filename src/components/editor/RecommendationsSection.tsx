@@ -5,6 +5,7 @@ import {
   findSupport,
 } from "@/lib/recommendations-library";
 import { type DiagnosisInstance } from "@/lib/diagnosis-library";
+import { type GoalInstance } from "@/components/editor/ParticipantGoals";
 import { RecommendationCard } from "./RecommendationCard";
 import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -27,6 +28,11 @@ interface RecommendationsSectionProps {
   // degrades gracefully (button still works but produces a generic draft).
   clinicianNotes?: Record<string, string>;
   diagnoses?: DiagnosisInstance[];
+  // Participant goals from the Participant Goals section. When present, the
+  // AI justification draft will reference goal numbers ("Goals 1, 3, 5")
+  // where this support enables progress toward them — matching the
+  // senior-OT Clinical Reasoning column convention.
+  goals?: GoalInstance[];
   participantName?: string;
   participantFirstName?: string;
   participantPronouns?: string;
@@ -38,6 +44,7 @@ export function RecommendationsSection({
   onUpdateRecommendations,
   clinicianNotes,
   diagnoses,
+  goals,
   participantName,
   participantFirstName,
   participantPronouns,
@@ -165,6 +172,13 @@ export function RecommendationsSection({
         ? diagnoses.map((d) => d.name).filter(Boolean).join(", ")
         : "";
 
+      // Pack goals into the structured format the edge function expects.
+      // {number, text} objects so the model can cite "Goals 1, 3, 5" without
+      // re-numbering. We send only goals with non-empty text.
+      const goalsPayload = (goals || [])
+        .map((g, i) => ({ number: i + 1, text: (g.text || "").trim() }))
+        .filter((g) => g.text.length > 0);
+
       const { data, error } = await supabase.functions.invoke("generate-report", {
         body: {
           prompt,
@@ -176,6 +190,7 @@ export function RecommendationsSection({
           participant_sex: participantSex || "",
           diagnoses_context: diagnosesText,
           generated_sections: notesContext,
+          participant_goals: goalsPayload,
         },
       });
 
