@@ -289,7 +289,12 @@ export function QualityScorecard({
       missing_essential: [],
     };
     for (const iss of scorecard.issues) {
-      groups[iss.category].push(iss);
+      if (!groups[iss.category]) {
+        // Unknown / legacy category — bucket under "missing_essential" so it still surfaces.
+        groups.missing_essential.push(iss);
+      } else {
+        groups[iss.category].push(iss);
+      }
     }
     return groups;
   }, [scorecard.issues]);
