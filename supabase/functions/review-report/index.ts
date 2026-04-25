@@ -53,16 +53,36 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const SYSTEM_PROMPT = `You are a quality-assurance reviewer for NDIS Functional Capacity Assessment (FCA) reports. Your job is narrow and specific: catch FACTUAL and STRUCTURAL issues, not stylistic ones.
+const SYSTEM_PROMPT = `You are a quality-assurance reviewer for NDIS Functional Capacity Assessment (FCA) reports. Your job is narrow and specific: catch FACTUAL and STRUCTURAL issues, not stylistic ones, and not items outside the OT's scope of practice.
 
-YOU MUST IGNORE (do not flag, do not even mention):
-- Grammar, spelling, punctuation (the report is AI-generated, these aren't a concern)
-- Person-first language / third-person voice / active vs passive
-- Readability, flow, sentence variety, paragraph length
-- Formatting, markdown, bullet-point usage
-- Tone, professionalism, clinical register
-- Stylistic word choice, terminology preferences
-- Whether a section "could be expanded" or "could include more"
+═══════════════════════════════════════════════════════════════════════════
+ABSOLUTELY DO NOT FLAG — these are HARD STOPS. Issues with the following
+titles, descriptions, or framings MUST NOT appear in your output:
+═══════════════════════════════════════════════════════════════════════════
+
+GRAMMAR / STYLE / WRITING (the report is AI-generated; these are not your concern):
+- "Person-first language" / "use of person-first language"
+- "Third-person voice" / "first-person voice used"
+- "Active vs passive voice" / "passive voice"
+- "Readability" / "sentence flow" / "poor sentence flow" / "sentence variety"
+- "Paragraph length" / "wall of text"
+- "Grammar" / "spelling" / "punctuation"
+- "Tone" / "professionalism" / "clinical register"
+- "Stylistic word choice" / "terminology preference"
+- "Markdown" / "formatting" / "bullet-point usage"
+- "Could be expanded" / "could include more detail"
+- Any framing that critiques HOW something is written rather than WHETHER it is correct
+
+CLINICIAN VOICE / OBSERVATIONAL FRAMING (the report uses "the writer" / "the assessor"):
+- Do NOT flag sentences like "the writer observed", "the assessor noted", or first-person clinical voice
+- The clinician's own writing voice is intentional and not in your scope
+
+SCOPE-OF-PRACTICE EXCLUSIONS (these belong to other roles, not the OT):
+- NDIS plan dates, plan review dates, plan funding allocations — these are managed by Support Coordinators, not OTs. Do NOT flag plan-date fabrication or plan-funding inconsistencies.
+- Assessment administration dates (e.g. WAIS-IV 2024, DASS-42 March 2025) — clinicians may legitimately omit dates in summary lists. Do NOT flag missing assessment dates as contradictions OR as fabricated dates. Date mismatches WITHIN the same assessment ARE valid contradictions, but a date appearing in one section and being absent (not contradicted) in another is fine.
+- Service dates from external providers, billing-system dates, plan-management cycle dates — outside scope.
+
+OUTPUT-LEVEL HARD RULE: If you find yourself writing an issue with a title containing any of the words "person-first", "first-person", "third-person", "passive voice", "active voice", "sentence flow", "readability", "grammar", "tone", "professionalism", "register", "markdown", "formatting", "plan date", "plan review", or "writing style" — DELETE the entire issue. It does not belong in the output.
 
 YOU MUST FLAG only these four categories:
 
@@ -87,6 +107,8 @@ NOT a contradiction — DO NOT FLAG. A contradiction requires two source stateme
       - Section 3 says "(FSIQ 52, WAIS-IV 2024)" and Section 4 says "(FSIQ 52)" → NOT a contradiction. Section 4 is a diagnosis-list summary; it does not need to repeat the assessment year.
       - Section 6 says "DASS-42 (Depression 28/42, Anxiety 21/42, Stress 23/42)" and Section 12.3 says only "DASS-42 Depression: 28/42" → NOT a contradiction. The shorter version omits the other subscales but doesn't disagree.
       - Section 3 says "lamotrigine 150mg twice daily" and Section 12.3 says just "lamotrigine" → NOT a contradiction.
+  • Same numerical score with or without severity interpretation. One section saying "DASS-42 Depression 28/42" and another saying "DASS-42 Depression 28/42 (severe)" are NOT contradicting. The interpretation is supplementary commentary, not a different fact. Same applies to "WHODAS 68%" vs "WHODAS 68% (substantial disability)". Do NOT flag these.
+  • Different sections quoting the same fact with different surrounding context (e.g. one says "the participant has documented suicidal ideation" and another says "Marcus has expressed suicidal ideation twice in the past 6 months") — same finding, different elaborations. NOT a contradiction.
   • Same person referred to by full name in one place and first name elsewhere.
   • Same diagnosis named with full clinical name in one place ("Major depressive disorder, recurrent") and abbreviated elsewhere ("MDD") — assuming both refer to the same condition.
 
@@ -396,9 +418,13 @@ Return the issues as strict JSON. Be conservative — false positives erode clin
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-20250514",
-        max_tokens: 6000,
-        // Temperature 0 for maximum consistency across runs.
-        temperature: 0,
+        max_tokens: 8000,
+        // Temperature 0 was causing deterministic mid-output stalls on
+        // long prompts — a tiny temperature breaks the stall while keeping
+        // output highly consistent. The deterministic scoring formula
+        // applied to the issue list still produces stable scores
+        // run-to-run because the issue set converges.
+        temperature: 0.05,
         system: SYSTEM_PROMPT,
         messages: [{ role: "user", content: userPrompt }],
       }),
@@ -416,29 +442,117 @@ Return the issues as strict JSON. Be conservative — false positives erode clin
     const result = await response.json();
     const rawText: string = result.content?.[0]?.text || "";
 
+    /**
+     * Parse the model's response, handling the case where Claude self-
+     * corrects mid-response and emits MULTIPLE JSON blocks separated by
+     * commentary like "Wait, let me reconsider..." This happens when the
+     * model initially writes an issue, then realises it conflicts with a
+     * "DO NOT FLAG" rule in the prompt, and writes a corrected (often
+     * empty) JSON block after. We want the FINAL JSON block — that's the
+     * model's settled answer.
+     *
+     * Strategy: find every ```json...``` fenced block in the response,
+     * try to parse each, and return the last one that parses successfully.
+     * Fall back to the legacy "find {...}" heuristic if no fenced blocks
+     * are found.
+     */
     let parsed: { issues?: Issue[] };
     try {
-      let cleaned = rawText.trim().replace(/^```json?\s*/i, "").replace(/```\s*$/, "").trim();
-      const firstBrace = cleaned.indexOf("{");
-      const lastBrace = cleaned.lastIndexOf("}");
-      if (firstBrace > 0 || lastBrace < cleaned.length - 1) {
-        if (firstBrace >= 0 && lastBrace > firstBrace) cleaned = cleaned.slice(firstBrace, lastBrace + 1);
+      const fencedBlocks: string[] = [];
+      const fencedRegex = /```json?\s*([\s\S]*?)\s*```/gi;
+      let match: RegExpExecArray | null;
+      while ((match = fencedRegex.exec(rawText)) !== null) {
+        fencedBlocks.push(match[1].trim());
       }
-      parsed = JSON.parse(cleaned);
+
+      let parsedAny: { issues?: Issue[] } | null = null;
+      // Try fenced blocks last-to-first so the model's final answer wins.
+      for (let i = fencedBlocks.length - 1; i >= 0; i--) {
+        try {
+          parsedAny = JSON.parse(fencedBlocks[i]);
+          break;
+        } catch { /* try the previous block */ }
+      }
+
+      // Legacy fallback for responses without ```json fences.
+      if (!parsedAny) {
+        let cleaned = rawText.trim().replace(/^```json?\s*/i, "").replace(/```\s*$/, "").trim();
+        // Find the LAST top-level brace pair (model's settled answer)
+        const lastClose = cleaned.lastIndexOf("}");
+        if (lastClose >= 0) {
+          // Walk back to find matching open brace
+          let depth = 0;
+          let start = -1;
+          for (let i = lastClose; i >= 0; i--) {
+            if (cleaned[i] === "}") depth++;
+            else if (cleaned[i] === "{") {
+              depth--;
+              if (depth === 0) { start = i; break; }
+            }
+          }
+          if (start >= 0) cleaned = cleaned.slice(start, lastClose + 1);
+        }
+        parsedAny = JSON.parse(cleaned);
+      }
+
+      parsed = parsedAny ?? { issues: [] };
     } catch (parseErr) {
-      console.error("Failed to parse review JSON:", parseErr, rawText.slice(0, 500));
+      console.error("Failed to parse review JSON:", parseErr, rawText.slice(0, 1000));
       return new Response(
-        JSON.stringify({ success: false, error: "Failed to parse review response", raw: rawText.slice(0, 500) }),
+        JSON.stringify({ success: false, error: "Failed to parse review response", raw: rawText, rawLen: rawText.length }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
     const issues = Array.isArray(parsed.issues) ? parsed.issues : [];
 
+    // Server-side belt-and-braces filter. The prompt explicitly forbids
+    // flagging style / grammar / clinician-voice issues, plus scope-of-
+    // practice items that belong to Support Coordinators (NDIS plan dates,
+    // plan review dates, plan funding) or aren't relevant to OT review
+    // (assessment administration date "fabrication"). The model usually
+    // obeys but occasionally leaks one of these — we drop them here based
+    // on the issue title or description containing a banned pattern, so
+    // the user never sees them regardless.
+    const BANNED_ISSUE_PATTERNS: RegExp[] = [
+      // Style / grammar / writing-mechanics patterns
+      /person[\s-]?first language/i,
+      /\b(first|third)[\s-]?person (voice|language)/i,
+      /\b(active|passive) voice\b/i,
+      /sentence flow|sentence variety|sentence structure/i,
+      /\breadability\b/i,
+      /paragraph length|wall of text/i,
+      /\b(grammar|spelling|punctuation)\b/i,
+      /\btone\b.*\b(report|writing|professional)/i,
+      /\bclinical register\b/i,
+      /stylistic (word choice|preference|consistency)/i,
+      /markdown formatting|bullet[\s-]?point (usage|formatting)/i,
+      /could be (expanded|more detailed|more comprehensive)/i,
+      /writing style|prose style/i,
+      // Clinician-voice flags
+      /the writer (observed|noted|notes|documented)/i,
+      /first[\s-]?person clinical voice/i,
+      // Out-of-scope flags (managed by Support Coordinators, not OTs)
+      /\b(ndis )?plan date|plan review date|plan funding|plan-date/i,
+      /\bassessment (administration )?date.* (fabricat|invent|missing)/i,
+      // Severity-interpretation differences (one section labels a score
+      // "severe", another doesn't — same number, not a contradiction)
+      /\bseverity (interpretation|label|classification) (inconsisten|missing|differ)/i,
+      /inconsistent.*severity (interpretation|label|description)/i,
+      /\b(severe|moderate|mild) (interpretation|classification) (missing|absent|not provided)/i,
+    ];
+
+    function shouldDropIssue(iss: Issue): boolean {
+      const haystack = `${iss.title || ""} ${iss.description || ""}`;
+      return BANNED_ISSUE_PATTERNS.some((re) => re.test(haystack));
+    }
+
+    const filtered = issues.filter((iss) => !shouldDropIssue(iss as Issue));
+
     // Re-id issues sequentially for stable ordering across runs (the model
     // sometimes uses arbitrary ids). Stable ids make consistency testing
     // easier and let the UI persist statuses across re-checks.
-    const ordered = issues.map((iss, i) => ({
+    const ordered = filtered.map((iss, i) => ({
       ...iss,
       id: `issue_${i + 1}`,
     } as Issue));
