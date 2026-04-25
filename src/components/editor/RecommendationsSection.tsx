@@ -1,19 +1,9 @@
 import { useState, useMemo } from "react";
 import {
   type RecommendationInstance,
-  type SupportItem,
   SUPPORT_LIBRARY,
+  findSupport,
 } from "@/lib/recommendations-library";
-
-// Find the SupportItem definition for a given supportId. Returns null if the
-// supportId is unknown (e.g., removed from the library post-addition).
-function findSupport(supportId: string): SupportItem | null {
-  for (const cat of Object.values(SUPPORT_LIBRARY)) {
-    const item = cat.items.find((i) => i.id === supportId);
-    if (item) return item;
-  }
-  return null;
-}
 import { type DiagnosisInstance } from "@/lib/diagnosis-library";
 import { RecommendationCard } from "./RecommendationCard";
 import { Plus } from "lucide-react";
@@ -207,12 +197,24 @@ export function RecommendationsSection({
   };
 
   const summary = useMemo(() => {
+    // NDIS funding categories — Core / Capacity Building / Capital map
+    // directly from r.ndisCategory. Consumables (e.g. continence aids,
+    // low-cost AT) are ndisCategory "Core" with isConsumable=true; they
+    // belong in the Core tally for NDIS budgeting purposes — they are
+    // NOT Capital. Earlier code incorrectly counted consumables under
+    // Capital and excluded them from Core; fixed Apr 25 2026.
+    //
+    // Items flagged isCapital=true are always Capital regardless of how
+    // ndisCategory is set, so we route by isCapital first, then fall
+    // back to ndisCategory.
     const core = recommendations.filter(
-      (r) => r.ndisCategory === "Core" && !r.isConsumable && !r.isCapital
+      (r) => !r.isCapital && r.ndisCategory === "Core",
     ).length;
-    const cb = recommendations.filter((r) => r.ndisCategory === "Capacity Building").length;
+    const cb = recommendations.filter(
+      (r) => !r.isCapital && r.ndisCategory === "Capacity Building",
+    ).length;
     const capital = recommendations.filter(
-      (r) => r.ndisCategory === "Capital" || r.isCapital || r.isConsumable
+      (r) => r.isCapital || r.ndisCategory === "Capital",
     ).length;
     return { core, cb, capital, total: recommendations.length };
   }, [recommendations]);

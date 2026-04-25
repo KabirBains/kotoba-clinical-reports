@@ -1,10 +1,9 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   type RecommendationInstance,
-  type SupportItem,
   OUTCOME_OPTIONS,
   SECTION_OPTIONS,
-  SUPPORT_LIBRARY,
+  findSupport,
 } from "@/lib/recommendations-library";
 import { ChevronDown, ChevronRight, Trash2, GripVertical, Sparkles, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -29,17 +28,11 @@ interface RecommendationCardProps {
   isJustifying?: boolean;
 }
 
-function findSupport(supportId: string): SupportItem | null {
-  for (const cat of Object.values(SUPPORT_LIBRARY)) {
-    const item = cat.items.find((i) => i.id === supportId);
-    if (item) return item;
-  }
-  return null;
-}
-
 export function RecommendationCard({ rec, index, onUpdate, onRemove, onSuggestJustification, isJustifying = false }: RecommendationCardProps) {
   const [open, setOpen] = useState(true);
-  const support = findSupport(rec.supportId);
+  // Memoise the library lookup so we don't re-scan the SUPPORT_BY_ID Map
+  // on every render. supportId is stable for the lifetime of this card.
+  const support = useMemo(() => findSupport(rec.supportId), [rec.supportId]);
 
   const updateField = <K extends keyof RecommendationInstance>(field: K, value: RecommendationInstance[K]) => {
     onUpdate(index, { ...rec, [field]: value });
@@ -185,10 +178,17 @@ export function RecommendationCard({ rec, index, onUpdate, onRemove, onSuggestJu
             </div>
           )}
 
-          {/* Tasks */}
+          {/* Tasks (or Example Items for capital/consumable supports).
+              For capital and consumable items the underlying field is a
+              list of *example items* the clinician would be requesting
+              (e.g. "Powered wheelchair" for high_at) rather than tasks
+              performed by a support worker. We keep the data field name
+              `tasks` to avoid breaking existing recs, but the UI label
+              and placeholder switch based on isCapital / isConsumable so
+              the clinician sees the correct framing. */}
           <div>
             <label className="text-[11px] font-semibold text-muted-foreground block mb-1.5">
-              Tasks Covered
+              {isCapitalOrConsumable ? "Example Items Requested" : "Tasks Covered"}
             </label>
             <div className="flex flex-wrap gap-1">
               {allTasks.map((task) => {
@@ -196,6 +196,8 @@ export function RecommendationCard({ rec, index, onUpdate, onRemove, onSuggestJu
                 return (
                   <button
                     key={task}
+                    type="button"
+                    aria-pressed={active}
                     onClick={() => toggleTask(task)}
                     className={cn(
                       "px-2.5 py-1 rounded text-[11px] border transition-colors",
@@ -211,7 +213,9 @@ export function RecommendationCard({ rec, index, onUpdate, onRemove, onSuggestJu
             </div>
             <input
               type="text"
-              placeholder="Add custom task… (press Enter)"
+              placeholder={isCapitalOrConsumable
+                ? "Add custom item… (press Enter)"
+                : "Add custom task… (press Enter)"}
               value={rec.customTask}
               onChange={(e) => updateField("customTask", e.target.value)}
               onKeyDown={(e) => {
@@ -281,6 +285,8 @@ export function RecommendationCard({ rec, index, onUpdate, onRemove, onSuggestJu
                 return (
                   <button
                     key={o.id}
+                    type="button"
+                    aria-pressed={active}
                     onClick={() => toggleOutcome(o.id)}
                     title={o.label}
                     className={cn(
@@ -332,6 +338,9 @@ export function RecommendationCard({ rec, index, onUpdate, onRemove, onSuggestJu
                 return (
                   <button
                     key={s}
+                    type="button"
+                    aria-pressed={active}
+                    aria-label={`Link to Section ${s}`}
                     onClick={() => toggleSection(s)}
                     className={cn(
                       "px-2 py-0.5 rounded text-[10px] font-mono border transition-colors",
