@@ -4,14 +4,27 @@ import { kotobaSupabase as supabase } from "@/integrations/supabase/kotobaClient
 import { Button } from "@/components/ui/button";
 import { Download, Loader2, CheckCircle, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
+import {
+  ExportConfirmDialog,
+  getExportConfirmation,
+  type Scorecard,
+  type IssueStatus,
+} from "@/components/editor/QualityScorecard";
 
 interface DownloadReportButtonProps {
   reportData: ReportData;
+  /** Latest quality-check result. When present and there are unresolved
+   *  high-severity issues, clicking Download surfaces a soft-confirmation
+   *  modal before the .docx assembly starts. When absent (no quality
+   *  check has been run yet), the gate is bypassed entirely. */
+  scorecard?: Scorecard | null;
+  issueStatuses?: Record<string, IssueStatus>;
 }
 
-export default function DownloadReportButton({ reportData }: DownloadReportButtonProps) {
+export default function DownloadReportButton({ reportData, scorecard, issueStatuses }: DownloadReportButtonProps) {
   const [status, setStatus] = useState<"idle" | "building" | "done" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
+  const [showExportConfirm, setShowExportConfirm] = useState(false);
 
   const sectionKeys = [
     "section1", "section2", "section3", "section4", "section5",
@@ -32,7 +45,23 @@ export default function DownloadReportButton({ reportData }: DownloadReportButto
   const totalSections = sectionKeys.length;
   const allComplete = completedCount === totalSections;
 
-  const handleDownload = async () => {
+  // Soft-confirmation pre-export gate. Fires only when there is at least
+  // one unresolved high-severity issue on the most recent quality check.
+  // Clinicians retain authority — this is a friction moment, not a hard
+  // block.
+  const exportGate = scorecard
+    ? getExportConfirmation(scorecard, issueStatuses ?? {})
+    : { needsConfirmation: false, reason: "", blockingIssues: [] };
+
+  const handleClick = () => {
+    if (exportGate.needsConfirmation) {
+      setShowExportConfirm(true);
+    } else {
+      void doDownload();
+    }
+  };
+
+  const doDownload = async () => {
     setStatus("building");
     setErrorMsg("");
     toast.info("Building report document...");
@@ -176,7 +205,7 @@ export default function DownloadReportButton({ reportData }: DownloadReportButto
 
         {/* Download button */}
         <Button
-          onClick={handleDownload}
+          onClick={handleClick}
           disabled={status === "building"}
           className="w-full"
           size="lg"
@@ -200,6 +229,19 @@ export default function DownloadReportButton({ reportData }: DownloadReportButto
           _{reportData.clinician?.dateOfReport || new Date().toISOString().slice(0, 10)}.docx
         </div>
       </div>
+
+      {/* Soft-confirmation export gate */}
+      <ExportConfirmDialog
+        open={showExportConfirm}
+        onOpenChange={setShowExportConfirm}
+        blockingIssues={exportGate.blockingIssues}
+        reason={exportGate.reason}
+        onConfirm={() => {
+          setShowExportConfirm(false);
+          void doDownload();
+        }}
+        onAddressIssues={() => setShowExportConfirm(false)}
+      />
     </div>
   );
 }
