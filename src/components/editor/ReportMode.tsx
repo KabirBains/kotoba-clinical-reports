@@ -1274,6 +1274,69 @@ export function ReportMode(props: ReportModeProps) {
 
             // Methodology section — auto-populated structured tables
             if (section.id === "methodology") {
+              // (handled below)
+            }
+
+            // Section 6a — Current Medications (structured table render)
+            if (section.id === "medications") {
+              const meds = props.medications || [];
+              if (meds.length === 0) return null;
+              return (
+                <div key={section.id} className="space-y-3">
+                  <h2 className="text-base font-semibold text-foreground border-b border-border/30 pb-2">
+                    {section.number}. {section.title}
+                  </h2>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="text-xs h-8">Medication</TableHead>
+                        <TableHead className="text-xs h-8">Strength</TableHead>
+                        <TableHead className="text-xs h-8">Schedule</TableHead>
+                        <TableHead className="text-xs h-8">Indication</TableHead>
+                        <TableHead className="text-xs h-8">Route</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {meds.map((m) => {
+                        const brand = m.chosenBrand || (m.brands && m.brands[0]) || "";
+                        const heading = brand && brand !== m.generic ? `${brand} (${m.generic})` : m.generic;
+                        const schedule = [m.quantity, m.frequency, m.timing].filter(Boolean).join(" · ");
+                        return (
+                          <TableRow key={m.instanceId}>
+                            <TableCell className="text-xs py-1.5">
+                              <div className="font-semibold">{heading}</div>
+                              <div className="text-[11px] text-muted-foreground">{m.drugClass}</div>
+                            </TableCell>
+                            <TableCell className="text-xs py-1.5 font-mono">{m.strength || "—"}</TableCell>
+                            <TableCell className="text-xs py-1.5">{schedule || "—"}</TableCell>
+                            <TableCell className="text-xs py-1.5">{m.indication || "—"}</TableCell>
+                            <TableCell className="text-xs py-1.5">{m.route || "—"}</TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                  {meds.some((m) => m.notes?.trim() || (m.adminAid && m.adminAid !== "None")) && (
+                    <div className="space-y-1.5 mt-2">
+                      {meds
+                        .filter((m) => m.notes?.trim() || (m.adminAid && m.adminAid !== "None"))
+                        .map((m) => (
+                          <p key={m.instanceId} className="text-xs italic text-muted-foreground">
+                            <strong className="not-italic font-semibold text-foreground/80">
+                              {m.chosenBrand || m.generic}:
+                            </strong>{" "}
+                            {m.adminAid && m.adminAid !== "None" ? `Administered via ${m.adminAid}. ` : ""}
+                            {m.notes?.trim() || ""}
+                          </p>
+                        ))}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
+            // Methodology section — auto-populated structured tables
+            if (section.id === "methodology") {
               const content = reportContent[section.id];
               const interviews = props.collateralInterviews || [];
               const assessmentList = props.assessments || [];
