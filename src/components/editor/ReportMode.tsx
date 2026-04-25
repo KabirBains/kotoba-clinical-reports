@@ -14,6 +14,7 @@ import DownloadReportButton from "@/components/DownloadReportButton";
 import type { ReportData } from "@/ai/reportAssembler";
 import { type AssessmentInstance, getScoreForOption } from "@/lib/assessment-library";
 import { type DiagnosisInstance } from "@/lib/diagnosis-library";
+import { type MedicationInstance } from "@/lib/medication-library";
 import { type GoalInstance } from "./ParticipantGoals";
 import { type RecommendationInstance, OUTCOME_OPTIONS } from "@/lib/recommendations-library";
 import { QualityScorecard, QualitySummaryBar, type Scorecard, type IssueStatus, type QualityIssue } from "./QualityScorecard";
@@ -230,6 +231,7 @@ interface ReportModeProps {
   assessments: AssessmentInstance[];
   recommendations: RecommendationInstance[];
   diagnoses: DiagnosisInstance[];
+  medications?: MedicationInstance[];
   collateralInterviews?: CollateralInterview[];
   goals?: GoalInstance[];
   nilGoals?: boolean;

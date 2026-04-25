@@ -1537,6 +1537,7 @@ export default function ClientEditor() {
               assessments={assessments}
               recommendations={recommendations}
               diagnoses={diagnoses}
+              medications={medications}
               collateralInterviews={collateralInterviews}
               goals={goals}
               nilGoals={nilGoals}
