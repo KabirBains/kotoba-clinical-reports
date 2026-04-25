@@ -681,7 +681,17 @@ function postProcessClaudeOutput(
   // 11. Collapse multiple blank lines that the strips may have created.
   text = text.replace(/\n{3,}/g, "\n\n").trim();
 
-  // 12. Insert cross-section citations. Runs LAST so it operates on already-
+  // 12. Drop near-duplicate consecutive sentences inside the same
+  // paragraph. The AI occasionally emits the same fact in two consecutive
+  // sentences with slight rewording — e.g. the LSP-16 Withdrawal subscale
+  // sentence appearing twice in the Jonathan White Social Environment
+  // section. The result reads as redundant noise. We use a token-overlap
+  // (Jaccard-style) check on content words; if overlap >= 0.7, drop the
+  // second sentence. Conservative threshold to avoid false positives on
+  // legitimate close reformulations within a paragraph.
+  text = dedupeNearDuplicateSentences(text);
+
+  // 13. Insert cross-section citations. Runs LAST so it operates on already-
   // cleaned prose (no markdown artefacts to confuse the sentence splitter).
   // See insertCrossSectionCitations() for the trigger table and self-
   // citation guards. Skipped entirely when the caller didn't supply a
@@ -691,6 +701,124 @@ function postProcessClaudeOutput(
   }
 
   return text;
+}
+
+// ── Near-duplicate sentence detection ────────────────────────
+// Catches the "AI emitted the same fact twice in a row" pattern — most
+// visible example was the LSP-16 Withdrawal subscale sentence appearing
+// twice consecutively in a Social Environment section. Operates per
+// paragraph (split by double-newline) so we don't accidentally collapse
+// the same scoreboard sentence appearing once in the Functional Capacity
+// section and once in the Assessments section (different paragraphs).
+//
+// Algorithm:
+//   - Split text into paragraphs on blank lines.
+//   - For each paragraph, split into sentences using SENTENCE_SPLIT.
+//   - Compute a normalised token bag for each sentence (lowercase, strip
+//     punctuation, drop stopwords, drop tokens of length <= 2).
+//   - For each consecutive pair of sentences, compute Jaccard overlap:
+//     |intersection| / |union|. If >= 0.7, drop the second sentence.
+//   - Re-join sentences and paragraphs.
+//
+// Threshold of 0.7 is intentionally conservative — picks up clear
+// near-duplicates (same noun phrases + same numbers) without nuking
+// legitimate sequential mentions of the same concept in different framings.
+const DEDUPE_STOPWORDS = new Set([
+  "the","a","an","is","are","was","were","be","been","being","have","has","had",
+  "do","does","did","of","in","on","at","to","for","with","and","or","but","by",
+  "as","this","that","these","those","his","her","their","its","he","she","they",
+  "him","them","i","we","our","you","your","not","no","also","both","which",
+  "while","when","where","what","who","whom","how","why","than","then","so",
+  "such","into","onto","from","over","under","through","during","very","more",
+  "most","much","many","some","any","all","each","every","other","another",
+  "indicates","reveals","quantifies","documenting","demonstrating","showing",
+]);
+
+function tokenizeForDedupe(sentence: string): Set<string> {
+  const cleaned = sentence
+    .toLowerCase()
+    .replace(/\([^)]*\)/g, " ")            // strip parenthesised content
+    .replace(/[^a-z0-9\s\-/]/g, " ")       // strip punct, keep digits + slashes for scores like 8/12
+    .replace(/\s+/g, " ")
+    .trim();
+  const tokens = cleaned.split(" ").filter((t) =>
+    t.length > 2 && !DEDUPE_STOPWORDS.has(t)
+  );
+  return new Set(tokens);
+}
+
+function jaccard(a: Set<string>, b: Set<string>): number {
+  if (a.size === 0 && b.size === 0) return 1;
+  if (a.size === 0 || b.size === 0) return 0;
+  let intersection = 0;
+  for (const t of a) if (b.has(t)) intersection++;
+  const union = a.size + b.size - intersection;
+  return intersection / union;
+}
+
+function dedupeNearDuplicateSentences(text: string): string {
+  if (!text) return text;
+
+  const DEDUPE_THRESHOLD = 0.7;
+  // Local sentence regex (also defined as SENTENCE_SPLIT later in this file
+  // for the citation step). Defined locally here to avoid a forward
+  // reference — both copies must stay in sync if either is ever changed.
+  const SENTENCE_REGEX = /([^.!?\n]+[.!?])(\s+|$)/g;
+
+  // Split paragraphs on blank lines (one or more).
+  const paragraphs = text.split(/\n\s*\n/);
+
+  const dedupedParagraphs = paragraphs.map((para) => {
+    if (!para.trim()) return para;
+
+    // Match all sentences in the paragraph. Each match exposes its index +
+    // length so we can splice it out cleanly without rebuilding the
+    // paragraph from scratch (which used to drop in-between content like
+    // "His WHODAS 2." that fell outside any regex match — Apr 25 2026 bug
+    // where SENTENCE_REGEX can't traverse a period inside a number like
+    // "2.0", leaving an orphan span between matches that was lost on
+    // rebuild).
+    const matches = [...para.matchAll(SENTENCE_REGEX)];
+    if (matches.length < 2) return para;
+
+    // Decide which match indices are near-duplicates of their predecessor.
+    const dropIndices: number[] = [];
+    let prevTokens: Set<string> | null = null;
+    for (let i = 0; i < matches.length; i++) {
+      const sentence = matches[i][1] ?? "";
+      const tokens = tokenizeForDedupe(sentence);
+      // Only consider dropping if the sentence has enough content to
+      // meaningfully overlap (token bag of at least 4 distinct words).
+      // Below that threshold any short transitional sentence ("This is
+      // significant.") would falsely merge into its predecessor.
+      if (tokens.size >= 4 && prevTokens && prevTokens.size >= 4) {
+        if (jaccard(prevTokens, tokens) >= DEDUPE_THRESHOLD) {
+          dropIndices.push(i);
+          // Don't update prevTokens — the dropped sentence shouldn't
+          // anchor against its successor.
+          continue;
+        }
+      }
+      prevTokens = tokens;
+    }
+
+    if (dropIndices.length === 0) return para;
+
+    // Splice the dropped sentences out of the original paragraph in
+    // reverse order so earlier indices stay valid as we mutate. This
+    // preserves any non-matched in-between text (numbers like "2.0",
+    // bullet markers, fragments) verbatim.
+    let result = para;
+    for (let k = dropIndices.length - 1; k >= 0; k--) {
+      const m = matches[dropIndices[k]];
+      const start = m.index ?? 0;
+      const end = start + (m[0]?.length ?? 0);
+      result = result.slice(0, start) + result.slice(end);
+    }
+    return result;
+  });
+
+  return dedupedParagraphs.join("\n\n");
 }
 
 // ── Cross-section citation insertion ─────────────────────────
@@ -789,10 +917,14 @@ function insertCrossSectionCitations(text: string, sectionName: string): string 
     if (citationCount >= MAX_CITATIONS_PER_SECTION) return match;
     const s = sentence;
 
-    // Skip if this sentence already contains ANY citation. Prevents
-    // double-citation when the AI already obeyed the prompt rule for part
-    // of the output or when a previous iteration added one.
+    // Skip if this sentence already contains ANY citation, in any format
+    // we use. Prevents double-citation when the AI already emitted one
+    // verbatim, when a previous post-processing step added one, or when
+    // the sentence already includes the name-only form ("as documented in
+    // the X section"). The per-sentence cap is one citation regardless of
+    // which rule matched first.
     if (/\(see Section\s+\d+/i.test(s)) return match;
+    if (/\((?:as documented in|consistent with(?:\s+the)?\s+findings in|as noted in)\s+the\s+[A-Z]/i.test(s)) return match;
 
     // Skip if the sentence is a NEGATION. Regex triggers can't tell "X was
     // documented" from "no X was documented" — both match the same keyword.
