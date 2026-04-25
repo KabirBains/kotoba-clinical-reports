@@ -18,7 +18,7 @@ import { buildMethodologyText } from "@/components/editor/MethodologyAggregator"
 import { KotobaLogo } from "@/components/KotobaLogo";
 import { NotesMode } from "@/components/editor/NotesMode";
 import { ReportMode } from "@/components/editor/ReportMode";
-import { LiaiseMode, LIAISE_TEMPLATES, LIAISE_TEMPLATES_V2, getQuestionText, flattenStoredResponse, type CollateralInterview } from "@/components/editor/LiaiseMode";
+import { LiaiseMode, LIAISE_TEMPLATES, LIAISE_TEMPLATES_V2, getQuestionText, flattenStoredResponse, gatherCollateralEvidence, type CollateralInterview } from "@/components/editor/LiaiseMode";
 import { EditorSidebar } from "@/components/editor/EditorSidebar";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
