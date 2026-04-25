@@ -516,15 +516,11 @@ export const SUPPORT_LIBRARY: Record<string, SupportCategory> = {
     color: "#dc2626",
     category: "Capital",
     items: [
-      {
-        id: "home_mods",
-        name: "Home Modifications",
-        tasks: ["Grab rail installation", "Ramp installation", "Bathroom modification", "Kitchen modification", "Widening doorways", "Ceiling hoist installation"],
-        outcomes: ["maintain_safety", "build_capacity", "prevent_hospitalisation"],
-        exampleConsequenceTemplate: "ongoing falls risk in unsafe home environment, inability to access essential areas of the home independently, and potential need for premature residential placement",
-        sections: ["8"],
-        isCapital: true,
-      },
+      // Home Modifications is split into Minor and Major below — the
+      // generic "home_mods" entry was redundant with both subdivisions
+      // and was removed in the Apr 25 2026 cleanup. Use home_mods_minor
+      // for under-threshold mods (grab rails, portable ramps, lever taps)
+      // and home_mods_major for structural / over-threshold work.
       {
         id: "high_at",
         name: "Assistive Technology (High-Cost General)",
@@ -615,3 +611,27 @@ export const SUPPORT_LIBRARY: Record<string, SupportCategory> = {
     ],
   },
 };
+
+// ── Lookup helpers ────────────────────────────────────────────────────────
+// Build an O(1) id-keyed Map at module load so findSupport doesn't do a
+// linear scan of the whole library on every render. The library is read-only
+// at runtime; this Map stays in sync as long as the library structure does.
+const SUPPORT_BY_ID: Map<string, SupportItem> = new Map(
+  Object.values(SUPPORT_LIBRARY).flatMap((cat) => cat.items.map((item) => [item.id, item])),
+);
+
+/**
+ * Look up a SupportItem by its id. Returns null if the id is not in the
+ * library — typically because the item was renamed or removed in a later
+ * library version, while a saved RecommendationInstance still references
+ * the old id (e.g. legacy `home_mods` recs after the Apr 25 2026 cleanup
+ * that split into `home_mods_minor` / `home_mods_major`).
+ *
+ * Callers should fall back to the persisted RecommendationInstance fields
+ * (supportName, tasks, etc.) when this returns null so legacy data still
+ * renders gracefully.
+ */
+export function findSupport(supportId: string): SupportItem | null {
+  if (!supportId) return null;
+  return SUPPORT_BY_ID.get(supportId) ?? null;
+}
