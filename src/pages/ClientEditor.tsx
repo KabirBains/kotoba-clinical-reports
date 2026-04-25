@@ -18,7 +18,7 @@ import { buildMethodologyText } from "@/components/editor/MethodologyAggregator"
 import { KotobaLogo } from "@/components/KotobaLogo";
 import { NotesMode } from "@/components/editor/NotesMode";
 import { ReportMode } from "@/components/editor/ReportMode";
-import { LiaiseMode, LIAISE_TEMPLATES, LIAISE_TEMPLATES_V2, getQuestionText, flattenStoredResponse, type CollateralInterview } from "@/components/editor/LiaiseMode";
+import { LiaiseMode, LIAISE_TEMPLATES, LIAISE_TEMPLATES_V2, getQuestionText, flattenStoredResponse, gatherCollateralEvidence, type CollateralInterview } from "@/components/editor/LiaiseMode";
 import { EditorSidebar } from "@/components/editor/EditorSidebar";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
@@ -342,12 +342,39 @@ export default function ClientEditor() {
         .map(([key, text]) => `=== ${SECTION_LABELS[key] || key} ===\n${text}`)
         .join("\n\n");
       const { data, error } = await supabase.functions.invoke("review-report", {
-        body: { reportText, participantName: client?.client_name || "" },
+        body: {
+          reportText,
+          participantName: client?.client_name || "",
+          // Source-data payload — lets the model verify hallucination /
+          // contradiction claims against canonical inputs rather than
+          // guessing from prose alone.
+          diagnoses: diagnoses.map(d => d.name),
+          assessments: assessments.map(a => ({
+            tool: a.name,
+            scores: Object.entries(a.scores || {})
+              .map(([k, v]) => `${k}: ${v}`).join("; "),
+          })),
+          clinician_notes: Object.fromEntries(
+            Object.entries(notes).filter(
+              ([, v]) => typeof v === "string" && (v as string).trim()
+            )
+          ) as Record<string, string>,
+          collateral_evidence: gatherCollateralEvidence(collateralInterviews ?? []),
+          recommendations: recommendations.map(r => ({
+            supportName: r.supportName,
+            recommendedHours: r.recommendedHours,
+            justification: r.justification,
+            s34Justification: r.s34Justification,
+          })),
+          participant_goals: (goals ?? [])
+            .map((g, i) => ({ number: i + 1, text: g.text }))
+            .filter(g => g.text.trim()),
+        },
       });
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || "Quality check failed");
       const filteredIssues = (data.scorecard.issues || []).filter((issue: any) => {
-        const key = issue.criterion + "::" + issue.section + "::" + (issue.flaggedText || "").substring(0, 50);
+        const key = issue.category + "::" + issue.section + "::" + (issue.flaggedText || "").substring(0, 50);
         return !dismissedIssueKeys.has(key);
       });
       setScorecard({ ...data.scorecard, issues: filteredIssues });
@@ -359,7 +386,7 @@ export default function ClientEditor() {
       toast.error("Quality check failed: " + (err?.message || "Unknown error"));
       setQualityCheckStatus("complete");
     }
-  }, [reportContent, client?.client_name, dismissedIssueKeys]);
+  }, [reportContent, client?.client_name, dismissedIssueKeys, diagnoses, assessments, notes, collateralInterviews, recommendations, goals]);
 
   const filledSections = Object.entries(notes).filter(
     ([key, v]) => (typeof v === 'string' && v.trim()) && !key.endsWith("__rating") && !key.startsWith("__")
@@ -1562,24 +1589,13 @@ export default function ClientEditor() {
                 if (scorecard?.issues) {
                   const issue = scorecard.issues.find((i: any) => i.id === id);
                   if (issue) {
-                    const key = issue.criterion + "::" + issue.section + "::" + (issue.flaggedText || "").substring(0, 50);
+                    const key = issue.category + "::" + issue.section + "::" + (issue.flaggedText || "").substring(0, 50);
                     setDismissedIssueKeys(prev => new Set([...prev, key]));
                   }
                 }
               }}
               onAcknowledgeIssue={(id) => setIssueStatuses(prev => ({ ...prev, [id]: "acknowledged" }))}
-              onAcceptAllIssues={() => {
-                if (scorecard?.issues) {
-                  const updates: Record<string, "accepted"> = {};
-                  scorecard.issues.forEach((i: any) => {
-                    if (i.tier === "auto_correct" && (!issueStatuses[i.id] || issueStatuses[i.id] === "unresolved")) {
-                      updates[i.id] = "accepted";
-                    }
-                  });
-                  setIssueStatuses(prev => ({ ...prev, ...updates }));
-                }
-              }}
-              onApplyCorrections={async () => {
+              onApplyAcceptedFixes={async () => {
                 setQualityCheckStatus("correcting");
                 try {
                   // Find the reportContent key that best matches an issue's section reference
@@ -1623,7 +1639,7 @@ export default function ClientEditor() {
                   };
 
                   const acceptedFixes = scorecard.issues
-                    .filter((issue: any) => issue.tier === "auto_correct" && issueStatuses[issue.id] === "accepted")
+                    .filter((issue: any) => issue.suggestedFix && issueStatuses[issue.id] === "accepted")
                     .map((issue: any) => {
                       const { key, text } = findSectionText(issue.section);
                       // If we still have no text, search all sections for the flagged text
@@ -1640,7 +1656,7 @@ export default function ClientEditor() {
                       }
                       return {
                         section: sectionKey, sectionText,
-                        criterion: issue.criterion, flaggedText: issue.flaggedText,
+                        criterion: issue.category, flaggedText: issue.flaggedText,
                         suggestedFix: issue.suggestedFix, description: issue.description,
                       };
                     });
