@@ -4,10 +4,12 @@ import { getSubsectionConfig, type SubsectionField } from "@/lib/subsection-fiel
 import { type AssessmentInstance } from "@/lib/assessment-library";
 import { type RecommendationInstance } from "@/lib/recommendations-library";
 import { type DiagnosisInstance } from "@/lib/diagnosis-library";
+import { type MedicationInstance } from "@/lib/medication-library";
 import { type CollateralInterview } from "@/components/editor/LiaiseMode";
 import { AssessmentsSection } from "@/components/editor/AssessmentsSection";
 import { RecommendationsSection } from "@/components/editor/RecommendationsSection";
 import { DiagnosisPicker } from "@/components/editor/DiagnosisPicker";
+import { MedicationPicker } from "@/components/editor/MedicationPicker";
 import { MethodologyAggregator } from "@/components/editor/MethodologyAggregator";
 import { ParticipantGoals, type GoalInstance } from "@/components/editor/ParticipantGoals";
 import { ParticipantReportDetails } from "@/components/editor/ParticipantReportDetails";
@@ -31,6 +33,8 @@ interface NotesModeProps {
   onUpdateRecommendations: (recommendations: RecommendationInstance[]) => void;
   diagnoses: DiagnosisInstance[];
   onUpdateDiagnoses: (diagnoses: DiagnosisInstance[]) => void;
+  medications: MedicationInstance[];
+  onUpdateMedications: (medications: MedicationInstance[]) => void;
   collateralInterviews: CollateralInterview[];
   goals: GoalInstance[];
   onUpdateGoals: (goals: GoalInstance[]) => void;
@@ -218,7 +222,7 @@ const SECTION_PLACEHOLDERS: Record<string, string> = {
     "Enter observations about what limits this participant's ability to access or benefit from supports. Examples: communication barriers, cognitive/behavioural barriers, transport/mobility, carer burnout, no extended family, housing instability, previous negative service experiences, cultural/linguistic factors.",
 };
 
-export function NotesMode({ notes, onUpdateNote, assessments, onUpdateAssessments, recommendations, onUpdateRecommendations, diagnoses, onUpdateDiagnoses, collateralInterviews, goals, onUpdateGoals, nilGoals, onToggleNilGoals, clientName, ndisNumber, clinicianProfile }: NotesModeProps) {
+export function NotesMode({ notes, onUpdateNote, assessments, onUpdateAssessments, recommendations, onUpdateRecommendations, diagnoses, onUpdateDiagnoses, medications, onUpdateMedications, collateralInterviews, goals, onUpdateGoals, nilGoals, onToggleNilGoals, clientName, ndisNumber, clinicianProfile }: NotesModeProps) {
   return (
     <div className="max-w-4xl mx-auto py-6 px-4">
       <div className="bg-card border border-border/50 rounded-lg shadow-sm overflow-hidden">
@@ -276,6 +280,14 @@ export function NotesMode({ notes, onUpdateNote, assessments, onUpdateAssessment
               />
             )}
 
+            {/* Section 6a — Current Medications */}
+            {section.id === "medications" && (
+              <MedicationPicker
+                medications={medications}
+                onUpdateMedications={onUpdateMedications}
+              />
+            )}
+
             {/* Methodology section — auto-populated aggregator */}
             {section.id === "methodology" && (
               <MethodologyAggregator
@@ -314,8 +326,8 @@ export function NotesMode({ notes, onUpdateNote, assessments, onUpdateAssessment
               <DecisionMakerSection notes={notes} onUpdateNote={onUpdateNote} />
             )}
 
-            {/* Top-level sections (not functional-capacity, assessments, recommendations, diagnoses, methodology, participant-goals, participant-details, or decision-maker) get a plain textarea */}
-            {section.id !== "functional-capacity" && section.id !== "assessments" && section.id !== "recommendations" && section.id !== "diagnoses" && section.id !== "methodology" && section.id !== "participant-goals" && section.id !== "participant-details" && section.id !== "decision-maker" && (
+            {/* Top-level sections (not functional-capacity, assessments, recommendations, diagnoses, medications, methodology, participant-goals, participant-details, or decision-maker) get a plain textarea */}
+            {section.id !== "functional-capacity" && section.id !== "assessments" && section.id !== "recommendations" && section.id !== "diagnoses" && section.id !== "medications" && section.id !== "methodology" && section.id !== "participant-goals" && section.id !== "participant-details" && section.id !== "decision-maker" && (
               <SectionPanel
                 id={section.id}
                 number={section.number}
