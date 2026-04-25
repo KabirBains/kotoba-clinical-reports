@@ -103,7 +103,7 @@ interface ReportInput {
   sections: Record<string, string>;
   collateral_interviews?: CollateralInterview[];
   assessments?: Array<{ tool: string; date: string; score: string; classification: string; whySelected: string; }>;
-  recommendations?: Array<{ support: string; category: string; currentHours: string; recommendedHours: string; ratio: string; tasks: string; linkedSections: string; }>;
+  recommendations?: Array<{ support: string; category: string; currentHours: string; recommendedHours: string; ratio: string; tasks: string; }>;
 }
 
 function buildDocumentBody(input: ReportInput): string {
@@ -246,7 +246,7 @@ function buildDocumentBody(input: ReportInput): string {
   if (input.recommendations && input.recommendations.length > 0) {
     parts.push(headingXml("17.1 Recommendations Summary", 2));
     for (const r of input.recommendations) {
-      parts.push(kvTableXml([["Support", r.support],["NDIS Category", r.category],["Current Provision", r.currentHours],["Recommended Provision", r.recommendedHours],["Support Ratio", r.ratio],["Tasks Covered", r.tasks],["Linked Report Sections", r.linkedSections]]));
+      parts.push(kvTableXml([["Support", r.support],["NDIS Category", r.category],["Current Provision", r.currentHours],["Recommended Provision", r.recommendedHours],["Support Ratio", r.ratio],["Tasks Covered", r.tasks]]));
       parts.push('<w:p><w:pPr><w:spacing w:after="120"/></w:pPr></w:p>');
     }
   }

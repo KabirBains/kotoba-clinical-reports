@@ -2,7 +2,6 @@ import { useState, useMemo } from "react";
 import {
   type RecommendationInstance,
   OUTCOME_OPTIONS,
-  SECTION_OPTIONS,
   findSupport,
 } from "@/lib/recommendations-library";
 import { ChevronDown, ChevronRight, Trash2, GripVertical, Sparkles, Loader2 } from "lucide-react";
@@ -50,13 +49,6 @@ export function RecommendationCard({ rec, index, onUpdate, onRemove, onSuggestJu
       ? rec.outcomes.filter((o) => o !== id)
       : [...rec.outcomes, id];
     updateField("outcomes", outcomes);
-  };
-
-  const toggleSection = (s: string) => {
-    const sections = rec.linkedSections.includes(s)
-      ? rec.linkedSections.filter((x) => x !== s)
-      : [...rec.linkedSections, s];
-    updateField("linkedSections", sections);
   };
 
   const allTasks = support?.tasks ?? [];
@@ -325,35 +317,6 @@ export function RecommendationCard({ rec, index, onUpdate, onRemove, onSuggestJu
             <p className="text-[10px] text-muted-foreground/60 mt-1">
               If left blank, the AI will generate a participant-specific consequence at report time using the participant's diagnoses, functional capacity findings, and risk profile.
             </p>
-          </div>
-
-          {/* Linked sections */}
-          <div>
-            <label className="text-[11px] font-semibold text-muted-foreground block mb-1.5">
-              Linked Report Sections
-            </label>
-            <div className="flex flex-wrap gap-1">
-              {SECTION_OPTIONS.map((s) => {
-                const active = rec.linkedSections.includes(s);
-                return (
-                  <button
-                    key={s}
-                    type="button"
-                    aria-pressed={active}
-                    aria-label={`Link to Section ${s}`}
-                    onClick={() => toggleSection(s)}
-                    className={cn(
-                      "px-2 py-0.5 rounded text-[10px] font-mono border transition-colors",
-                      active
-                        ? "border-accent bg-accent/10 text-accent font-bold"
-                        : "border-border/40 bg-background text-muted-foreground/50 hover:bg-muted/50"
-                    )}
-                  >
-                    S.{s}
-                  </button>
-                );
-              })}
-            </div>
           </div>
 
           {/* S34 Justification */}
