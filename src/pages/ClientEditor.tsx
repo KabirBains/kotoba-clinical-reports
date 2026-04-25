@@ -382,11 +382,36 @@ export default function ClientEditor() {
       });
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || "Quality check failed");
-      const filteredIssues = (data.scorecard.issues || []).filter((issue: any) => {
+      const rawScorecard = data.scorecard ?? {};
+      const allIssues = Array.isArray(rawScorecard.issues) ? rawScorecard.issues : [];
+      const filteredIssues = allIssues.filter((issue: any) => {
         const key = issue.category + "::" + issue.section + "::" + (issue.flaggedText || "").substring(0, 50);
         return !dismissedIssueKeys.has(key);
       });
-      setScorecard({ ...data.scorecard, issues: filteredIssues });
+      // Recompute stats client-side so the rendered UI is never out of
+      // sync with `issues.length` (filtering removes some) and so the
+      // component never crashes on `stats.total` if the edge function
+      // returns a payload without a populated `stats` block.
+      const recomputedStats = {
+        total: filteredIssues.length,
+        high: filteredIssues.filter((i: any) => i.severity === "high").length,
+        medium: filteredIssues.filter((i: any) => i.severity === "medium").length,
+        low: filteredIssues.filter((i: any) => i.severity === "low").length,
+        byCategory: {
+          contradiction: filteredIssues.filter((i: any) => i.category === "contradiction").length,
+          hallucination: filteredIssues.filter((i: any) => i.category === "hallucination").length,
+          misplacement: filteredIssues.filter((i: any) => i.category === "misplacement").length,
+          missing_essential: filteredIssues.filter((i: any) => i.category === "missing_essential").length,
+        },
+      };
+      setScorecard({
+        score: typeof rawScorecard.score === "number" ? rawScorecard.score : 0,
+        readiness: rawScorecard.readiness || "address_issues",
+        summary: rawScorecard.summary || "",
+        ...rawScorecard,
+        stats: recomputedStats,
+        issues: filteredIssues,
+      });
       setIssueStatuses({});
       setScorecardVisible(true);
       setQualityCheckStatus("complete");

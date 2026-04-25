@@ -265,7 +265,19 @@ export function QualityScorecard({
   const dismissedCount = scorecard.issues.filter((i) => issueStatuses[i.id] === "dismissed").length;
   const acknowledgedCount = scorecard.issues.filter((i) => issueStatuses[i.id] === "acknowledged").length;
   const addressedCount = acceptedCount + dismissedCount + acknowledgedCount;
-  const totalIssues = scorecard.stats.total;
+  // Defensive reads — if a persisted scorecard from an earlier deploy is
+  // missing `stats`, fall back to deriving counts from the live issue list
+  // so the panel never crashes on `stats.total`.
+  const stats = scorecard.stats ?? {
+    total: scorecard.issues.length,
+    high: scorecard.issues.filter((i) => i.severity === "high").length,
+    medium: scorecard.issues.filter((i) => i.severity === "medium").length,
+    low: scorecard.issues.filter((i) => i.severity === "low").length,
+    byCategory: {
+      contradiction: 0, hallucination: 0, misplacement: 0, missing_essential: 0,
+    },
+  };
+  const totalIssues = stats.total;
   const allAddressed = totalIssues === 0 || addressedCount === totalIssues;
 
   // Group issues by category, preserving the order from CATEGORY_META.
@@ -325,10 +337,10 @@ export function QualityScorecard({
             {/* Counts row — only shown when there are issues */}
             {totalIssues > 0 && (
               <div className="flex flex-wrap gap-3 mt-3 text-xs">
-                <span className="text-red-700 dark:text-red-400 font-medium">{scorecard.stats.high} high</span>
-                <span className="text-amber-700 dark:text-amber-400 font-medium">{scorecard.stats.medium} medium</span>
-                {scorecard.stats.low > 0 && (
-                  <span className="text-muted-foreground">{scorecard.stats.low} low</span>
+                <span className="text-red-700 dark:text-red-400 font-medium">{stats.high} high</span>
+                <span className="text-amber-700 dark:text-amber-400 font-medium">{stats.medium} medium</span>
+                {stats.low > 0 && (
+                  <span className="text-muted-foreground">{stats.low} low</span>
                 )}
                 <span className="text-muted-foreground">·</span>
                 <span className="text-muted-foreground">
