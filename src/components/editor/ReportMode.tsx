@@ -357,8 +357,7 @@ interface ReportModeProps {
   onAcceptIssue: (id: string) => void;
   onDismissIssue: (id: string) => void;
   onAcknowledgeIssue: (id: string) => void;
-  onAcceptAllIssues: () => void;
-  onApplyCorrections: () => void;
+  onApplyAcceptedFixes: () => void;
   onToggleScorecard: () => void;
   onRecheck: () => void;
   onClearAndRecheck: () => void;
