@@ -691,6 +691,17 @@ function postProcessClaudeOutput(
   // legitimate close reformulations within a paragraph.
   text = dedupeNearDuplicateSentences(text);
 
+  // 12b. Strip "smuggler-phrase" sentences. The COLLATERAL EVIDENCE BANK
+  // prompt forbids "the writer observed" / "in the assessor's clinical
+  // opinion" / etc. — phrases that paste invented direct-clinician
+  // observations into the report under cover of authority. The model
+  // mostly obeys but occasionally leaks one. This is a belt-and-braces
+  // regex pass that drops any sentence beginning with one of these
+  // patterns. Tuned to be conservative — only matches sentence-leading
+  // smuggler phrases, not legitimate uses ("the participant noted that
+  // his family observed...").
+  text = stripSmugglerSentences(text);
+
   // 13. Insert cross-section citations. Runs LAST so it operates on already-
   // cleaned prose (no markdown artefacts to confuse the sentence splitter).
   // See insertCrossSectionCitations() for the trigger table and self-
@@ -706,6 +717,41 @@ function postProcessClaudeOutput(
   }
 
   return text;
+}
+
+// ── Smuggler-sentence stripping ──────────────────────────────
+// Drops any sentence whose opener matches a known "smuggler phrase" — phrases
+// like "The writer observed..." that the model occasionally leaks despite the
+// prompt prohibition. These phrases SMUGGLE invented direct-clinician
+// observations into the report under cover of clinical authority. We strip
+// the whole sentence rather than try to repair it, because the reported
+// observation by definition isn't grounded in the bank or the clinician notes.
+//
+// Applied per-paragraph so removing one sentence doesn't collapse paragraph
+// boundaries. Only matches LEADING smuggler phrases (case-insensitive) — does
+// not strip legitimate uses of the same words elsewhere in a sentence.
+const SMUGGLER_PATTERNS = [
+  /^the writer (observed|noted?|notes|assessed|documents?|documented)/i,
+  /^(in )?the (assessor|clinician)('s)? clinical opinion/i,
+  /^the (assessor|clinician) (observed|noted?|notes)/i,
+  /^during the assessment[, ].+ (presented|demonstrated|displayed|exhibited)/i,
+  /^it was (observed|noted) (during|that)/i,
+  /^it is (noted|observed) that/i,
+  /^notably,?\s+\w+ (presents|demonstrates|exhibits)/i,
+];
+function stripSmugglerSentences(text: string): string {
+  if (!text) return text;
+  const SENTENCE_SPLIT = /([^.!?]+[.!?]+)(\s*)/g;
+  return text.replace(SENTENCE_SPLIT, (match, sentence: string, ws: string) => {
+    const trimmed = sentence.trimStart();
+    if (SMUGGLER_PATTERNS.some((re) => re.test(trimmed))) {
+      // Drop the sentence + its trailing whitespace. If a paragraph
+      // becomes empty as a result, the dedupe / citation passes downstream
+      // handle it gracefully.
+      return "";
+    }
+    return match + (ws ?? "");
+  });
 }
 
 // ── Near-duplicate sentence detection ────────────────────────
@@ -1038,6 +1084,21 @@ serve(async (req: Request) => {
       // progress toward them. Optional, forward-compatible (other routes
       // ignore this field).
       participant_goals,
+      // Liaise "evidence bank" — a flat list of stakeholder-interview
+      // observations packaged by `gatherCollateralEvidence()` on the
+      // client. Each item: { id, informant, role, template, domain,
+      // domainId, tags, question, answer, isCustom }. When supplied, a
+      // per-section COLLATERAL EVIDENCE BANK block is injected into the
+      // prompt instructing the model to weave evidence in with attribution.
+      collateral_evidence,
+      // Canonical comma-separated diagnosis list for the participant.
+      // Injected as a HARD WHITELIST in the prompt — the model is
+      // instructed that no diagnosis name OUTSIDE this list may appear in
+      // the narrative. Closes the "BCP" → "bilateral cerebral palsy"
+      // class of fabrication where the model expanded an ambiguous
+      // clinician abbreviation into a diagnosis the participant doesn't
+      // have. Sent as `diagnoses_context` by every client call site.
+      diagnoses_context,
     } = body;
     if (!prompt) return new Response(JSON.stringify({ success: false, error: "No prompt" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
@@ -1067,6 +1128,195 @@ serve(async (req: Request) => {
     // ── DYNAMIC SUFFIX ─────────────────────────────────────────
     // Changes per call. Participant naming, collateral routing, lookback.
     let dynamicSuffix = "";
+
+    // ── DIAGNOSIS WHITELIST ───────────────────────────────────
+    // The participant's canonical diagnosis list, injected as a hard
+    // whitelist. Closes the "model expands clinician abbreviation into a
+    // fabricated diagnosis" class of error (e.g. "bcp" in a support
+    // worker's free-text → "bilateral cerebral palsy" in the narrative
+    // when the participant doesn't have CP). Sits at the top of the
+    // dynamic suffix so the constraint is read before the model sees the
+    // collateral bank or notes lookback.
+    if (typeof diagnoses_context === "string" && diagnoses_context.trim()) {
+      dynamicSuffix += `
+
+=== DIAGNOSIS WHITELIST (HARD CONSTRAINT) ===
+The participant's COMPLETE and ONLY diagnoses are:
+${diagnoses_context.trim()}
+
+You MUST NOT use any other diagnosis name in the narrative. Specifically:
+- Do NOT introduce any diagnosis word that isn't in the list above (examples of what would be FABRICATION if not on the list: "cerebral palsy", "schizophrenia", "Parkinson's", "Down syndrome", "PTSD", "ADHD", "OCD", "muscular dystrophy", "stroke", etc.).
+- If a clinician's narrative or informant report contains an ambiguous abbreviation ("BCP", "BIP", "MS", "SP", etc.), do NOT expand it into a diagnosis word that isn't already on this list. Either keep the abbreviation in inverted commas, write a generic descriptor based on the surrounding context (e.g. "balance issues" instead of expanding "BCP"), or omit the claim.
+- This rule is non-negotiable. A fabricated diagnosis in an NDIS report is a critical clinical-quality failure.
+
+`;
+    }
+
+    // ── COLLATERAL EVIDENCE BANK ───────────────────────────────
+    // Liaise interview responses are pre-tagged on the client and arrive
+    // as a flat array. We map the current section_name to a set of
+    // canonical evidence tags, filter the bank to relevant items, and
+    // inject a prompt block that instructs the model to weave evidence
+    // in with attribution. The model is also told to:
+    //   - translate lay claims into clinical language
+    //   - triangulate across informants when ≥2 sources align
+    //   - re-evaluate [CUSTOM Q] items by reading the question text
+    //     (because parent-domain tags may not match a clinician's
+    //     custom-question content)
+    const SECTION_TO_TAGS: Record<string, string[]> = {
+      // Background / disability profile
+      "section1": ["background"],
+      "section2": ["background"],
+      "section3": ["background", "cognition", "communication", "mobility"],
+      // Methodology — already shows collateral table; doesn't need bank
+      "section7": ["supports_gaps", "carer_sustainability"],
+      // Functional Capacity (catch-all + sub-domains)
+      "section8": ["mobility"],
+      "section9": ["personal_adls"],
+      "section10": ["cognition"],
+      "section11": ["communication"],
+      "section14": ["personal_adls", "domestic_iadls", "executive_iadls", "mobility"],
+      "section14_1": ["mobility"],
+      "section14_2": ["mobility"],
+      "section14_3": ["personal_adls"],
+      "section14_4": ["domestic_iadls"],
+      "section14_5": ["executive_iadls"],
+      "section-domain-observation": ["personal_adls", "mobility", "domestic_iadls", "executive_iadls", "cognition", "communication", "behaviour"],
+      // Risk & Mental Health (12.x — collateral-heavy in samples)
+      "section12": ["risk", "mental_health", "behaviour"],
+      "section12_1": ["risk", "mobility"],
+      "section12_2": ["risk", "behaviour"],
+      "section12_3": ["risk", "mental_health"],
+      "section12_4": ["risk", "behaviour"],
+      "section12_5": ["risk"],
+      // Social environment
+      "section13": ["social", "communication"],
+      // Carer sustainability + decision-maker
+      "section15": ["carer_sustainability"],
+      "section-decision-maker": ["carer_sustainability", "background"],
+      "section-barriers-to-supports": ["supports_gaps", "carer_sustainability", "social"],
+      "section-risks-if-not-funded": ["risk", "supports_gaps", "carer_sustainability"],
+      // Recommendations — broad pull
+      "section16": ["recommendations", "supports_gaps", "carer_sustainability"],
+      "section17": ["recommendations", "supports_gaps", "risk", "carer_sustainability"],
+      "section-recommendation-justification": ["recommendations", "supports_gaps", "risk", "carer_sustainability"],
+    };
+
+    type EvidenceItem = {
+      id: string;
+      informant: string;
+      role: string;
+      template: string;
+      domain: string;
+      domainId: string;
+      tags: string[];
+      question: string;
+      answer: string;
+      isCustom: boolean;
+    };
+
+    if (Array.isArray(collateral_evidence) && collateral_evidence.length > 0 && section_name) {
+      const wantedTags = SECTION_TO_TAGS[section_name] ||
+        // Fallback: try the unsuffixed section root (e.g. section12_3 -> section12)
+        SECTION_TO_TAGS[section_name.split("_")[0]] ||
+        [];
+
+      const matches: EvidenceItem[] = (collateral_evidence as EvidenceItem[]).filter((ev) => {
+        if (!ev || typeof ev.answer !== "string" || !ev.answer.trim()) return false;
+        if (wantedTags.length === 0) return true; // unfiltered — let the AI decide
+        if (!Array.isArray(ev.tags)) return false;
+        return ev.tags.some((t) => wantedTags.includes(t));
+      });
+
+      if (matches.length > 0) {
+        const bullet = (ev: EvidenceItem) => {
+          const customMark = ev.isCustom ? " [CUSTOM Q]" : "";
+          const informantLabel = ev.informant && ev.informant !== "[Unnamed informant]"
+            ? `${ev.informant}, ${ev.role || ev.template}`
+            : `${ev.role || ev.template}`;
+          return `- [${ev.template} — ${informantLabel}]${customMark} ${ev.question} → ${ev.answer}`;
+        };
+        const bankText = matches.map(bullet).join("\n");
+
+        dynamicSuffix += `
+
+=== COLLATERAL EVIDENCE BANK (Liaise interview responses) ===
+The following observations were captured during stakeholder interviews. Treat them as FIRST-CLASS evidence with the same standing as the clinician's notes — they are NOT optional supplementary material. Filter them by relevance to the section you are writing.
+
+${bankText}
+
+HOW TO USE THE BANK:
+
+1. Weave relevant items into the narrative with explicit attribution. Acceptable forms:
+   - "as reported by [informant name], [their role]"
+   - "according to [name]"
+   - "[name]'s [role] reported that..."
+   - "the support worker observed..."
+   When two or more informants agree, triangulate explicitly: "consistent with...", "also reported by...", "confirmed from...".
+
+2. TRANSLATE lay claims into clinical language. Preserve the informant's observation as the evidence anchor; do NOT invent details beyond what they reported. Examples:
+   - Informant says "won't shower" → "presents with bathing avoidance, as reported by [name]"
+   - Informant says "always wandering off" → "carer-identified abscond risk, as reported by [name]"
+   - Informant says "I do everything for him" → "requires hands-on assistance across personal-care domains, as reported by [name]"
+
+3. Items marked [CUSTOM Q] were added by the clinician outside the standard template. The parent domain may not match the question's actual topic — read the question text and use it only if relevant to the section you're writing.
+
+4. Do NOT orphan relevant evidence. If an item directly informs a finding in this section, cite it. If a clinician's notes for this section are sparse but the bank contains relevant evidence, the bank is the primary source — write the finding from the evidence, with attribution.
+
+5. Cap citations at one informant attribution per sentence; multiple attributions in a single sentence read as cluttered.
+
+ABSOLUTELY DO NOT (zero-tolerance hallucination guards — these are HARD RULES):
+
+  a. Do NOT cite evidence that isn't in the bank. Do NOT invent informant statements.
+
+  b. NEVER use any of these literal phrases or close variants — these are SMUGGLER PHRASES that paste invented clinician-direct observations into the report under cover of authority. HARD STOP. If you start to write one, delete the entire sentence:
+     - "the writer observed", "the writer noted", "the writer notes", "the writer noted that", "the writer documents"
+     - "in the assessor's clinical opinion", "the assessor observed", "the assessor noted", "the assessor notes"
+     - "the clinician observed", "the clinician noted", "the clinician notes"
+     - "during the assessment, [participant] presented"
+     - "it was noted during the assessment", "it was observed", "it is noted"
+     - any sentence beginning with "Notably," / "It is worth noting that" followed by a clinical claim
+     The COLLATERAL EVIDENCE BANK is what informants reported. The clinician's notes (above) are what the clinician documented. If a finding is not in either source, you cannot write it. Period. If you need a synthesising sentence, ground it in named-informant reports ("Across informants, X is consistent with..."), or omit it entirely.
+
+  c. Do NOT fabricate scores, dates, durations, or quantities. Use ONLY numbers and dates that appear in the bank, the clinician notes, or assessment scores already documented.
+     - If a source says "March" without a year, write "March" — do NOT add "2025".
+     - If a source says "last year", write "last year" — do NOT convert to a specific year.
+     - If a source says "two falls" without specifying when, write "two falls" — do NOT add "in the past 6 months".
+     - If a source says "in his late 20s", write "in his late 20s" — do NOT convert to "at age 28".
+     - If a number isn't in any source, drop the number rather than invent one.
+
+  d. Do NOT drift checklist values during paraphrase. If the bank says "Moderate assist (one person)", you may write "moderate physical assistance from one staff member" — you may NOT write "minimal assistance" or "two-person assist". Likewise "Hands-on assistance" must not become "supervision only".
+
+  e. When two informants DISAGREE, attribute both views explicitly ("the support worker reports X, while [name] reports Y") rather than collapsing to one. Do not silently pick a side.
+
+  f. When an informant's report contains a NEGATION ("does NOT have a falls history", "no incidents in the past year"), preserve the negation. Do not paraphrase into a positive claim.
+
+  g. When an informant's name is "[Unnamed informant]", refer to them by role only ("the support worker", "the parent / carer") — do not fabricate a name.
+
+  h. DEMOGRAPHIC / LIVING-ARRANGEMENT GUARD: Do NOT invent family members, household composition, residence type, family relationships, or carer roles that are not explicitly stated in the bank, the clinician notes, or the participant block. Specifically:
+     - If the sources say "mother is the primary carer" — you may name her. You may NOT add a father, siblings, partner, children, extended family unless they appear in a source.
+     - If a source mentions a deceased relative, that person is deceased — they are not part of the current household.
+     - If no source describes the participant's residence (family home, supported accommodation, group home, alone, etc.), do NOT speculate. Write around it.
+
+  i. Do NOT invent clinical inferences not supported by sources. Phrases like "good proprioceptive awareness", "adequate core strength", "intact sensory integration" — if no assessment or informant reported them, do NOT write them. State what is reported; do not theorise about what's NOT reported.
+
+  i2. ABBREVIATION GUARD: Informant narratives often contain clinician shorthand ("BCP", "PRN", "tx", "BiD", "1:1", "BSP", "PBS", "MDT", "ALP", "OT", "SP", "MH", "BoCs"). Do NOT auto-expand these into specific diagnoses, interventions, or clinical labels unless the unambiguous expansion is already documented in the participant's diagnosis list, the clinician notes, or another bank item. Specifically:
+     - "BCP" must NOT become "bilateral cerebral palsy" unless cerebral palsy is in the diagnoses. Possible expansions ("Behaviour Care Plan", "Behaviour Contingency Plan", typo) are ambiguous — keep as "BCP" or "behaviour care plan" if context makes it clearly the latter.
+     - "tx" stays as "treatment" — do NOT invent a specific therapy modality.
+     - "PRN" stays as "PRN" or "as-needed" — do NOT add a specific medication name unless one is documented elsewhere.
+     - "BiD" / "BD" stays as "twice daily" — do NOT add a specific medication unless one is documented elsewhere.
+     - When in doubt about an abbreviation, write the abbreviation in inverted commas and let the human reader interpret. NEVER invent a diagnosis from an abbreviation.
+     The diagnosis list for this participant is the canonical list. Diagnoses NOT on that list cannot be added to the narrative even if an abbreviation seems to suggest one.
+
+  j. SCARCITY RULE — strict length cap when sources are sparse:
+     - If the bank has FEWER THAN 2 relevant items for this section AND the clinician notes for this section contain fewer than 30 words: maximum output is 2-3 sentences. Do NOT attempt full paragraphs. State only what is in the sources, with attribution. If the section legitimately has very little evidence, that is the correct output — a brief, honest section is far better than a padded one.
+     - When generating multi-paragraph output, EACH paragraph must contain at least one inline citation tied to either a named informant from the bank, a clinician-note source, or a previously-generated section. A paragraph with zero citations is a smell that you are confabulating.
+     - Do NOT invent activities, programmes, services, schedules, accommodations, or environmental contexts not stated in the sources. (Examples of forbidden invention: "attends a day programme", "responds to te reo Māori spoken by staff", "engages well with structured activities", "lives in supported accommodation" — none of these are inferable from a generic 'Māori cultural identity' tag.)
+
+`;
+      }
+    }
+
 
     if (fullName) {
       // Build a richer participant block when demographic fields are

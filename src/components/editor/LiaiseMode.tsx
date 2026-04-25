@@ -65,11 +65,49 @@ export type LiaiseQuestionV2 =
   | { type: "checklist_single"; text: string; options: string[]; allowOther?: boolean }
   | { type: "checklist_multi"; text: string; options: string[]; allowOther?: boolean };
 
+/**
+ * Canonical evidence tags. Each Liaise V2 domain is tagged with one or more
+ * of these so the report-generation pipeline can withdraw the right
+ * evidence when generating each section. Treat Liaise as a "bank" of
+ * observations that any downstream section can query — same observation
+ * (e.g. "support worker reports hoist transfers") legitimately funds the
+ * Mobility narrative, the Risk profile, AND the recommendation
+ * justification, with attribution each time.
+ *
+ * Stable string-literal type so the AI prompt and the report renderer can
+ * agree on tag values without import gymnastics.
+ */
+export type LiaiseEvidenceTag =
+  | "background"           // disability profile, history, developmental
+  | "cognition"             // executive function, memory, learning
+  | "communication"         // expressive / receptive / AAC
+  | "mobility"              // gait, transfers, falls, aids
+  | "personal_adls"         // showering, dressing, toileting, eating
+  | "domestic_iadls"        // meal prep, cleaning, laundry, shopping
+  | "executive_iadls"       // money, medication, transport, scheduling
+  | "behaviour"             // BoCs, dysregulation, triggers
+  | "mental_health"         // mood, anxiety, sleep, MH symptoms
+  | "risk"                  // safety, falls, harm to self / others, supervision
+  | "social"                // peers, community, isolation, relationships
+  | "carer_sustainability"  // informal-support burden, respite, family load
+  | "supports_gaps"         // current paid supports, what's missing, breakdown patterns
+  | "recommendations"       // direct input to recommendation justifications
+  | "strengths";            // capabilities, interests, when at their best
+
 export interface LiaiseDomainV2 {
   id: string;
   name: string;
   /** When true, the domain auto-expands in the UI and is marked as the informant's primary contribution area. */
   primary?: boolean;
+  /**
+   * Evidence tags this domain's responses contribute to. Used by
+   * `gatherCollateralEvidence()` to package the bank for the
+   * report-generation pipeline. A domain can have multiple tags — e.g.
+   * the support worker's mobility_transfers domain feeds both the
+   * Mobility narrative AND the Risk profile because falls evidence
+   * belongs in both.
+   */
+  tags?: LiaiseEvidenceTag[];
   questions: LiaiseQuestionV2[];
 }
 
@@ -161,6 +199,7 @@ export const LIAISE_TEMPLATES_V2: Record<string, LiaiseTemplateV2> = {
         id: "personal_adls",
         name: "Personal ADLs",
         primary: true,
+        tags: ["personal_adls"],
         questions: [
           { type: "checklist_single", text: "Showering / bathing", options: [...SUPPORT_LEVEL_OPTIONS] },
           { type: "checklist_single", text: "Dressing", options: [...SUPPORT_LEVEL_OPTIONS] },
@@ -172,6 +211,7 @@ export const LIAISE_TEMPLATES_V2: Record<string, LiaiseTemplateV2> = {
       {
         id: "mobility_transfers",
         name: "Mobility & Transfers",
+        tags: ["mobility", "risk"],
         questions: [
           { type: "checklist_multi", text: "Mobility aids used during your shifts", options: [...MOBILITY_AIDS_OPTIONS], allowOther: true },
           { type: "checklist_single", text: "Transfers (bed / chair / toilet / car)", options: ["Independent", "Set-up / verbal prompt only", "Minimal hands-on (steadying)", "Moderate assist (one person)", "Full assist (two people or hoist)"] },
@@ -182,6 +222,7 @@ export const LIAISE_TEMPLATES_V2: Record<string, LiaiseTemplateV2> = {
         id: "behaviour_emotional",
         name: "Behaviour & Triggers",
         primary: true,
+        tags: ["behaviour", "risk", "mental_health"],
         questions: [
           { type: "checklist_multi", text: "Behaviours of concern observed during your shifts", options: ["None", "Self-injury", "Physical aggression", "Verbal aggression", "Property damage", "Absconding", "Refusing supports", "Shutdown / withdrawal"], allowOther: true },
           { type: "checklist_single", text: "Frequency", options: [...FREQUENCY_OPTIONS] },
@@ -191,6 +232,7 @@ export const LIAISE_TEMPLATES_V2: Record<string, LiaiseTemplateV2> = {
       {
         id: "communication",
         name: "Communication",
+        tags: ["communication"],
         questions: [
           { type: "checklist_multi", text: "Primary communication methods", options: [...COMMS_METHOD_OPTIONS], allowOther: true },
           { type: "open", text: "How does [name] tell you what they need, and where does communication break down?" },
@@ -199,6 +241,7 @@ export const LIAISE_TEMPLATES_V2: Record<string, LiaiseTemplateV2> = {
       {
         id: "risk_safety",
         name: "Risk & Safety",
+        tags: ["risk"],
         questions: [
           { type: "checklist_single", text: "Can [name] be safely left alone?", options: ["Yes, any duration", "Yes, short periods (<1 hr)", "Yes, with check-ins", "No — requires continuous supervision"] },
           { type: "open", text: "Describe the most significant safety incident you've witnessed or responded to." },
@@ -208,6 +251,7 @@ export const LIAISE_TEMPLATES_V2: Record<string, LiaiseTemplateV2> = {
         id: "current_supports_gaps",
         name: "Current Supports & Unmet Needs",
         primary: true,
+        tags: ["supports_gaps", "recommendations"],
         questions: [
           { type: "checklist_single", text: "Hours per week you currently work with [name]", options: ["<5", "5-10", "11-20", "21-40", "40+"] },
           { type: "checklist_single", text: "How adequate are current supports during your shifts?", options: ["Adequate", "Stretched but manageable", "Insufficient — unmet needs", "Inadequate — safety concerns when support ends"] },
@@ -217,6 +261,7 @@ export const LIAISE_TEMPLATES_V2: Record<string, LiaiseTemplateV2> = {
       {
         id: "strengths",
         name: "Strengths",
+        tags: ["strengths"],
         questions: [
           { type: "open", text: "When is [name] at their best, and what do people often underestimate about them?" },
         ],
@@ -237,6 +282,7 @@ export const LIAISE_TEMPLATES_V2: Record<string, LiaiseTemplateV2> = {
         id: "daily_routine_adls",
         name: "Daily Routine & ADLs",
         primary: true,
+        tags: ["personal_adls", "carer_sustainability"],
         questions: [
           { type: "checklist_single", text: "Showering / bathing at home", options: [...SUPPORT_LEVEL_OPTIONS] },
           { type: "checklist_single", text: "Toileting & continence at home", options: [...SUPPORT_LEVEL_OPTIONS] },
@@ -248,6 +294,7 @@ export const LIAISE_TEMPLATES_V2: Record<string, LiaiseTemplateV2> = {
       {
         id: "behaviour_mood",
         name: "Behaviour & Mood at Home",
+        tags: ["behaviour", "mental_health", "risk"],
         questions: [
           { type: "checklist_multi", text: "Behaviours of concern at home", options: ["None", "Self-injury", "Physical aggression", "Verbal aggression", "Property damage", "Absconding", "Refusing supports", "Shutdown / withdrawal"], allowOther: true },
           { type: "open", text: "What tends to trigger meltdowns at home, and what helps?" },
@@ -256,6 +303,7 @@ export const LIAISE_TEMPLATES_V2: Record<string, LiaiseTemplateV2> = {
       {
         id: "health_sleep",
         name: "Health & Sleep",
+        tags: ["mental_health", "background"],
         questions: [
           { type: "checklist_single", text: "Sleep pattern", options: ["Settled and consistent", "Occasional disruption", "Frequent night waking", "Severely disrupted — major daytime impact"] },
           { type: "open", text: "Any health concerns, hospitalisations, or medication issues you're managing?" },
@@ -265,6 +313,7 @@ export const LIAISE_TEMPLATES_V2: Record<string, LiaiseTemplateV2> = {
         id: "carer_capacity",
         name: "Carer Capacity & Sustainability",
         primary: true,
+        tags: ["carer_sustainability", "supports_gaps", "recommendations"],
         questions: [
           { type: "checklist_single", text: "How are you managing with the current level of care?", options: ["Coping well", "Stretched but managing", "Burnt out — barely coping", "Unsustainable — need urgent change"] },
           { type: "checklist_multi", text: "Other responsibilities competing for your time", options: ["Paid work", "Other children / dependents", "Own health issues", "Elderly parents", "Single-parent household"], allowOther: true },
@@ -274,6 +323,7 @@ export const LIAISE_TEMPLATES_V2: Record<string, LiaiseTemplateV2> = {
       {
         id: "social_community",
         name: "Social & Community",
+        tags: ["social"],
         questions: [
           { type: "open", text: "How does [name] do in the community — outings, friendships, isolation?" },
         ],
@@ -282,6 +332,7 @@ export const LIAISE_TEMPLATES_V2: Record<string, LiaiseTemplateV2> = {
         id: "history_concerns_goals",
         name: "History, Concerns & Goals",
         primary: true,
+        tags: ["background", "recommendations"],
         questions: [
           { type: "open", text: "When did concerns first emerge for [name], and what's the diagnosis history?" },
           { type: "open", text: "What worries you most about [name] right now, and what would make the biggest difference for your family?" },
@@ -303,6 +354,7 @@ export const LIAISE_TEMPLATES_V2: Record<string, LiaiseTemplateV2> = {
         id: "academic_learning",
         name: "Academic & Learning",
         primary: true,
+        tags: ["cognition", "background"],
         questions: [
           { type: "checklist_single", text: "Academic level relative to peers", options: ["At grade level", "Slightly behind", "Significantly behind", "Working on individual learning plan", "Cannot meaningfully engage with curriculum"] },
           { type: "open", text: "What learning supports or modifications are currently in place, and what are their strengths as a learner?" },
@@ -311,6 +363,7 @@ export const LIAISE_TEMPLATES_V2: Record<string, LiaiseTemplateV2> = {
       {
         id: "classroom_behaviour",
         name: "Classroom Behaviour",
+        tags: ["behaviour", "cognition"],
         questions: [
           { type: "open", text: "How do they manage in class — focus, transitions, regulation?" },
           { type: "open", text: "What triggers dysregulation at school, and what strategies work?" },
@@ -319,6 +372,7 @@ export const LIAISE_TEMPLATES_V2: Record<string, LiaiseTemplateV2> = {
       {
         id: "social_peers",
         name: "Social & Peer Interaction",
+        tags: ["social"],
         questions: [
           { type: "open", text: "How do they go with peers — friendships, isolation, conflict, unstructured times?" },
         ],
@@ -326,6 +380,7 @@ export const LIAISE_TEMPLATES_V2: Record<string, LiaiseTemplateV2> = {
       {
         id: "communication_school",
         name: "Communication at School",
+        tags: ["communication"],
         questions: [
           { type: "checklist_multi", text: "Communication methods at school", options: [...COMMS_METHOD_OPTIONS], allowOther: true },
           { type: "open", text: "Can they express needs to staff, follow group instructions, or do they need individual prompting?" },
@@ -334,6 +389,7 @@ export const LIAISE_TEMPLATES_V2: Record<string, LiaiseTemplateV2> = {
       {
         id: "self_care_school",
         name: "Self-Care at School",
+        tags: ["personal_adls"],
         questions: [
           { type: "open", text: "How do they manage toileting, eating, and transitions during the school day?" },
         ],
@@ -342,6 +398,7 @@ export const LIAISE_TEMPLATES_V2: Record<string, LiaiseTemplateV2> = {
         id: "school_supports",
         name: "Current School Supports",
         primary: true,
+        tags: ["supports_gaps", "recommendations"],
         questions: [
           { type: "checklist_single", text: "Aide / individual support hours per week", options: ["None", "<5", "5-10", "11-20", "Full-time 1:1"] },
           { type: "checklist_single", text: "Is the current support level sufficient?", options: ["Yes — meets needs", "Mostly — some unmet needs", "No — significant gaps", "No — safety / participation at risk"] },
@@ -363,6 +420,7 @@ export const LIAISE_TEMPLATES_V2: Record<string, LiaiseTemplateV2> = {
       {
         id: "role_involvement",
         name: "Role & Involvement",
+        tags: ["background"],
         questions: [
           { type: "open", text: "What is your discipline, how long have you worked with [name], and how often do you see them?" },
           { type: "open", text: "What has been the focus of your intervention?" },
@@ -372,6 +430,11 @@ export const LIAISE_TEMPLATES_V2: Record<string, LiaiseTemplateV2> = {
         id: "clinical_observations",
         name: "Clinical Observations",
         primary: true,
+        // Broad tag set — allied health observations are discipline-specific
+        // (a speech path's notes belong in communication; a physio's belong
+        // in mobility). The AI in the report-generation prompt is told to
+        // route these by content rather than by tag alone.
+        tags: ["background", "cognition", "communication", "behaviour", "mobility", "risk"],
         questions: [
           { type: "open", text: "From your discipline's perspective, what are the main areas of difficulty?" },
           { type: "open", text: "How does their presentation compare to when you started — progress, plateau, deterioration?" },
@@ -381,6 +444,7 @@ export const LIAISE_TEMPLATES_V2: Record<string, LiaiseTemplateV2> = {
       {
         id: "progress_outcomes",
         name: "Progress & Barriers",
+        tags: ["recommendations"],
         questions: [
           { type: "open", text: "What's working well and what isn't — including any barriers to progress?" },
         ],
@@ -389,6 +453,7 @@ export const LIAISE_TEMPLATES_V2: Record<string, LiaiseTemplateV2> = {
         id: "recommendations",
         name: "Recommendations",
         primary: true,
+        tags: ["recommendations", "supports_gaps"],
         questions: [
           { type: "checklist_single", text: "Are the current funded hours for your service sufficient?", options: ["Yes — adequate", "Mostly — could use more", "No — significantly under-funded", "No — service at risk of ending"] },
           { type: "open", text: "What do they need more or less of, and what would happen if your service was reduced or discontinued?" },
@@ -410,6 +475,7 @@ export const LIAISE_TEMPLATES_V2: Record<string, LiaiseTemplateV2> = {
         id: "current_supports",
         name: "Current Supports",
         primary: true,
+        tags: ["supports_gaps", "recommendations"],
         questions: [
           { type: "checklist_multi", text: "Services currently in place", options: ["Support workers", "OT", "Physio", "Speech", "Psychology", "Behaviour Support", "Specialist nursing", "SIL / SDA", "Plan management"], allowOther: true },
           { type: "open", text: "Which services have been hard to engage or maintain, and how well are funded supports actually being used?" },
@@ -418,6 +484,7 @@ export const LIAISE_TEMPLATES_V2: Record<string, LiaiseTemplateV2> = {
       {
         id: "service_gaps",
         name: "Service Gaps",
+        tags: ["supports_gaps", "recommendations"],
         questions: [
           { type: "open", text: "Where are the biggest gaps in the current plan, and what tends to break down first when things go badly?" },
         ],
@@ -426,6 +493,7 @@ export const LIAISE_TEMPLATES_V2: Record<string, LiaiseTemplateV2> = {
         id: "risk_sustainability",
         name: "Risk & Sustainability",
         primary: true,
+        tags: ["risk", "carer_sustainability", "recommendations"],
         questions: [
           { type: "checklist_single", text: "How sustainable is the current arrangement?", options: ["Stable", "Stretched but manageable", "Fragile — at risk of breakdown", "Already breaking down"] },
           { type: "checklist_multi", text: "Risks you're most concerned about", options: ["Carer burnout", "Hospitalisation", "Crisis / mental health relapse", "Placement breakdown", "Disengagement from services", "Financial / housing instability"], allowOther: true },
@@ -435,6 +503,7 @@ export const LIAISE_TEMPLATES_V2: Record<string, LiaiseTemplateV2> = {
       {
         id: "plan_engagement",
         name: "Plan Engagement & Funding",
+        tags: ["recommendations", "supports_gaps"],
         questions: [
           { type: "open", text: "How engaged is [name] with their plan — do they understand it, prioritise their goals, follow through on services?" },
           { type: "open", text: "Where is the current funding insufficient, and what recommendations would make the biggest difference?" },
@@ -567,6 +636,214 @@ export function flattenStoredResponse(raw: string): string {
     if (arr.length > 0) return arr.filter(v => v.trim()).join(", ");
   }
   return raw;
+}
+
+/* ─── Evidence Bank (Liaise → cross-section) ────────────────────────── */
+
+/**
+ * One unit of evidence withdrawn from the Liaise bank. Each non-empty
+ * interview response becomes an `EvidenceItem` so the report-generation
+ * pipeline can route it to the right section. The shape is deliberately
+ * flat and self-describing — the AI prompt receives a list of these and
+ * doesn't need to chase IDs back to template / interview objects.
+ */
+export interface EvidenceItem {
+  /** Stable id: `${interview.id}__${domain.id}__q${qIdx}` (or `__custom${ci}`). */
+  id: string;
+  /** Stakeholder's name as entered by the clinician. */
+  informant: string;
+  /** Stakeholder's role / relationship as entered by the clinician. */
+  role: string;
+  /** Template name — "Support Worker", "Parent / Carer", etc. */
+  template: string;
+  /** Domain name as displayed in the UI (e.g. "Personal ADLs"). */
+  domain: string;
+  /** Domain id for tag-based filtering (mirror of LiaiseDomainV2.id). */
+  domainId: string;
+  /** Tags inherited from the domain — drives section routing. */
+  tags: LiaiseEvidenceTag[];
+  /** Question text as the informant heard it (or "Custom: ..." for clinician adds). */
+  question: string;
+  /** Flattened answer — JSON arrays from checklist_multi are joined with ", ". */
+  answer: string;
+  /** Was this a clinician-added custom question? Useful for prompt nuance. */
+  isCustom: boolean;
+}
+
+/**
+ * Keyword → tag enrichment for custom questions. When a clinician adds a
+ * custom question under any domain, the question's *content* may be about
+ * a topic different from the parent domain's tags (e.g. they're in the
+ * "Communication" domain but ask about self-harm). We run a small keyword
+ * pass over the question text + answer and add any matching tags so the
+ * evidence routes to the right section even when the parent domain
+ * doesn't match. This is additive — original domain tags are preserved.
+ *
+ * Order matters: more specific keywords first. Multi-word keywords are
+ * matched as substrings (case-insensitive).
+ */
+const KEYWORD_TAG_MAP: Array<{ keywords: string[]; tag: LiaiseEvidenceTag }> = [
+  { keywords: ["shower", "bath", "toilet", "continence", "dress", "groom", "feed", "meal"], tag: "personal_adls" },
+  { keywords: ["fall", "abscond", "wander", "self-harm", "self harm", "supervise", "left alone", "safety", "incident", "crisis"], tag: "risk" },
+  { keywords: ["behav", "trigger", "meltdown", "aggress", "outburst", "dysregulat"], tag: "behaviour" },
+  { keywords: ["mood", "depress", "anxi", "sleep", "mental health", "psychotic", "withdraw"], tag: "mental_health" },
+  { keywords: ["money", "budget", "medic", "appointment", "schedul", "decision"], tag: "executive_iadls" },
+  { keywords: ["clean", "cook", "laundry", "shop", "household", "domestic"], tag: "domestic_iadls" },
+  { keywords: ["speak", "communic", "aac", "express", "verbal", "non-verbal", "understand"], tag: "communication" },
+  { keywords: ["transfer", "wheelchair", "mobil", "balance", "walk", "stair", "gait"], tag: "mobility" },
+  { keywords: ["learn", "memor", "cognit", "attention", "process", "executive"], tag: "cognition" },
+  { keywords: ["respite", "burnout", "burnt out", "carer", "family load"], tag: "carer_sustainability" },
+  { keywords: ["friend", "peer", "community", "isolat", "social"], tag: "social" },
+  { keywords: ["support hour", "service", "funded", "plan", "ndis", "coordin"], tag: "supports_gaps" },
+  { keywords: ["recommend", "more hours", "fewer hours"], tag: "recommendations" },
+  { keywords: ["strength", "enjoy", "good at", "best when"], tag: "strengths" },
+  { keywords: ["born", "diagnos", "history", "developmental", "milestone", "school year", "background"], tag: "background" },
+];
+
+/**
+ * Run the keyword scanner over a piece of text and return additional tags
+ * that should be attached. Returns ONLY tags that aren't already in
+ * `existing` to avoid duplicates. Used to enrich custom-question evidence
+ * where the parent domain may not match the question's actual topic.
+ */
+function autoTagFromText(
+  text: string,
+  existing: LiaiseEvidenceTag[],
+): LiaiseEvidenceTag[] {
+  const haystack = text.toLowerCase();
+  const have = new Set<LiaiseEvidenceTag>(existing);
+  const extras: LiaiseEvidenceTag[] = [];
+  for (const { keywords, tag } of KEYWORD_TAG_MAP) {
+    if (have.has(tag)) continue;
+    if (keywords.some((kw) => haystack.includes(kw))) {
+      extras.push(tag);
+      have.add(tag);
+    }
+  }
+  return extras;
+}
+
+/**
+ * Walk a list of interviews and return every populated response as a
+ * flat `EvidenceItem[]`. This is the "withdrawal" half of the bank
+ * model — the report-generation pipeline calls this once per generation
+ * run and passes the result to the edge function as `collateral_evidence`.
+ *
+ * Empty responses, "Other:" placeholder-only entries, and orphaned
+ * interviews (whose template was removed) are filtered out.
+ *
+ * Optional `filter` lets a caller restrict to evidence relevant to a
+ * specific section (e.g. only `tags: ["personal_adls"]` evidence for
+ * the Personal ADLs narrative). When omitted the full bank is returned
+ * and the AI prompt does the relevance filtering itself.
+ *
+ * Custom-question handling: clinician-added custom questions inherit
+ * their parent domain's tags by default, but ALSO run through a keyword
+ * scanner (KEYWORD_TAG_MAP above) that adds any tags matched in the
+ * question/answer text. This catches the case where a clinician adds a
+ * mobility question under the Communication domain — without enrichment
+ * it would only route to communication; with enrichment it also reaches
+ * the mobility narrative.
+ */
+export function gatherCollateralEvidence(
+  interviews: CollateralInterview[],
+  filter?: { tags?: LiaiseEvidenceTag[] },
+): EvidenceItem[] {
+  const out: EvidenceItem[] = [];
+  for (const iv of interviews) {
+    const tpl = LIAISE_TEMPLATES_V2[iv.templateId];
+    // V1 interviews don't carry tags — skip from the evidence bank for
+    // now. (V1 content is still rendered in the Methodology section's
+    // collateral table.)
+    if (!tpl) continue;
+
+    for (const domain of tpl.domains) {
+      const tags = (domain.tags ?? []) as LiaiseEvidenceTag[];
+      const filterTags = filter?.tags;
+      const filterActive = !!filterTags && filterTags.length > 0;
+      // We DO NOT skip the whole domain on filter mismatch — a custom
+      // question added under this domain may keyword-enrich into the
+      // requested filter even if the domain's standard tags don't match.
+      // Apply filter at the per-question level instead.
+      const domainPassesFilter = !filterActive || tags.some((t) => filterTags!.includes(t));
+
+      // Standard questions — filtered against the domain's tags only
+      // (no per-question keyword enrichment, because their text is
+      // template-fixed and already correctly tagged via the domain).
+      if (domainPassesFilter) {
+        domain.questions.forEach((q, qi) => {
+          const raw = iv.responses[`${domain.id}_${qi}`] ?? "";
+          const answer = flattenStoredResponse(raw).trim();
+          if (!answer) return;
+          out.push({
+            id: `${iv.id}__${domain.id}__q${qi}`,
+            informant: (iv.intervieweeName || "").trim() || "[Unnamed informant]",
+            role: (iv.intervieweeRole || "").trim() || tpl.name,
+            template: tpl.name,
+            domain: domain.name,
+            domainId: domain.id,
+            tags,
+            question: getQuestionText(q),
+            answer,
+            isCustom: false,
+          });
+        });
+      }
+
+      // Custom questions added by clinician — keyed by domain id, free
+      // {question, response} pairs. Inherit the domain's tags AND run
+      // through the keyword scanner so off-topic custom questions still
+      // route to the section they actually belong in.
+      const customs = iv.customQuestions[domain.id] || [];
+      customs.forEach((cq, ci) => {
+        const answer = (cq.response || "").trim();
+        if (!answer || !cq.question.trim()) return;
+        const enriched = [
+          ...tags,
+          ...autoTagFromText(`${cq.question} ${answer}`, tags),
+        ];
+        // Re-apply the filter against the enriched tag set — a custom
+        // question that's off-topic for its parent domain may now match
+        // the requested filter where it didn't before.
+        if (filter?.tags && filter.tags.length > 0) {
+          const overlap = enriched.some((t) => filter.tags!.includes(t));
+          if (!overlap) return;
+        }
+        out.push({
+          id: `${iv.id}__${domain.id}__custom${ci}`,
+          informant: (iv.intervieweeName || "").trim() || "[Unnamed informant]",
+          role: (iv.intervieweeRole || "").trim() || tpl.name,
+          template: tpl.name,
+          domain: domain.name,
+          domainId: domain.id,
+          tags: enriched,
+          question: cq.question.trim(),
+          answer,
+          isCustom: true,
+        });
+      });
+    }
+
+    // General notes — treated as broadly applicable evidence with no
+    // specific domain. Tagged "background" so they show up in disability-
+    // profile sections and are otherwise picked up by the AI when relevant.
+    const notes = (iv.generalNotes || "").trim();
+    if (notes) {
+      out.push({
+        id: `${iv.id}__general_notes`,
+        informant: (iv.intervieweeName || "").trim() || "[Unnamed informant]",
+        role: (iv.intervieweeRole || "").trim() || tpl.name,
+        template: tpl.name,
+        domain: "General Notes",
+        domainId: "_general",
+        tags: ["background"],
+        question: "(General clinician observations from this interview)",
+        answer: notes,
+        isCustom: false,
+      });
+    }
+  }
+  return out;
 }
 
 /* ─── LEGACY V1 Template definitions ─────────────────────────────────── */
