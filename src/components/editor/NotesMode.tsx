@@ -264,6 +264,7 @@ export function NotesMode({ notes, onUpdateNote, assessments, onUpdateAssessment
                   onUpdateRecommendations={onUpdateRecommendations}
                   clinicianNotes={notes}
                   diagnoses={diagnoses}
+                  goals={goals}
                   participantName={fullName}
                   participantFirstName={fullName.split(/\s+/)[0]}
                   participantSex={sex || undefined}
