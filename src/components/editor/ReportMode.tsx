@@ -74,6 +74,32 @@ function EditableCell({ value, onChange, style, redText }: {
   );
 }
 
+/* ─── Functional Capacity domain — Evidence anchor block ──────────
+ * Mirrors the convention used in senior NDIS OT reports (e.g. Dr Clement
+ * Nhunzvi's reference reports), where each Functional Capacity domain
+ * subsection opens with a brief "Evidence" bullet list before the prose.
+ * Signals to NDIS reviewers that the clinical observations downstream are
+ * grounded in standardised assessment, functional observation, interviews,
+ * and reviewed documentation — not invented or inferred.
+ *
+ * Pure presentational component — content is identical for every domain
+ * because the evidence sources for an FCA are constant. Variation per
+ * participant lives in the prose underneath.
+ */
+function FunctionalDomainEvidenceBlock() {
+  return (
+    <div className="text-xs text-foreground/70 pl-2 border-l-2 border-border/20 space-y-0.5">
+      <div className="font-semibold text-foreground/80">Evidence</div>
+      <ul className="list-disc list-inside space-y-0.5 marker:text-muted-foreground">
+        <li>As per standardised assessment</li>
+        <li>As evident in functional assessment and observations</li>
+        <li>As evident in interviews and consultations</li>
+        <li>As per reviewed reports / collateral</li>
+      </ul>
+    </div>
+  );
+}
+
 /* ─── WHODAS 2.0 domain table ─────────────────────────────────────
  * Renders a per-domain breakdown table for WHODAS 2.0 assessment results.
  * Domain definitions, scoring math, and classification thresholds are all
@@ -734,6 +760,7 @@ export function ReportMode(props: ReportModeProps) {
                       return (
                         <div key={domain.reportKey} className="space-y-4">
                           <h3 className="text-sm font-semibold text-foreground/80">{domain.label}</h3>
+                          <FunctionalDomainEvidenceBlock />
                           {Object.entries(structured).map(([fieldId, entry]) => {
                             if (!entry?.text) return null;
                             return (
@@ -762,6 +789,7 @@ export function ReportMode(props: ReportModeProps) {
                     return (
                       <div key={domain.reportKey} className="space-y-2">
                         <h3 className="text-sm font-semibold text-foreground/80">{domain.label}</h3>
+                        <FunctionalDomainEvidenceBlock />
                         <div
                           className="prose prose-sm max-w-none text-foreground/90"
                           contentEditable
