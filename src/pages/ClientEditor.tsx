@@ -8,6 +8,7 @@ import { type AssessmentInstance, ASSESSMENT_LIBRARY } from "@/lib/assessment-li
 import { getInstanceScoreSummary } from "@/lib/assessment-scoring";
 import { type RecommendationInstance } from "@/lib/recommendations-library";
 import { type DiagnosisInstance } from "@/lib/diagnosis-library";
+import { type MedicationInstance } from "@/lib/medication-library";
 import { type GoalInstance } from "@/components/editor/ParticipantGoals";
 import { type QueueItem, processQueue, setHashCacheReportId } from "@/ai/generationQueue";
 import { getTemplateGuidance, getRubricForSection, FUNCTIONAL_DOMAIN_GUIDANCE, ASSESSMENT_INTERPRETATION_GUIDANCE, RECOMMENDATION_GUIDANCE } from "@/ai/promptGuidance";
@@ -74,6 +75,7 @@ export default function ClientEditor() {
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [assessments, setAssessments] = useState<AssessmentInstance[]>([]);
   const [diagnoses, setDiagnoses] = useState<DiagnosisInstance[]>([]);
+  const [medications, setMedications] = useState<MedicationInstance[]>([]);
   const [recommendations, setRecommendations] = useState<RecommendationInstance[]>([]);
   const [collateralInterviews, setCollateralInterviews] = useState<CollateralInterview[]>([]);
   const [goals, setGoals] = useState<GoalInstance[]>([{ id: crypto.randomUUID(), text: "" }]);
@@ -194,6 +196,9 @@ export default function ClientEditor() {
       // Load diagnoses from notes JSON
       const savedDiagnoses = (savedNotes as any)?.["__diagnoses__"];
       if (Array.isArray(savedDiagnoses)) setDiagnoses(savedDiagnoses);
+      // Load medications from notes JSON (Section 6a · Current Medications)
+      const savedMedications = (savedNotes as any)?.["__medications__"];
+      if (Array.isArray(savedMedications)) setMedications(savedMedications);
       // Load goals from notes JSON
       const savedGoals = (savedNotes as any)?.["__goals__"];
       if (Array.isArray(savedGoals)) setGoals(savedGoals);
@@ -254,7 +259,7 @@ export default function ClientEditor() {
 
   const saveToCloud = useCallback(async () => {
     if (!report?.id) return;
-    const notesWithAssessments = { ...notes, __assessments__: assessments as any, __recommendations__: recommendations as any, __diagnoses__: diagnoses as any, __goals__: goals as any, __nilGoals__: nilGoals as any };
+    const notesWithAssessments = { ...notes, __assessments__: assessments as any, __recommendations__: recommendations as any, __diagnoses__: diagnoses as any, __medications__: medications as any, __goals__: goals as any, __nilGoals__: nilGoals as any };
     const updatePayload: Record<string, any> = {
       notes: notesWithAssessments,
       report_content: reportContent || null,
@@ -282,7 +287,7 @@ export default function ClientEditor() {
         }
       }
     }
-  }, [report?.id, notes, assessments, recommendations, diagnoses, goals, nilGoals, reportContent, clientId, scorecard, issueStatuses, dismissedIssueKeys, user?.id]);
+  }, [report?.id, notes, assessments, recommendations, diagnoses, medications, goals, nilGoals, reportContent, clientId, scorecard, issueStatuses, dismissedIssueKeys, user?.id]);
 
   // Autosave every 30 seconds
   useEffect(() => {
@@ -1505,6 +1510,8 @@ export default function ClientEditor() {
               onUpdateRecommendations={setRecommendations}
               diagnoses={diagnoses}
               onUpdateDiagnoses={setDiagnoses}
+              medications={medications}
+              onUpdateMedications={setMedications}
               collateralInterviews={collateralInterviews}
               goals={goals}
               onUpdateGoals={setGoals}
@@ -1530,6 +1537,7 @@ export default function ClientEditor() {
               assessments={assessments}
               recommendations={recommendations}
               diagnoses={diagnoses}
+              medications={medications}
               collateralInterviews={collateralInterviews}
               goals={goals}
               nilGoals={nilGoals}
