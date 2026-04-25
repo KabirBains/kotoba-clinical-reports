@@ -1757,7 +1757,11 @@ export function ReportMode(props: ReportModeProps) {
             )}
           </Tooltip>
         </TooltipProvider>
-        <DownloadReportButton reportData={reportData} />
+        <DownloadReportButton
+          reportData={reportData}
+          scorecard={props.scorecard}
+          issueStatuses={props.issueStatuses}
+        />
       </div>
     </div>
   );
