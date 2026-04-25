@@ -19,6 +19,15 @@ import { type GoalInstance } from "./ParticipantGoals";
 import { type RecommendationInstance, OUTCOME_OPTIONS } from "@/lib/recommendations-library";
 import { QualityScorecard, QualitySummaryBar, type Scorecard, type IssueStatus, type QualityIssue } from "./QualityScorecard";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
+
+/** Human-readable labels for the v2 issue category enum, used in the
+ *  highlighted-issue popover header. */
+const HIGHLIGHTED_CATEGORY_LABEL: Record<QualityIssue["category"], string> = {
+  contradiction: "Contradiction",
+  hallucination: "Hallucination",
+  misplacement: "Misplaced",
+  missing_essential: "Missing",
+};
 /* ─── Editable cell component ─── */
 function EditableCell({ value, onChange, style, redText }: {
   value: string;
