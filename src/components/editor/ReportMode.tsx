@@ -87,15 +87,91 @@ function EditableCell({ value, onChange, style, redText }: {
  * because the evidence sources for an FCA are constant. Variation per
  * participant lives in the prose underneath.
  */
-function FunctionalDomainEvidenceBlock() {
+const DEFAULT_EVIDENCE_BULLETS = [
+  "As per standardised assessment",
+  "As evident in functional assessment and observations",
+  "As evident in interviews and consultations",
+  "As per reviewed reports / collateral",
+];
+
+/**
+ * Editable evidence anchor block. Persists per-domain overrides under
+ * note key `__evidence__<reportKey>` via `onUpdateNote`. If no override
+ * is saved, falls back to the canonical default bullet list so existing
+ * reports remain unchanged.
+ */
+function FunctionalDomainEvidenceBlock({
+  storageKey,
+  savedValue,
+  onChange,
+}: {
+  storageKey?: string;
+  savedValue?: string;
+  onChange?: (key: string, value: string) => void;
+}) {
+  const initialBullets = (() => {
+    if (savedValue && savedValue.trim()) {
+      const lines = savedValue.split("\n").map((l) => l.replace(/^[-•*]\s*/, "").trim()).filter(Boolean);
+      return lines.length > 0 ? lines : DEFAULT_EVIDENCE_BULLETS;
+    }
+    return DEFAULT_EVIDENCE_BULLETS;
+  })();
+
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(initialBullets.join("\n"));
+  const ref = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => { setDraft(initialBullets.join("\n")); }, [savedValue]);
+  useEffect(() => {
+    if (editing && ref.current) {
+      ref.current.focus();
+      ref.current.style.height = "auto";
+      ref.current.style.height = ref.current.scrollHeight + "px";
+    }
+  }, [editing]);
+
+  const commit = () => {
+    if (storageKey && onChange) {
+      const cleaned = draft.split("\n").map((l) => l.replace(/^[-•*]\s*/, "").trim()).filter(Boolean).join("\n");
+      onChange(storageKey, cleaned);
+    }
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <div className="text-xs text-foreground/70 pl-2 border-l-2 border-border/20 space-y-1">
+        <div className="font-semibold text-foreground/80">Evidence</div>
+        <textarea
+          ref={ref}
+          value={draft}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            e.target.style.height = "auto";
+            e.target.style.height = e.target.scrollHeight + "px";
+          }}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") { setDraft(initialBullets.join("\n")); setEditing(false); }
+          }}
+          placeholder="One evidence source per line"
+          className="w-full text-xs bg-transparent border border-border/50 rounded px-2 py-1 resize-none focus:outline-none focus:ring-1 focus:ring-accent/50"
+        />
+      </div>
+    );
+  }
+
   return (
-    <div className="text-xs text-foreground/70 pl-2 border-l-2 border-border/20 space-y-0.5">
+    <div
+      className="text-xs text-foreground/70 pl-2 border-l-2 border-border/20 space-y-0.5 cursor-pointer hover:bg-muted/30 rounded transition-colors"
+      onClick={() => storageKey && onChange && setEditing(true)}
+      title={storageKey && onChange ? "Click to edit evidence" : undefined}
+    >
       <div className="font-semibold text-foreground/80">Evidence</div>
       <ul className="list-disc list-inside space-y-0.5 marker:text-muted-foreground">
-        <li>As per standardised assessment</li>
-        <li>As evident in functional assessment and observations</li>
-        <li>As evident in interviews and consultations</li>
-        <li>As per reviewed reports / collateral</li>
+        {initialBullets.map((b, i) => (
+          <li key={i}>{b}</li>
+        ))}
       </ul>
     </div>
   );
