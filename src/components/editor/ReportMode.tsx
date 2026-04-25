@@ -1670,8 +1670,7 @@ export function ReportMode(props: ReportModeProps) {
             onAccept={props.onAcceptIssue}
             onDismiss={props.onDismissIssue}
             onAcknowledge={props.onAcknowledgeIssue}
-            onAcceptAll={props.onAcceptAllIssues}
-            onApplyCorrections={props.onApplyCorrections}
+            onApplyAcceptedFixes={props.onApplyAcceptedFixes}
             onClose={props.onToggleScorecard}
             onRecheck={props.onRecheck}
             onClearAndRecheck={props.onClearAndRecheck}
@@ -1689,7 +1688,7 @@ export function ReportMode(props: ReportModeProps) {
       {highlightedIssue && highlightedText && (
         <div className="fixed bottom-4 right-4 z-50 bg-card border border-border shadow-lg rounded-lg p-4 max-w-sm space-y-2">
           <div className="flex items-start justify-between">
-            <h4 className="text-sm font-semibold text-foreground">{highlightedIssue.criterion}: {highlightedIssue.title}</h4>
+            <h4 className="text-sm font-semibold text-foreground">{HIGHLIGHTED_CATEGORY_LABEL[highlightedIssue.category]}: {highlightedIssue.title}</h4>
             <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => { setHighlightedText(null); setHighlightedIssue(null); }}>
               <span className="text-xs">✕</span>
             </Button>
@@ -1701,7 +1700,7 @@ export function ReportMode(props: ReportModeProps) {
             </div>
           )}
           <div className="flex gap-2">
-            {highlightedIssue.tier === "auto_correct" && highlightedIssue.suggestedFix ? (
+            {highlightedIssue.suggestedFix ? (
               <Button size="sm" className="h-7 text-xs bg-green-600 hover:bg-green-700 text-white" onClick={() => {
                 props.onAcceptIssue(highlightedIssue.id);
                 setHighlightedText(null);
