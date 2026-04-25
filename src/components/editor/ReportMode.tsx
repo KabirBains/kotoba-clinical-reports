@@ -623,7 +623,6 @@ function buildReportData(props: ReportModeProps): ReportData {
       recommendedHours: r.recommendedHours || "",
       ratio: r.ratio || "",
       tasks: Array.isArray(r.tasks) ? r.tasks.filter(Boolean).join(", ") : "",
-      linkedSections: Array.isArray(r.linkedSections) ? r.linkedSections.join(", ") : "",
       justification: r.justification || "",
       consequence: r.consequence || "",
       outcomes: Array.isArray(r.outcomes) ? r.outcomes.map(o => OUTCOME_OPTIONS.find(opt => opt.id === o)?.label || o).join(", ") : "",
@@ -1056,7 +1055,6 @@ export function ReportMode(props: ReportModeProps) {
                       const tasks = rec?.tasks?.filter(Boolean) || [];
                       const outcomeLabels = (rec?.outcomes || []).map(o => OUTCOME_OPTIONS.find(opt => opt.id === o)?.label || o);
                       const consequence = rec?.consequence || "";
-                      const linkedSections = rec?.linkedSections?.filter(Boolean) || [];
                       const justification = rec?.justification || "";
                       const s34 = rec?.s34Justification || "";
 
@@ -1158,18 +1156,6 @@ export function ReportMode(props: ReportModeProps) {
                                       style={{ padding: "8px 12px" }}
                                       redText
                                     />
-                                  </tr>
-                                )}
-                                {linkedSections.length > 0 && (
-                                  <tr style={{ borderBottom: "0.5px solid #e5e7eb" }}>
-                                    <td style={{ width: "200px", padding: "8px 12px", backgroundColor: "#f9fafb", color: "#6b7280", fontWeight: 500, verticalAlign: "top" }}>Linked report sections</td>
-                                    <td style={{ padding: "8px 12px" }}>
-                                      <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
-                                        {linkedSections.map((s, si) => (
-                                          <span key={si} style={{ fontSize: "12px", fontFamily: "monospace", backgroundColor: "#f3f4f6", color: "#374151", padding: "2px 8px", borderRadius: "4px" }}>S.{s}</span>
-                                        ))}
-                                      </div>
-                                    </td>
                                   </tr>
                                 )}
                                 {s34 && (

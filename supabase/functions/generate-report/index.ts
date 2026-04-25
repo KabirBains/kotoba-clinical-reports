@@ -1464,7 +1464,7 @@ CORRECT output: "[NAME] is unable to manage his finances independently given his
       // intersectional cascades drawn from the rest of the report.
       //
       // Inputs packaged into the prompt by the client:
-      //   - Recommendation data (supportName, category, hours, tasks, linkedSections)
+      //   - Recommendation data (supportName, category, hours, tasks, outcomes)
       //   - All clinician notes keyed by section (lookback evidence)
       //   - Participant goals (passed via participant_goals body field)
       //   - Any existing dot-points the clinician has already entered

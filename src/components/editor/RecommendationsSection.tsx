@@ -66,7 +66,6 @@ export function RecommendationsSection({
     catColor: string,
     tasks: string[],
     outcomes: string[],
-    sections: string[],
     isCapital?: boolean,
     isConsumable?: boolean
   ) => {
@@ -92,7 +91,6 @@ export function RecommendationsSection({
       // become generic boilerplate copied verbatim into reports — which
       // violates rubric criterion B11 (consequence specificity).
       consequence: "",
-      linkedSections: [...sections],
       s34Justification: "",
       estimatedCost: "",
       isCapital,
@@ -141,7 +139,6 @@ export function RecommendationsSection({
         `RECOMMENDED: ${rec.recommendedHours || "Not yet specified"}${showRatio ? ` (${rec.ratio})` : ""}`,
         rec.tasks.length > 0 ? `KEY TASKS:\n${rec.tasks.map((t) => `- ${t}`).join("\n")}` : "",
         rec.outcomes.length > 0 ? `EXPECTED OUTCOMES: ${rec.outcomes.join(", ")}` : "",
-        rec.linkedSections.length > 0 ? `LINKED SECTIONS: ${rec.linkedSections.join(", ")}` : "",
         "",
         "EXISTING CLINICIAN DOT POINTS (expand these, do not replace):",
         rec.justification.trim() || "(none — clinician has not entered any dot points yet; draft from scratch using the notes context)",
@@ -307,7 +304,6 @@ export function RecommendationsSection({
                   <th className="text-center px-2 py-2 font-medium text-muted-foreground w-24">Current</th>
                   <th className="text-center px-2 py-2 font-medium text-muted-foreground w-28">Recommended</th>
                   <th className="text-center px-2 py-2 font-medium text-muted-foreground w-14">Ratio</th>
-                  <th className="text-center px-2 py-2 font-medium text-muted-foreground w-20">Sections</th>
                 </tr>
               </thead>
               <tbody>
@@ -350,11 +346,6 @@ export function RecommendationsSection({
                           (therapies, coordination, etc.) even if legacy data
                           has a stored ratio value. */}
                       {findSupport(rec.supportId)?.hideRatio ? "—" : (rec.ratio || "—")}
-                    </td>
-                    <td className="text-center px-2 py-2 font-mono text-[10px] text-muted-foreground">
-                      {rec.linkedSections.length > 0
-                        ? rec.linkedSections.map((s) => "S." + s).join(", ")
-                        : "—"}
                     </td>
                   </tr>
                 ))}
@@ -403,7 +394,6 @@ export function RecommendationsSection({
                             cat.color,
                             item.tasks,
                             item.outcomes,
-                            item.sections,
                             item.isCapital,
                             item.isConsumable
                           )

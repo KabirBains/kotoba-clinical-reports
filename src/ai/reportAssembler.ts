@@ -221,7 +221,6 @@ export interface ReportData {
     recommendedHours: string;
     ratio: string;
     tasks: string;
-    linkedSections: string;
   }>;
 
   // Collateral interviews metadata (optional, for methodology table)
@@ -470,7 +469,6 @@ export async function assembleReport(data: ReportData): Promise<void> {
           ["Recommended Provision", r.recommendedHours],
           ["Support Ratio", r.ratio],
           ["Tasks Covered", r.tasks],
-          ["Linked Report Sections", r.linkedSections],
         ])
       );
       add(spacer());
