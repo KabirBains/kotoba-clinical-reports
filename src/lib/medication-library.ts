@@ -35,7 +35,6 @@ export interface MedicationInstance extends MedicationLibraryEntry {
 }
 
 export const MEDICATION_LIBRARY: MedicationLibraryEntry[] = [
-const MEDICATION_LIBRARY = [
   // ═══════════════════════════════════════════
   // ANTIPSYCHOTICS
   // ═══════════════════════════════════════════
