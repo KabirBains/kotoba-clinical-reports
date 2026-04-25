@@ -1,102 +1,171 @@
+## Quality Checker v2 — Wiring Plan
 
+The v2 `QualityScorecard.tsx` and `review-report` edge function have already shipped. The remaining work is purely call-site wiring across **3 files**. The build is currently broken at `ReportMode.tsx` lines 1674, 1693, 1705 because of v1 prop names and v1 issue fields that no longer exist.
 
-## Goal
+---
 
-Add report-level collaboration on the **primary Lovable Cloud backend** (where `reports`, `clients`, `auth.users`, and the existing whitelist all live). Owners can share a report with whitelisted Kotoba users as `editor` or `viewer`; permissions are enforced via RLS; meaningful actions are logged; and the editor surfaces "last edited by" when relevant.
+### File 1 — `src/pages/ClientEditor.tsx`
 
-> Note: per your clarification, the Kotoba project (`rxczgtazoyvbdtlwnidu`) stays reserved for AI edge functions. Nothing in this feature touches it.
+**1a. Pass full source-data payload to `review-report`** (currently only sends `reportText` + `participantName` at line 344).
 
-## Database (single migration)
+Update `runQualityCheck` (lines 337–362):
 
-### 1. New tables
+```ts
+import { gatherCollateralEvidence } from "@/components/editor/LiaiseMode";
 
-**`public.report_collaborators`**
-- `id uuid pk`, `report_id uuid not null`, `user_id uuid not null`, `role app_collab_role not null`, `added_by uuid not null`, `added_at timestamptz default now()`
-- Enum `app_collab_role`: `owner | editor | viewer`
-- Unique `(report_id, user_id)`; FK `report_id → reports(id) on delete cascade`
-- RLS enabled
+const { data, error } = await supabase.functions.invoke("review-report", {
+  body: {
+    reportText,
+    participantName: client?.client_name || "",
+    diagnoses: diagnoses.map(d => d.name),
+    assessments: assessments.map(a => ({
+      tool: a.name,
+      scores: Object.entries(a.scores || {})
+        .map(([k, v]) => `${k}: ${v}`).join("; "),
+    })),
+    clinician_notes: Object.fromEntries(
+      Object.entries(notes).filter(([, v]) => typeof v === "string" && v.trim())
+    ) as Record<string, string>,
+    collateral_evidence: gatherCollateralEvidence(collateralInterviews ?? []),
+    recommendations: recommendations.map(r => ({
+      supportName: r.supportName,
+      recommendedHours: r.recommendedHours,
+      justification: r.justification,
+      s34Justification: r.s34Justification,
+    })),
+    participant_goals: (goals ?? [])
+      .map((g, i) => ({ number: i + 1, text: g.text }))
+      .filter(g => g.text.trim()),
+  },
+});
+```
 
-**`public.report_activity`**
-- `id uuid pk`, `report_id uuid not null`, `user_id uuid not null`, `action text not null`, `metadata jsonb default '{}'`, `created_at timestamptz default now()`
-- FK `report_id → reports(id) on delete cascade`
-- Index on `(report_id, created_at desc)`
-- RLS enabled
+**1b. Replace v1 issue fields used in dismissed-key derivation.**
 
-### 2. Helper functions (all `SECURITY DEFINER`, fixed search_path)
+Lines 349–351 and 1565 currently compose dismissed-issue keys from `issue.criterion`, which no longer exists. Replace with `issue.category`:
 
-- `public.is_report_collaborator(_report uuid, _user uuid) returns boolean` — exists check
-- `public.report_role(_report uuid, _user uuid) returns app_collab_role` — returns role or null
-- `public.find_user_id_by_email(_email text) returns uuid` — case-insensitive lookup against `auth.users`. Returns null unless the email is whitelisted (so it can't be used to enumerate non-Kotoba accounts). Callable by any authenticated user.
-- `public.get_collaborator_emails(_report uuid) returns table(user_id uuid, email text)` — returns emails only for collaborators of a report the caller can see. Used by the manage-access modal.
-- `public.last_editor_for_report(_report uuid) returns table(user_id uuid, email text, clinician_name text, edited_at timestamptz)` — returns the most recent `edited_section` activity row's author (and their profile name), excluding the caller. Used for the "Edited by …" indicator.
+```ts
+// line ~350
+const key = issue.category + "::" + issue.section + "::" + (issue.flaggedText || "").substring(0, 50);
+// line ~1565 (inside onDismissIssue)
+const key = issue.category + "::" + issue.section + "::" + (issue.flaggedText || "").substring(0, 50);
+```
 
-### 3. Triggers
+Note: this invalidates dismissed-key entries persisted by v1, but those carry stale issue identifiers anyway — re-checks under v2 will re-surface them on first run, which is the correct behaviour.
 
-- `after_insert_reports_seed_owner` on `reports`: inserts an `owner` row into `report_collaborators` for `NEW.user_id`, and writes a `created` activity row.
+**1c. Update the `<ReportMode>` props passed at lines 1571–1582.**
 
-### 4. Backfill
+- **Remove** the `onAcceptAllIssues` prop (no v2 equivalent — the "Apply N fixes" button in the scorecard footer covers this).
+- **Rename** `onApplyCorrections` → `onApplyAcceptedFixes`.
+- Inside the renamed handler (lines 1582–1662), replace `issue.tier === "auto_correct"` checks with `issue.suggestedFix` truthiness, and replace `issue.criterion` reads with `issue.category`:
 
-- For every existing row in `reports`, insert a matching `owner` collaborator row (idempotent via the unique constraint).
+```ts
+const acceptedFixes = scorecard.issues
+  .filter((issue: any) => issue.suggestedFix && issueStatuses[issue.id] === "accepted")
+  .map((issue: any) => {
+    /* …existing findSectionText logic… */
+    return {
+      section: sectionKey, sectionText,
+      criterion: issue.category,        // edge function still expects `criterion` key
+      flaggedText: issue.flaggedText,
+      suggestedFix: issue.suggestedFix,
+      description: issue.description,
+    };
+  });
+```
 
-### 5. RLS policy updates
+(The `correct-report` edge function field name `criterion` is its own request contract — we keep that key but populate it from `issue.category`. If the function also needs updating to accept `category`, that's a separate change; the field is just a label passed through.)
 
-**`reports` (replace existing user_id-only policies):**
-- SELECT: `is_report_collaborator(id, auth.uid())`
-- UPDATE: `report_role(id, auth.uid()) in ('owner','editor')`
-- INSERT: `auth.uid() = user_id` (creator becomes owner via trigger)
-- DELETE: `report_role(id, auth.uid()) = 'owner'`
+---
 
-**`collateral_interviews` (replace existing user_id-only policies):**
-- SELECT: collaborator on the parent report
-- INSERT/UPDATE: role in (`owner`,`editor`) on the parent report
-- DELETE: `owner` only
+### File 2 — `src/components/editor/ReportMode.tsx`
 
-**`report_collaborators`:**
-- SELECT: caller is a collaborator on the same report
-- INSERT/UPDATE/DELETE: caller is `owner` on the same report
+**2a. Drop the `onAcceptAllIssues` prop** from `interface ReportModeProps` (line 360) and remove `onAcceptAll` from the `<QualityScorecard>` invocation (line 1674 — the source of build error #1).
 
-**`report_activity`:**
-- SELECT: caller is a collaborator on the same report
-- INSERT: caller is a collaborator (role check enforced in client-side actions)
-- UPDATE/DELETE: none
+**2b. Rename `onApplyCorrections` → `onApplyAcceptedFixes`** in both the props interface (line 361) and the `<QualityScorecard>` invocation (line 1675).
 
-## UI changes
+**2c. Fix the highlighted-issue popover** (lines 1690–1724 — source of build errors #2 and #3).
 
-### 1. `src/pages/ClientEditor.tsx`
+- Replace `highlightedIssue.criterion` (line 1693) with `highlightedIssue.category` (or just drop the prefix and show the title alone — category is a machine-readable enum, not a label; recommended approach is to map to a human label):
+  ```tsx
+  const CATEGORY_LABEL = {
+    contradiction: "Contradiction",
+    hallucination: "Hallucination",
+    misplacement: "Misplaced",
+    missing_essential: "Missing",
+  } as const;
+  // …
+  <h4 className="text-sm font-semibold text-foreground">
+    {CATEGORY_LABEL[highlightedIssue.category]}: {highlightedIssue.title}
+  </h4>
+  ```
+- Replace the `tier === "auto_correct"` branch at line 1705 with `suggestedFix` presence:
+  ```tsx
+  {highlightedIssue.suggestedFix ? (
+    <Button …>Accept Fix</Button>
+  ) : (
+    <Button …>Mark as Reviewed</Button>
+  )}
+  ```
 
-- Query the caller's role from `report_role(...)` once the report loads. Cache as `myRole`.
-- Add a **"Manage access"** button to the editor header — visible only when `myRole === 'owner'`. Opens the new modal.
-- On report load, call `last_editor_for_report(report.id)`. If a non-self editor is returned, render an unobtrusive line near the autosave indicator: *"Edited by {name or email} · {relative time}"*. No banner, no toast.
-- Wherever the report is mutated (autosave, full-report generate, single-section regenerate, manual edit save), insert a row into `report_activity` with the corresponding action: `edited_section` (with `metadata.section` if applicable), `regenerated_section`, `generated_full_report`. Use a small helper `logActivity(action, metadata?)` colocated in `src/lib/reportActivity.ts`.
-- Disable edit affordances (Notes inputs, Generate buttons) when `myRole === 'viewer'` and show a small "View only" badge.
+---
 
-### 2. New: `src/components/editor/ManageAccessDialog.tsx`
+### File 3 — `src/components/DownloadReportButton.tsx`
 
-- Lists current collaborators (email · role · added date) loaded via `get_collaborator_emails(report_id)` joined with `report_collaborators`.
-- Add form: email input + role select (`editor` / `viewer`) + Add button.
-  - On submit: call `find_user_id_by_email`. If null → toast "No Kotoba account found for that email. Ask your colleague to sign up first."
-  - Otherwise insert into `report_collaborators` and log `added_collaborator` activity.
-- Each non-owner row has a role select (editor/viewer) and a Remove button. Owner row is read-only.
-- Owner cannot remove self or change own role (UI disables it; RLS would block anyway).
-- All mutations log to `report_activity` (`removed_collaborator`, `changed_role`).
+**3a. Add the soft-confirmation export gate.** The current `handleDownload` (line 39) starts assembly immediately. Wrap it so high-severity unresolved issues raise the modal first.
 
-### 3. `src/pages/Dashboard.tsx`
+- Extend `DownloadReportButtonProps` with `scorecard?: Scorecard | null` and `issueStatuses?: Record<string, IssueStatus>`.
+- Import `ExportConfirmDialog`, `getExportConfirmation` from `@/components/editor/QualityScorecard`.
+- Add state: `showExportConfirm`, then:
 
-- Replace `clients` query with one that returns clients owned by the user **or** clients whose current report has the user as a collaborator. Implementation: a new `SECURITY DEFINER` view/RPC `get_accessible_clients()` that returns the union, sorted by `updated_at desc`. Add a small "Shared" badge on rows where the current user is not the owner.
+```tsx
+const handleClick = () => {
+  if (!props.scorecard) return handleDownload();   // no check run yet → no gate
+  const gate = getExportConfirmation(props.scorecard, props.issueStatuses ?? {});
+  if (gate.needsConfirmation) setShowExportConfirm(true);
+  else handleDownload();
+};
+```
 
-## What is NOT built (per your scope)
+- Wire the existing `<Button>` `onClick` to `handleClick` (currently calls `handleDownload`).
+- Render the dialog at the bottom of the component:
 
-- No invitation/email sending — adds only existing Kotoba users; UI tells the inviter to ask their colleague to create an account first.
-- No practice/org entities, no roles beyond owner/editor/viewer, no realtime, no diffing, no version history of edits beyond an action log.
+```tsx
+{props.scorecard && (
+  <ExportConfirmDialog
+    open={showExportConfirm}
+    onOpenChange={setShowExportConfirm}
+    blockingIssues={getExportConfirmation(props.scorecard, props.issueStatuses ?? {}).blockingIssues}
+    reason={getExportConfirmation(props.scorecard, props.issueStatuses ?? {}).reason}
+    onConfirm={() => { setShowExportConfirm(false); handleDownload(); }}
+    onAddressIssues={() => setShowExportConfirm(false)}
+  />
+)}
+```
 
-## Verification
+**3b. Pass `scorecard` and `issueStatuses` through `<ReportMode>` to `<DownloadReportButton>`** (line 1753 of `ReportMode.tsx`):
 
-1. **Backfill:** every existing report has exactly one `owner` collaborator row matching its `user_id`.
-2. **Owner flow:** as the report owner, "Manage access" appears; add a whitelisted colleague as editor → they appear in their dashboard with a "Shared" badge and can open + edit the report.
-3. **Viewer flow:** add a whitelisted colleague as viewer → they can open the report read-only; Notes inputs are disabled, Generate buttons hidden.
-4. **Permission boundary:** a non-collaborator user gets `PGRST` "no rows" when fetching the report (RLS blocks it).
-5. **Email lookup:** entering a non-existent or non-whitelisted email shows the "No Kotoba account" error and never leaks whether the email exists elsewhere.
-6. **Activity log:** creating a report, adding/removing a collaborator, generating the full report, and regenerating a section each insert one row into `report_activity`.
-7. **Last-editor indicator:** when User B saves edits and User A reopens, User A sees "Edited by {B} · {time}". User B sees nothing (self-edit excluded).
-8. **Owner self-protection:** API and UI both reject an owner trying to remove themselves or downgrade their own role.
+```tsx
+<DownloadReportButton
+  reportData={reportData}
+  scorecard={props.scorecard}
+  issueStatuses={props.issueStatuses}
+/>
+```
 
+`ClientEditor` already passes both props to `<ReportMode>`, so no change is required there.
+
+---
+
+### Out of scope / non-changes
+
+- **DB schema**: the existing `quality_scorecard`, `issue_statuses`, `dismissed_issue_keys` JSONB columns hold the v2 shape unchanged. No migration needed.
+- **Edge functions**: `review-report` already accepts the new fields (lines 189–196 of `supabase/functions/review-report/index.ts`). `correct-report` continues to receive its existing `criterion` field — we just feed it from `issue.category`.
+- **`QualityScorecard.tsx` itself**: not touched; it is the v2 source-of-truth and exports `ExportConfirmDialog` + `getExportConfirmation` ready to use.
+
+### Acceptance
+
+- TypeScript build passes (the 3 listed errors at `ReportMode.tsx:1674/1693/1705` are gone).
+- Running "Check Report Quality" calls `review-report` with diagnoses, assessments, notes, collateral evidence, recommendations, and goals visible in the request body.
+- Clicking "Download .docx Report" with ≥1 unresolved high-severity issue shows the `ExportConfirmDialog` modal; with zero, it downloads immediately as before.
+- Existing flows (Accept fix, Dismiss, Acknowledge, Apply N fixes, Re-check, Clear & re-check, Find in report) continue to work.
