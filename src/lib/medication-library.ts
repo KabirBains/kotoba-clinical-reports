@@ -325,7 +325,6 @@ export const MEDICATION_LIBRARY: MedicationLibraryEntry[] = [
   { id: "med_iron_maltofer", generic: "Iron polymaltose", brands: ["Maltofer"], drugClass: "Iron supplement", category: "Vitamin / Supplement", defaultStrength: "100mg", defaultQuantity: "1 tablet", defaultFrequency: "Once daily", commonIndication: "Iron deficiency anaemia", route: "Oral" },
   { id: "med_thiamine", generic: "Thiamine (Vitamin B1)", brands: ["Betamin"], drugClass: "Vitamin B1 supplement", category: "Vitamin / Supplement", defaultStrength: "100mg", defaultQuantity: "1 tablet", defaultFrequency: "Once daily", commonIndication: "Thiamine deficiency; alcohol use disorder; Wernicke's prophylaxis", route: "Oral" },
 ];
-];
 
 export const MEDICATION_CATEGORIES: string[] = Array.from(
   new Set(MEDICATION_LIBRARY.map((m) => m.category)),
