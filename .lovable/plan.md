@@ -1,171 +1,127 @@
-## Quality Checker v2 — Wiring Plan
 
-The v2 `QualityScorecard.tsx` and `review-report` edge function have already shipped. The remaining work is purely call-site wiring across **3 files**. The build is currently broken at `ReportMode.tsx` lines 1674, 1693, 1705 because of v1 prop names and v1 issue fields that no longer exist.
+## Goal
 
----
+Move the source of truth for the FCA report template **out of the `assemble-report` Supabase edge function** and **into the Kotoba React app**, using the already-installed `docx` + `file-saver` libraries. The new template will mirror Report Mode visually, add proper tables, a Table of Contents, structured subsection headers, an assessments sequence, a recommendations table, an AI disclosure, and a signature block.
 
-### File 1 — `src/pages/ClientEditor.tsx`
+## Why
 
-**1a. Pass full source-data payload to `review-report`** (currently only sends `reportText` + `participantName` at line 344).
+- Edge function string-concatenated XML is fragile and hard to iterate on.
+- All the source data already lives in `reportData` on the client.
+- `docx` and `file-saver` are already in `package.json` (no new deps).
+- A starter assembler (`src/ai/reportAssembler.ts`) already exists — we'll redesign and wire it up.
 
-Update `runQualityCheck` (lines 337–362):
+## Architecture changes
 
-```ts
-import { gatherCollateralEvidence } from "@/components/editor/LiaiseMode";
-
-const { data, error } = await supabase.functions.invoke("review-report", {
-  body: {
-    reportText,
-    participantName: client?.client_name || "",
-    diagnoses: diagnoses.map(d => d.name),
-    assessments: assessments.map(a => ({
-      tool: a.name,
-      scores: Object.entries(a.scores || {})
-        .map(([k, v]) => `${k}: ${v}`).join("; "),
-    })),
-    clinician_notes: Object.fromEntries(
-      Object.entries(notes).filter(([, v]) => typeof v === "string" && v.trim())
-    ) as Record<string, string>,
-    collateral_evidence: gatherCollateralEvidence(collateralInterviews ?? []),
-    recommendations: recommendations.map(r => ({
-      supportName: r.supportName,
-      recommendedHours: r.recommendedHours,
-      justification: r.justification,
-      s34Justification: r.s34Justification,
-    })),
-    participant_goals: (goals ?? [])
-      .map((g, i) => ({ number: i + 1, text: g.text }))
-      .filter(g => g.text.trim()),
-  },
-});
+```text
+Before:  ReportMode -> DownloadReportButton -> kotobaSupabase.functions.invoke("assemble-report") -> base64 .docx
+After:   ReportMode -> DownloadReportButton -> assembleReport(reportData) [client-side docx-js] -> saveAs(.docx)
 ```
 
-**1b. Replace v1 issue fields used in dismissed-key derivation.**
+The Supabase edge function `assemble-report` becomes obsolete. We will keep it deployed but stop calling it (safe rollback path); the plan section "Edge function cleanup" lists what to do with it.
 
-Lines 349–351 and 1565 currently compose dismissed-issue keys from `issue.criterion`, which no longer exists. Replace with `issue.category`:
+## New template structure
 
-```ts
-// line ~350
-const key = issue.category + "::" + issue.section + "::" + (issue.flaggedText || "").substring(0, 50);
-// line ~1565 (inside onDismissIssue)
-const key = issue.category + "::" + issue.section + "::" + (issue.flaggedText || "").substring(0, 50);
-```
+Page setup: US Letter (12240 × 15840 DXA), 1" margins, Arial throughout, blue (#1F4E79) H1 / dark grey H2 / grey H3, `WidthType.DXA` for all tables (Google Docs compatible).
 
-Note: this invalidates dismissed-key entries persisted by v1, but those carry stale issue identifiers anyway — re-checks under v2 will re-surface them on first run, which is the correct behaviour.
+1. **Cover page**
+   - Title: "Functional Capacity Assessment"
+   - Subtitle: "Clinical Report — National Disability Insurance Scheme"
+   - "CONFIDENTIAL & PRIVILEGED" badge
+   - Participant name, DOB, NDIS #, date of report
 
-**1c. Update the `<ReportMode>` props passed at lines 1571–1582.**
+2. **Table of Contents** (`TableOfContents` with `headingStyleRange: "1-2"`, hyperlinked) on its own page. Note shown to clinician: "Right-click → Update Field in Word to refresh page numbers."
 
-- **Remove** the `onAcceptAllIssues` prop (no v2 equivalent — the "Apply N fixes" button in the scorecard footer covers this).
-- **Rename** `onApplyCorrections` → `onApplyAcceptedFixes`.
-- Inside the renamed handler (lines 1582–1662), replace `issue.tier === "auto_correct"` checks with `issue.suggestedFix` truthiness, and replace `issue.criterion` reads with `issue.category`:
+3. **Participant & Report Details** — three KV tables (participant / clinician / persons present), then AI disclosure + clinical disclaimer note boxes.
 
-```ts
-const acceptedFixes = scorecard.issues
-  .filter((issue: any) => issue.suggestedFix && issueStatuses[issue.id] === "accepted")
-  .map((issue: any) => {
-    /* …existing findSectionText logic… */
-    return {
-      section: sectionKey, sectionText,
-      criterion: issue.category,        // edge function still expects `criterion` key
-      flaggedText: issue.flaggedText,
-      suggestedFix: issue.suggestedFix,
-      description: issue.description,
-    };
-  });
-```
+4. **Sections 1–13** (prose sections) — each heading on H1, prose paragraphs underneath. Page breaks between major sections matching current behaviour.
 
-(The `correct-report` edge function field name `criterion` is its own request contract — we keep that key but populate it from `issue.category`. If the function also needs updating to accept `category`, that's a separate change; the field is just a label passed through.)
+5. **Section 14 — Functional Capacity, Domain Observations**
+   Each subsection (14.1 Mobility … 14.8 Social Functioning) rendered as a uniform block:
+   ```text
+   [H2] 14.x — <Domain Name>
+   [Small KV table] Level of impairment: Independent | Prompting | Assistance | Dependent
+                    Evidence sources:    (from notes / observation)
+   [Body] Clinical prose (paragraph-split)
+   ```
+   The "Level of impairment" row is populated from each domain's structured JSON when available; falls back to "Not specified" if absent.
 
----
+6. **Section 15 — Standardised Assessments**
+   For each assessment in `reportData.assessments`, render in this exact order:
+   ```text
+   [H2] <Assessment name>
+   [Body] Synopsis — short description of what the tool measures (sourced from assessment-library; fallback to "Why selected" field).
+   [Table] Score / Result | Date Administered | Classification
+   [H3] Clinical Interpretation
+   [Body] Interpretation prose (parsed from section13/section14 prose, split by assessment heading where possible; fallback to the full interpretations block under the first assessment).
+   ```
 
-### File 2 — `src/components/editor/ReportMode.tsx`
+7. **Sections 16–17** (Limitations & Barriers; Functional Impact Summary) — prose.
 
-**2a. Drop the `onAcceptAllIssues` prop** from `interface ReportModeProps` (line 360) and remove `onAcceptAll` from the `<QualityScorecard>` invocation (line 1674 — the source of build error #1).
+8. **Section 18 — Recommendations**
+   Single full-width table summarising every recommendation (one row per recommendation):
+   `Support | NDIS Category | Current | Recommended | Ratio | Tasks Covered`
+   Immediately **after** the table, for each recommendation, render a labelled prose block:
+   ```text
+   [H3] <Support name> — Justification
+   [Body] Narrative justification & link to functional need (parsed from section16/section17 prose by support name; fallback to a single combined narratives block).
+   ```
 
-**2b. Rename `onApplyCorrections` → `onApplyAcceptedFixes`** in both the props interface (line 361) and the `<QualityScorecard>` invocation (line 1675).
+9. **Sections 19–20** (Risks of Insufficient Funding; Review & Monitoring Plan; Section 34 statement) — prose, with the Section 34 statement in a callout box.
 
-**2c. Fix the highlighted-issue popover** (lines 1690–1724 — source of build errors #2 and #3).
+10. **AI Disclosure & Sign-off**
+    - Prominent disclosure paragraph: this report was prepared with the assistance of AI writing technology, all clinical judgement is the clinician's, etc.
+    - Sign-off table:
+      `Report Author | <name>` (auto-filled)
+      `Signature     | ___________________________` (fillable line)
+      `Date          | ___________________________` (fillable line)
+      `AHPRA Reg.    | <number>`
+      `Organisation  | <practice>`
+      `Contact       | <phone / email>`
+    - Final footer paragraph reiterating NDIS Practice Standards & AHPRA Code of Conduct compliance.
 
-- Replace `highlightedIssue.criterion` (line 1693) with `highlightedIssue.category` (or just drop the prefix and show the title alone — category is a machine-readable enum, not a label; recommended approach is to map to a human label):
-  ```tsx
-  const CATEGORY_LABEL = {
-    contradiction: "Contradiction",
-    hallucination: "Hallucination",
-    misplacement: "Misplaced",
-    missing_essential: "Missing",
-  } as const;
-  // …
-  <h4 className="text-sm font-semibold text-foreground">
-    {CATEGORY_LABEL[highlightedIssue.category]}: {highlightedIssue.title}
-  </h4>
-  ```
-- Replace the `tier === "auto_correct"` branch at line 1705 with `suggestedFix` presence:
-  ```tsx
-  {highlightedIssue.suggestedFix ? (
-    <Button …>Accept Fix</Button>
-  ) : (
-    <Button …>Mark as Reviewed</Button>
-  )}
-  ```
+Headers/footers on every page after cover: top — "FUNCTIONAL CAPACITY ASSESSMENT" left, "CONFIDENTIAL & PRIVILEGED" right. Bottom — page number left, participant name + report date right.
 
----
+## Implementation tasks
 
-### File 3 — `src/components/DownloadReportButton.tsx`
+1. **Rewrite `src/ai/reportAssembler.ts`**
+   - Keep the `ReportData` interface (already matches what `ReportMode.tsx` builds at lines ~592–640) — extend with optional `domainImpairments?: Record<string, string>` for the level-of-impairment row.
+   - Replace existing builder with the new template above. Use existing helpers (`h1`, `h2`, `kvTable`, `prose`, `noteBox`) and add: `h3`, `tocPage`, `assessmentBlock`, `recommendationsTable`, `signOffBlock`, `aiDisclosureBlock`.
+   - Add bullet/numbering config (`LevelFormat.BULLET`) so any future bulleted lists render correctly.
+   - Filename pattern stays: `FCA_<Name>_<YYYY-MM-DD>.docx`.
 
-**3a. Add the soft-confirmation export gate.** The current `handleDownload` (line 39) starts assembly immediately. Wrap it so high-severity unresolved issues raise the modal first.
+2. **Rewire `src/components/DownloadReportButton.tsx`**
+   - Remove the `kotobaSupabase.functions.invoke("assemble-report", …)` call and the base64 decode.
+   - Call `await assembleReport(reportData)` directly (it already triggers `saveAs` internally).
+   - Keep the export soft-gate (`getExportConfirmation` + `ExportConfirmDialog`) — that flow is unchanged.
+   - Keep the completed-sections progress bar + status states.
 
-- Extend `DownloadReportButtonProps` with `scorecard?: Scorecard | null` and `issueStatuses?: Record<string, IssueStatus>`.
-- Import `ExportConfirmDialog`, `getExportConfirmation` from `@/components/editor/QualityScorecard`.
-- Add state: `showExportConfirm`, then:
+3. **Pass impairment levels through (Section 14 enhancement)**
+   - In `src/components/editor/ReportMode.tsx` where `reportData` is assembled (around line 592), parse the structured JSON behind each `mobility / transfers / personal-adls …` note id and extract its `level` field into a new `domainImpairments` map keyed by `section12_1`…`section12_8`. Use the same helpers already used by `flattenDomainJson`.
 
-```tsx
-const handleClick = () => {
-  if (!props.scorecard) return handleDownload();   // no check run yet → no gate
-  const gate = getExportConfirmation(props.scorecard, props.issueStatuses ?? {});
-  if (gate.needsConfirmation) setShowExportConfirm(true);
-  else handleDownload();
-};
-```
+4. **Assessment synopsis lookup**
+   - Add a `getAssessmentSynopsis(definitionId | toolName)` helper in `src/lib/assessment-library.ts` (or read existing field if already present) so the assembler can render the "what this tool measures" line. Fallback chain: library entry → `whySelected` → empty.
 
-- Wire the existing `<Button>` `onClick` to `handleClick` (currently calls `handleDownload`).
-- Render the dialog at the bottom of the component:
+5. **Recommendation narrative splitting**
+   - Add a small util in the assembler that, given the combined recommendations narrative prose and a list of support names, splits the prose into per-recommendation chunks (regex on support-name headings already produced upstream). If a clean split isn't possible, fall back to printing the full narrative once after the table.
 
-```tsx
-{props.scorecard && (
-  <ExportConfirmDialog
-    open={showExportConfirm}
-    onOpenChange={setShowExportConfirm}
-    blockingIssues={getExportConfirmation(props.scorecard, props.issueStatuses ?? {}).blockingIssues}
-    reason={getExportConfirmation(props.scorecard, props.issueStatuses ?? {}).reason}
-    onConfirm={() => { setShowExportConfirm(false); handleDownload(); }}
-    onAddressIssues={() => setShowExportConfirm(false)}
-  />
-)}
-```
+6. **Edge function cleanup**
+   - Stop calling `assemble-report` from any client code (only `DownloadReportButton.tsx` uses it — confirmed via earlier audit).
+   - Leave `supabase/functions/assemble-report/index.ts` deployed for one release cycle as a safety net, with a top-of-file comment marking it as deprecated. Removal can ship in a follow-up once the new client template is validated by the user.
 
-**3b. Pass `scorecard` and `issueStatuses` through `<ReportMode>` to `<DownloadReportButton>`** (line 1753 of `ReportMode.tsx`):
+7. **Sanity QA**
+   - Manual: download a generated report from the current preview, open in Word + Google Docs, confirm TOC renders (Update Field), tables align, signature lines visible, page breaks sane.
 
-```tsx
-<DownloadReportButton
-  reportData={reportData}
-  scorecard={props.scorecard}
-  issueStatuses={props.issueStatuses}
-/>
-```
+## Files touched
 
-`ClientEditor` already passes both props to `<ReportMode>`, so no change is required there.
+- `src/ai/reportAssembler.ts` — full rewrite
+- `src/components/DownloadReportButton.tsx` — switch to client-side assembler
+- `src/components/editor/ReportMode.tsx` — add `domainImpairments` to `reportData`
+- `src/lib/assessment-library.ts` — add synopsis lookup helper (small)
+- `supabase/functions/assemble-report/index.ts` — deprecation comment only
 
----
+## Out of scope (will iterate after first render)
 
-### Out of scope / non-changes
-
-- **DB schema**: the existing `quality_scorecard`, `issue_statuses`, `dismissed_issue_keys` JSONB columns hold the v2 shape unchanged. No migration needed.
-- **Edge functions**: `review-report` already accepts the new fields (lines 189–196 of `supabase/functions/review-report/index.ts`). `correct-report` continues to receive its existing `criterion` field — we just feed it from `issue.category`.
-- **`QualityScorecard.tsx` itself**: not touched; it is the v2 source-of-truth and exports `ExportConfirmDialog` + `getExportConfirmation` ready to use.
-
-### Acceptance
-
-- TypeScript build passes (the 3 listed errors at `ReportMode.tsx:1674/1693/1705` are gone).
-- Running "Check Report Quality" calls `review-report` with diagnoses, assessments, notes, collateral evidence, recommendations, and goals visible in the request body.
-- Clicking "Download .docx Report" with ≥1 unresolved high-severity issue shows the `ExportConfirmDialog` modal; with zero, it downloads immediately as before.
-- Existing flows (Accept fix, Dismiss, Acknowledge, Apply N fixes, Re-check, Clear & re-check, Find in report) continue to work.
+- Embedding clinic logo / letterhead branding
+- Real e-signature (Word-fillable line is sufficient per request)
+- Removing the deprecated edge function (one release later)
+- Any change to AI generation prompts or quality checker
